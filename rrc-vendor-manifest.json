@@ -1,0 +1,23 @@
+{
+  "source": "work/meshchat-next/meshchatnext",
+  "files": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/path_utils.py": "75284a620c319036368f6885976e63892f87d9824709602c28d3f501f2ddad9a",
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/backend/traffic_stats.py": "266149a092116425721dcd4f0cba1a261fc3c4ab289998c156e63cc217d0e92b",
+    "src/backend/path_utils.py": "4630a30e3e2fcbd5759dca4fc3f3950c21efb30a9c3f4458219c8f61ea6ae2e7",
+    "src/backend/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/backend/constants.py": "a3d7b36acf95c776b8ced68e686ca65ff368601b8ab83bc72b1ae2e6f73fb257",
+    "src/backend/rrc/server.py": "69a042e2d4e919311096222e17b8a50a738896f1a37922fca0db54f372b0a626",
+    "src/backend/rrc/manager.py": "3365493c220f36ea021164af284743e8dafdd83c06f383a9f75c06a3ab1c4ed2",
+    "src/backend/rrc/__init__.py": "01693ca79de2d4c7a9df8655376d39b5442a4d41c570ad4c14f6dfb47009fa47",
+    "src/backend/rrc/hub_policy.py": "fd3168a82b94688a62b0b0b863b9e2d4b4e86280454111c4927968e3a4ea304d",
+    "src/backend/rrc/identity_util.py": "fcc641d57f8eab45a580ad2f60509fb09fbca91aa6a3562867aecbee70d1407f",
+    "src/backend/rrc/rooms_toml.py": "330db551f16fc034d0c1c7ac1be490dc1c70f5fba477d2d8773972f14a27ca01",
+    "src/backend/rrc/room_key_crypto.py": "bfc612e307b2c63740ba5622bf592766c91ebb494d1ca864bb8eea9c9d3deb8e",
+    "src/backend/rrc/hub_commands.py": "84443de328da573fec67378ef1ba690958fafd22833927e0c219b66583b6cea9",
+    "src/backend/rrc/protocol.py": "9e3f78ee576fdb9942059cda628dcbd225fb02a296c1fd42cabe04c5ca420c18",
+    "src/backend/rrc/search.py": "5f29ba8bbd87f91cd0331582a7b81b65daf4e9492e0ff7363098ca62a18ead32",
+    "src/backend/rrc/room_registry.py": "75b41180430f3f4b788bcc04da8794bc5b93faef903c2f1dc81c5eb8e4950398"
+  }
+}

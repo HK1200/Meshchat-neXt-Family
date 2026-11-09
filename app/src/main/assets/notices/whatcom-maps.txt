@@ -1,0 +1,7 @@
+Whatcom-area offline street tiles
+OpenStreetMap contributors, Natural Earth and Protomaps, ODbL.
+https://www.openstreetmap.org/copyright
+https://docs.protomaps.com/basemaps/downloads
+Source: https://build.protomaps.com/20261108.pmtiles
+Produced with map-src/render-streets.py from a Protomaps extract.
+Coverage: west and central Whatcom County and nearby communities, zoom 13–15.

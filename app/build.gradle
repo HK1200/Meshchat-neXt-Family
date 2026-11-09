@@ -1,0 +1,47 @@
+apply plugin: 'com.android.application'
+apply plugin: 'com.chaquo.python'
+def familyWheelDir = System.getenv("FAMILY_ANDROID_VENDOR_DIR") ?: file("../../meshchat-next/android/vendor").absolutePath
+def familyPython = System.getenv("FAMILY_ANDROID_PYTHON") ?: "python3.11"
+android {
+    namespace 'org.meshchat.family.preview'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'org.meshchat.family.preview'
+        minSdk 26
+        testInstrumentationRunner 'org.meshchat.family.preview.FamilyTestInstrumentation'
+        ndk { abiFilters "arm64-v8a" }
+        targetSdk 35
+        versionCode 21
+        versionName '0.6.12'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { debug { applicationIdSuffix project.hasProperty('isolatedSetupTest') ? '.setuptest' : '' }; release { minifyEnabled false } }
+}
+
+chaquopy {
+ defaultConfig {
+  version "3.11"
+  buildPython familyPython
+  pip {
+   install "$familyWheelDir/chaquopy_openblas-0.2.20-7-py3-none-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/lxst-0.5.4-py3-none-any.whl"
+   install "$familyWheelDir/lxst_filterlib_android-0.5.4-py3-none-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/numpy-1.26.2-2-cp311-cp311-android_24_arm64_v8a.whl"
+   options "--no-index", "--no-deps"
+   install "$familyWheelDir/meshcore-2.3.17-py3-none-any.whl"
+   install "$familyWheelDir/bleak-3.0.2-py3-none-any.whl"
+   install "$familyWheelDir/pycayennelpp-2.4.0-py3-none-any.whl"
+   install "$familyWheelDir/pycryptodome-3.21.0-0-cp311-cp311-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/pyserial_asyncio_fast-0.16-py3-none-any.whl"
+   install "$familyWheelDir/typing_extensions-4.16.0-py3-none-any.whl"
+
+   install "$familyWheelDir/usbserial4a-0.4.0-py3-none-any.whl"
+   install "$familyWheelDir/cborx-0.2.5-1-cp311-cp311-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/rns-1.5.7-py3-none-any.whl"
+   install "$familyWheelDir/cryptography-50.0.2-0-cp311-cp311-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/cffi-2.0.0-0-cp311-cp311-android_24_arm64_v8a.whl"
+  }
+ }
+}
+
+dependencies { implementation files("libs/usb-serial-for-android-3.8.1.aar") }

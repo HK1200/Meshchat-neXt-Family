@@ -1,0 +1,46 @@
+{
+  "source": "work/meshchat-next/android/app/src/main",
+  "adaptations": "Standalone app namespace, Context permission checks without androidx; original source licenses retained.",
+  "files": [
+    {
+      "path": "app/src/main/python/jnius/__init__.py",
+      "sha256": "eaaf05afcfea01ab435d0d9ecc51a745f53da8d41f13f02fdd6da075d47ba741"
+    },
+    {
+      "path": "app/src/main/python/usb4a/__init__.py",
+      "sha256": "28ea81e26a1a0aa855cac49c0c9a8606aa852df04205554d04b41ce99805951b"
+    },
+    {
+      "path": "app/src/main/python/usb4a/usb.py",
+      "sha256": "ad5f9810f808625cd8ffa9a6957bc297e41e62f568b4a10bc9d69f846635dd59"
+    },
+    {
+      "path": "app/src/main/python/able/structures.py",
+      "sha256": "528262a725cabecd37a33e42dfe8256ba77923215fffd0ae1ceaef09f6fb067a"
+    },
+    {
+      "path": "app/src/main/python/able/dispatcher.py",
+      "sha256": "60f71d1f69663890d0f86323ee2ba0efd03c0ce2ef6d942fe29bc3bbe503378e"
+    },
+    {
+      "path": "app/src/main/python/able/__init__.py",
+      "sha256": "4c052b43b7a001ae9a54d4b3a1070b524213b5a6a47914aba0a5f20ee3688a96"
+    },
+    {
+      "path": "app/src/main/python/able/queue.py",
+      "sha256": "426130fadb7705ba0ffd12688c4e74b0702ed83e018c59986f6588f03271179d"
+    },
+    {
+      "path": "app/src/main/java/org/able/PythonBluetooth.java",
+      "sha256": "1fdcbfc99e106842b9c1b397a5979db0239b250d6544b3eac34f6bd6774c1b64"
+    },
+    {
+      "path": "app/src/main/java/org/able/BLE.java",
+      "sha256": "5c80ceeeee3cb7f0e98b5f7943058c5343acbb73919d5ef60d5441d15173415d"
+    },
+    {
+      "path": "app/src/main/java/org/meshchat/family/preview/DeviceAccess.java",
+      "sha256": "d7e1332ad030fc0d13e77a322be3f826cd989f779955131cecf0a8373f7046ee"
+    }
+  ]
+}

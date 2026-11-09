@@ -1,0 +1,17 @@
+.gradle/
+**/build/
+local.properties
+temp-tests/
+.stage-backups/
+__pycache__/
+*.py[cod]
+*.apk
+*.idsig
+*.jks
+*.keystore
+*.p12
+*.rid
+*.pem
+*.key
+.env
+.env.*

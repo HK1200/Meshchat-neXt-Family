@@ -1,0 +1,18 @@
+{
+  "name": "Meshchat neXt starter world + PNW / southern BC overview",
+  "format": "png",
+  "type": "baselayer",
+  "version": "2026.10.25.1",
+  "bounds": "-180,-85.05112878,180,85.05112878",
+  "center": "-122,47.5,6",
+  "minzoom": "0",
+  "maxzoom": "9",
+  "meshchatnext:world_maxzoom": "4",
+  "meshchatnext:regional_bounds": "-128,42,-110,53",
+  "meshchatnext:regional_maxzoom": "9",
+  "meshchatnext:source": "https://build.protomaps.com/20261025.pmtiles",
+  "meshchatnext:source_date": "2026-10-25",
+  "attribution": "\u00a9 OpenStreetMap contributors \u00b7 Natural Earth. Protomaps basemap, ODbL.",
+  "description": "PNW and southern BC: Washington, Oregon, Idaho and southern British Columbia, zooms 5\u20139. World overview zooms 0\u20134. Regional context, not turn-by-turn navigation.",
+  "meshchatnext:starter_revision": "20261025-pnw-overview-1"
+}
