@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import signal
 import sys
+import threading
 import time
 import types
 import unittest
@@ -76,3 +77,30 @@ class ClientDiscoveryTests(unittest.TestCase):
             self.backend._find_client(self.address, self.token)
         self.assertEqual(self.backend._announces, {})
         self.assertEqual(self.backend._client_lookup, {"pending": False, "message": ""})
+
+
+class MeshCoreDiscoveryTests(unittest.TestCase):
+    def test_key_only_advert_keeps_unapproved_client_visible(self):
+        spec = importlib.util.spec_from_file_location("discovery_meshcore", BACKEND.with_name("family_meshcore.py"))
+        meshcore = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(meshcore)
+        with (
+            patch.dict(sys.modules, {"family_meshcore_rooms": types.SimpleNamespace(MeshCoreRooms=lambda owner: None)}),
+            patch.object(meshcore.threading.Thread, "start"),
+        ):
+            radio = meshcore.FamilyMeshCore({"contacts": []}, threading.RLock(), lambda: None)
+        self.addCleanup(radio.loop.close)
+        client, room, cached_client = "ab" * 32, "cd" * 32, "ef" * 32
+        radio.contacts[cached_client] = {"type": 1, "adv_name": "Radio contact"}
+        for payload in (
+            {"public_key": client, "type": 1, "adv_name": "Unapproved client"},
+            {"public_key": client},
+            {"public_key": cached_client},
+            {"public_key": room, "type": 3, "adv_name": "Room server"},
+        ):
+            radio._announce(types.SimpleNamespace(payload=payload))
+        self.assertEqual(
+            {row["address"]: row["name"] for row in radio.snapshot()["clientAnnounces"]},
+            {client: "Unapproved client", cached_client: "Radio contact"},
+        )
+        self.assertEqual(radio.allowed(), {})

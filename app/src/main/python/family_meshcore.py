@@ -199,7 +199,7 @@ class FamilyMeshCore:
         try:peer=key(peer)
         except ValueError:return
         with self.lock:
-            self.announces[peer]=dict(payload,public_key=peer)
+            self.announces[peer]={**self.announces.get(peer,{}),**payload,'public_key':peer}
             if len(self.announces)>200:self.announces.pop(next(iter(self.announces)))
     def _ack(self,event):
         code=(event.payload or {}).get('code') or (event.attributes or {}).get('code')
@@ -350,7 +350,9 @@ class FamilyMeshCore:
 
     def snapshot(self):
         with self.lock:
-            config=self.state['meshcore'];candidates={**self.contacts,**self.announces}
+            config=self.state['meshcore'];candidates={**self.contacts}
+            for peer,advert in self.announces.items():
+                candidates[peer]={**candidates.get(peer,{}),**advert}
             battery = None
             if self.connected and self.session and self.session.is_connected and self._battery:
                 read_at, voltage = self._battery
