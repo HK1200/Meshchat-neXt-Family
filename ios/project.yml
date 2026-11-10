@@ -1,0 +1,23 @@
+name: FamilyPreview
+options:
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  FamilyPreview:
+    type: application
+    platform: iOS
+    sources:
+      - path: FamilyPreview
+      - path: ../app/src/main/assets
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.preview
+        PRODUCT_NAME: FamilyPreview
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: neXt Family Preview
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
