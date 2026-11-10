@@ -18,7 +18,7 @@ import org.json.*;
 
 /** Dedicated process: DNS, SIP and RTP are bound together to an allowed network. */
 public final class SipService extends Service {
-    private static final int NOTIFICATION = AppBackgroundNotification.ID, INCOMING = 6401;
+    private static final int CALL_NOTIFICATION = 6400, INCOMING = 6401;
     private volatile boolean foregroundActive;
     private String callToken="",callerName="Approved contact";
     private Set<String> providerAddresses=new HashSet<>();private long providerResolvedAt;private String providerResolvedHost="";
@@ -274,35 +274,44 @@ public final class SipService extends Service {
         if (Build.VERSION.SDK_INT >= 26) return new Notification.Builder(this, channel);
         return new Notification.Builder(this);
     }
+    private int foregroundNotificationId;
+
     private synchronized void foreground(boolean microphone) {
-        String status = AppBackgroundNotification.sipLine(networkName, state, callState);
+        if ("incoming".equals(callState)) return;
+        boolean idle = "idle".equals(callState);
+        int id = idle ? AppBackgroundNotification.ID : CALL_NOTIFICATION;
+        String status = "Call · " + callState;
         lastBackgroundStatus = status;
-        Notification n = AppBackgroundNotification.build(this, status, "idle".equals(callState));
-        getSystemService(NotificationManager.class).cancel(AppBackgroundNotification.LEGACY_SIP_ID);
+        Notification n = idle ? AppBackgroundNotification.build(this)
+                : notificationBuilder("sip_service")
+                        .setSmallIcon(R.drawable.ic_family)
+                        .setContentTitle("neXt Family · calling")
+                        .setContentText(status)
+                        .setOngoing(true)
+                        .setContentIntent(open())
+                        .build();
         if (Build.VERSION.SDK_INT >= 29) {
             int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL;
             if (microphone && Build.VERSION.SDK_INT >= 30) {
                 type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
             }
-            startForeground(NOTIFICATION, n, type);
+            startForeground(id, n, type);
         } else {
-            startForeground(NOTIFICATION, n);
+            startForeground(id, n);
         }
+        foregroundNotificationId = id;
         foregroundActive = true;
-        AppBackgroundNotification.sync(this);
     }
     private synchronized void leaveForeground() {
         foregroundActive = false;
         stopForeground(STOP_FOREGROUND_REMOVE);
-        AppBackgroundNotification.sync(this);
     }
     private synchronized void refreshBackgroundStatus() {
-        if (!foregroundActive) return;
-        String status = AppBackgroundNotification.sipLine(networkName, state, callState);
-        if (!status.equals(lastBackgroundStatus)) {
-            lastBackgroundStatus = status;
-            getSystemService(NotificationManager.class).notify(NOTIFICATION, AppBackgroundNotification.build(this, status, "idle".equals(callState)));
-            AppBackgroundNotification.sync(this);
+        if (!foregroundActive || "incoming".equals(callState)) return;
+        int id = "idle".equals(callState) ? AppBackgroundNotification.ID : CALL_NOTIFICATION;
+        if (id != foregroundNotificationId || (id == CALL_NOTIFICATION &&
+                !("Call · " + callState).equals(lastBackgroundStatus))) {
+            foreground(audioFocusHeld);
         }
     }
     private JSONObject find(String id) throws JSONException {
@@ -783,7 +792,7 @@ public final class SipService extends Service {
                         if(Build.VERSION.SDK_INT>=31)builder.setStyle(Notification.CallStyle.forIncomingCall(new Person.Builder().setName(name).setImportant(true).build(),decline,answer));
                         else builder.addAction(new Notification.Action.Builder(null,"Decline",decline).build()).addAction(new Notification.Action.Builder(null,"Answer",answer).build());
                         if(Build.VERSION.SDK_INT>=29)startForeground(INCOMING,builder.build(),ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL);else startForeground(INCOMING,builder.build());
-                        AppBackgroundNotification.sync(this);
+                        foregroundNotificationId=INCOMING;
                     } else if ("connected".equals(value))
                         getSystemService(NotificationManager.class).cancel(INCOMING);
                     break;

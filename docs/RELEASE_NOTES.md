@@ -1,3 +1,10 @@
+# neXt Family v0.6.17
+
+- Messaging, Reticulum calling, and SIP share one Android connection status card while idle. Incoming call controls and active location sharing keep their own notices.
+- Repair the Android Codec2 extension required by Low Bandwidth and Ultra Low Bandwidth Reticulum calls.
+
+---
+
 # neXt Family v0.6.16
 
 - Day and Night mode respond during connection checks, use a larger button, and remember the selected appearance.
