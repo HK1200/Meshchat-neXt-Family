@@ -66,10 +66,10 @@ class FamilyMeshCore:
         with self.lock:
             self._battery = None
             self._battery_attempt = None
-            for mid in self._pending.values():
-                row=next((m for m in self.state['messages'] if m['id']==mid),None)
-                if row and not row['status'].startswith('Delivered'):row['status']='Not confirmed · companion disconnected'
+            pending=list(self._pending.values())
             self._pending.clear();self._acks.clear();self._location_write=None;self._location_pending={};self.save()
+        for mid,_,on_failure in pending:
+            self._send_failed(mid,'Not confirmed · MeshCore companion disconnected',on_failure)
         for subscription in self._subscriptions:
             try:subscription.unsubscribe()
             except Exception:pass
@@ -211,8 +211,9 @@ class FamilyMeshCore:
             self.rooms.ack(code)
             if code in getattr(self,'_location_pending',{}):
                 self._location_pending.pop(code,None);self.location_status='Private location delivered · MeshCore receipt' 
-            mid=self._pending.pop(code,None)
-            if mid:
+            pending=self._pending.pop(code,None)
+            if pending:
+                mid,_,_=pending
                 row=next((m for m in self.state['messages'] if m['id']==mid),None)
                 if row:row['status']='Delivered · MeshCore receipt';row['deliveredAt']=time.time();self.save()
     def receive(self,payload):
@@ -262,15 +263,27 @@ class FamilyMeshCore:
                 self.rooms.tick()
                 for code,deadline in list(self._location_pending.items()):
                     if time.time()>deadline:self._location_pending.pop(code,None);self.location_status='Private location not confirmed' 
-                with self.lock:
-                    now=time.time()
-                    for code,mid in list(self._pending.items()):
-                        row=next((m for m in self.state['messages'] if m['id']==mid),None)
-                        if row and now>row.get('ackDeadline',now+1):row['status']='Not confirmed · MeshCore';self._pending.pop(code,None);self.save()
+                self._expire_receipts()
             except Exception as exc:
                 with self.lock:self.error=str(exc)[:200]
-    def send(self,mid,peer,text):return self._submit(self._send(mid,peer,text))
-    async def _send(self,mid,peer,text):
+
+    def _expire_receipts(self):
+        now=time.time()
+        with self.lock:
+            expired=[self._pending.pop(code) for code,(_,deadline,_) in list(self._pending.items()) if now>deadline]
+        for mid,_,on_failure in expired:
+            self._send_failed(mid,'Not confirmed · MeshCore receipt timed out',on_failure)
+
+    def _send_failed(self,mid,status,on_failure):
+        if on_failure is not None and on_failure(status):return
+        with self.lock:
+            row=next((m for m in self.state['messages'] if m['id']==mid),None)
+            if row and row.get('service')=='meshcore' and not row['status'].startswith('Delivered'):
+                row['status']=status;self.save()
+
+    def send(self,mid,peer,text,on_failure=None):return self._submit(self._send(mid,peer,text,on_failure))
+    async def _send(self,mid,peer,text,on_failure=None):
+        may_have_sent=False
         try:
             peer=key(peer)
             if not text.strip() or len(text.encode())>160:raise ValueError('MeshCore messages support 1–160 UTF-8 bytes')
@@ -294,8 +307,14 @@ class FamilyMeshCore:
                     row=next((m for m in self.state['messages'] if m['id']==mid),None)
                     stamp=max(int(started),max((m.get('meshcoreTimestamp',0) for m in self.state['messages'] if m.get('peer')==peer),default=0)+1)
                     if row:row['meshcoreTimestamp']=stamp;self.save()
+                may_have_sent=True
                 event=await self.session._client.commands.send_msg(peer,text,timestamp=stamp,attempt=0)
-                if event is None or event.type!=EventType.MSG_SENT:raise ValueError('Companion did not confirm acceptance; delivery is unknown')
+                # The library also uses ERROR for host timeouts and write failures.
+                # Only the companion's explicit rejection proves it declined the message.
+                if event is not None and event.type==EventType.ERROR and (event.payload=={} or 'error_code' in (event.payload or {})):
+                    may_have_sent=False
+                    raise ValueError('MeshCore companion rejected the message')
+                if event is None or event.type!=EventType.MSG_SENT:raise ValueError('MeshCore companion did not confirm acceptance')
                 payload=event.payload;ack=payload.get('expected_ack')
                 if not isinstance(ack,bytes) or len(ack)!=4:raise ValueError('Invalid MeshCore receipt token')
                 code=ack.hex();timeout=float(payload.get('suggested_timeout',30000))/1000
@@ -304,13 +323,14 @@ class FamilyMeshCore:
                     row=next((m for m in self.state['messages'] if m['id']==mid),None)
                     if row:
                         early=self._acks.get(code,0)>=started-.5
-                        row['status']='Delivered · MeshCore receipt' if early else 'Accepted by MeshCore radio · awaiting receipt';row['ackDeadline']=time.time()+min(300,max(5,timeout*1.2))
-                        if not early:self._pending[code]=mid
+                        row['status']='Delivered · MeshCore receipt' if early else 'Accepted by MeshCore radio · awaiting receipt'
+                        if not early:
+                            deadline=time.time()+min(300,max(5,timeout*1.2))
+                            self._pending[code]=(mid,deadline,on_failure)
                         self.save()
         except Exception as exc:
-            with self.lock:
-                row=next((m for m in self.state['messages'] if m['id']==mid),None)
-                if row:row['status']='Not sent or not confirmed · '+str(exc)[:160];self.save()
+            status=('Not confirmed · ' if may_have_sent else 'Failed · ')+str(exc)[:160]
+            self._send_failed(mid,status,on_failure)
     def send_location(self,target,fix,generation):
         return self._submit(self._send_location(target,fix,generation,self.revision))
     async def _send_location(self,target,fix,generation,revision):

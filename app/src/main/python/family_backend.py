@@ -273,7 +273,7 @@ def _receive(message):
 def _update(mid,status):
     with _lock:
         row=next((m for m in _state['messages'] if m['id']==mid),None)
-        if row:
+        if row and row.get('service','reticulum')=='reticulum' and not row['status'].startswith('Delivered'):
             row['status']=status
             if status=='Delivered':row['deliveredAt']=time.time()
             _save()
@@ -342,7 +342,45 @@ def _delivery_method(address):
     interface=RNS.Transport.next_hop_interface(address)
     return LXMF.LXMessage.OPPORTUNISTIC if _radio and interface is _radio.interface else LXMF.LXMessage.DIRECT
 
-def _send(mid,peer,text):
+def _dispatch_message(mid,service,peer,text,on_failure=None):
+    if service=='reticulum':
+        threading.Thread(target=_send,args=(mid,peer,text,on_failure),daemon=True).start()
+    else:
+        _meshcore.send(mid,peer,text,on_failure)
+
+def _retry_message(mid,contact_id,service,peer,alternate,alternate_peer,status):
+    """Switch a single conversation row to its other approved destination."""
+    with _lock:
+        row=next((m for m in _state['messages'] if m['id']==mid),None)
+        contact=next((c for c in _state['contacts'] if c['id']==contact_id),None)
+        if not row or not contact or row.get('service')!=service or row.get('peer')!=peer:
+            return False
+        if row['status'].startswith(('Delivered','Cancelled')):return False
+        addresses=contact['addresses']
+        current_key,alternate_key=('lxmf','meshcore') if service=='reticulum' else ('meshcore','lxmf')
+        if addresses.get(current_key,'').lower()!=peer or addresses.get(alternate_key,'').lower()!=alternate_peer:
+            return False
+        if not any(route['service']==alternate for route in _message_routes(contact,row['text'])):
+            return False
+        text=row['text']
+        row['fallbackFrom']={key:row[key] for key in ('service','peer','owner')}
+        row['fallbackFrom']['status']=status
+        row.update(service=alternate,peer=alternate_peer,
+                   owner=(_state.get('meshcore') or {}).get('publicKey','') if alternate=='meshcore' else '',
+                   status='Trying MeshCore' if alternate=='meshcore' else 'Trying Reticulum')
+        row.pop('hash',None)
+        _outbound.pop(mid,None)
+        _save()
+    _dispatch_message(mid,alternate,alternate_peer,text)
+    return True
+
+def _send(mid,peer,text,on_failure=None):
+    send_started=False
+    message=None
+    def fail(status):
+        if send_started:status='Not confirmed · Reticulum'
+        if on_failure is None or not on_failure(status):
+            _update(mid,status)
     try:
         import RNS,LXMF
         if not _online():raise ValueError('No Reticulum connection is online')
@@ -353,21 +391,33 @@ def _send(mid,peer,text):
             if not permitted():raise ValueError('Contact approval was removed')
             raise ValueError('No path to contact after 60 seconds')
         dest=RNS.Destination(identity,RNS.Destination.OUT,RNS.Destination.SINGLE,'lxmf','delivery')
-        # On the approved low-bandwidth radio, LXMF can encrypt and sign a
-        # short message in one packet, avoiding a multi-packet link handshake.
-        # LXMF itself upgrades oversized content to link delivery before send.
-        message=LXMF.LXMessage(dest,_destination,text,desired_method=_delivery_method(bytes.fromhex(peer)),include_ticket=True)
+        class TrackedMessage(LXMF.LXMessage):
+            def send(self):
+                nonlocal send_started
+                send_started=True
+                return super().send()
+        # On an RNode, short messages can avoid a multi-packet link handshake.
+        message=TrackedMessage(dest,_destination,text,desired_method=_delivery_method(bytes.fromhex(peer)),include_ticket=True)
         message.register_delivery_callback(lambda m:_update(mid,'Delivered'))
-        message.register_failed_callback(lambda m:_update(mid,'Failed'))
+        def failed(m):
+            if m.state!=LXMF.LXMessage.CANCELLED:
+                fail('Failed · Reticulum could not send')
+        message.register_failed_callback(failed)
         # Recheck approval immediately before handing the packet to LXMF.
         with _lock:
             if not _contact(peer):raise ValueError('Contact approval was removed')
+            row=next((m for m in _state['messages'] if m['id']==mid),None)
+            if row is None:return
             _outbound[mid]=message
+            row['status']='Sending'
             _router.handle_outbound(message)
-            row=next(m for m in _state['messages'] if m['id']==mid)
-            row['hash']=message.hash.hex() if message.hash else None
-            row['status']='Sending';_save()
-    except Exception as e:_update(mid,'Failed · '+str(e))
+            if row['service']=='reticulum':
+                row['hash']=message.hash.hex() if message.hash else None
+                _save()
+    except Exception as e:
+        # The router can report failure synchronously before raising.
+        if message is None or message.state not in (LXMF.LXMessage.FAILED,LXMF.LXMessage.REJECTED,LXMF.LXMessage.CANCELLED):
+            fail('Failed · '+str(e))
 
 def _message_routes(contact,text=None):
     from family_routes import choices
@@ -715,10 +765,11 @@ def request(raw):
                 c=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)
                 if not c:raise ValueError('Contact is not approved')
                 method=p.get('method','auto')
+                automatic=method=='auto'
                 if method not in ['auto','reticulum','meshcore']:raise ValueError('Unsupported message method')
                 reticulum=bool(c['addresses'].get('lxmf') and _online())
                 meshcore=bool(c['addresses'].get('meshcore') and _meshcore and _meshcore.connected)
-                if method=='auto':
+                if automatic:
                     options=_message_routes(c,str(p.get('text','')).strip())
                     method=options[0]['service'] if options else 'auto'
                 if method=='reticulum' and not reticulum:raise ValueError('Reticulum is not connected or not approved for this contact')
@@ -731,8 +782,13 @@ def request(raw):
                 owner=(_state.get('meshcore') or {}).get('publicKey','') if method=='meshcore' else ''
                 _state['messages']=_state['messages'][-499:]
                 _state['messages'].append({'id':mid,'peer':peer,'owner':owner,'service':method,'text':text,'incoming':False,'status':'Finding path' if method=='reticulum' else 'Sending to MeshCore companion','timestamp':time.time()});_save()
-            if method=='reticulum':threading.Thread(target=_send,args=(mid,peer,text),daemon=True).start()
-            else:_meshcore.send(mid,peer,text)
+                alternate,alternate_key=('meshcore','meshcore') if method=='reticulum' else ('reticulum','lxmf')
+                alternate_peer=c['addresses'].get(alternate_key,'').lower()
+                on_failure=None
+                if automatic and alternate_peer and (alternate!='meshcore' or len(text.encode())<=160):
+                    def on_failure(status):
+                        return _retry_message(mid,c['id'],method,peer,alternate,alternate_peer,status)
+            _dispatch_message(mid,method,peer,text,on_failure)
         elif action not in ['status','contacts','peer','password','discover']:raise ValueError('Unsupported action')
         return json.dumps({'ok':True,**_snapshot()})
     except Exception as e:return json.dumps({'ok':False,'error':str(e)})

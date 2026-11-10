@@ -10,19 +10,20 @@ def choices(contact, messages, available, owner='', now=None, text=None):
         if service=='meshcore' and text is not None and len(text.encode('utf-8'))>160:continue
         successes=failures=0.;last_success=0.;last_failure=0.
         for row in messages:
-            if row.get('incoming') or row.get('peer','').lower()!=peer or row.get('service','reticulum')!=service:continue
-            if service=='meshcore' and row.get('owner','')!=owner:continue
+            if row.get('incoming'):continue
+            attempt=row if row.get('service','reticulum')==service else row.get('fallbackFrom',{})
+            if attempt.get('peer','').lower()!=peer:continue
+            if service=='meshcore' and attempt.get('owner','')!=owner:continue
             age=max(0,now-row.get('timestamp',0))
             if age>7*86400:continue
             weight=math.exp(-age/86400)
-            status=row.get('status','')
+            status=attempt.get('status','')
             if status.startswith('Delivered'):
                 successes+=weight;last_success=max(last_success,row.get('timestamp',0))
             elif status.startswith(('Failed','Not confirmed')):
                 failures+=weight;last_failure=max(last_failure,row.get('timestamp',0))
         score=(2+successes)/(3+successes+failures)
-        # A fresh failure matters more than old successes. Never retry an already
-        # submitted message on another service: late receipts would duplicate it.
+        # A fresh failure matters more than old successes.
         if last_failure>last_success and now-last_failure<300:score-=.35
         reason='Available · no recent delivery evidence'
         if successes or failures:reason='Recent delivery confirmations' if last_success>=last_failure else 'Recent delivery failure'
