@@ -39,6 +39,14 @@ private struct FamilyWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configuration.userContentController.add(context.coordinator, name: "previewTheme")
+        let savedTheme = UserDefaults.standard.string(forKey: "previewTheme")
+        let theme = savedTheme == "night" ? "night" : savedTheme == "day" ? "day" : ""
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: "try { localStorage.setItem('next-family-theme', '\(theme)'); } catch {}",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
         configuration.setURLSchemeHandler(context.coordinator, forURLScheme: FamilyAssets.scheme)
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.defaultWebpagePreferences.preferredContentMode = .mobile
@@ -68,16 +76,28 @@ private struct FamilyWebView: UIViewRepresentable {
                 const style = document.createElement("style");
                 style.textContent = \(literal);
                 document.head.appendChild(style);
+                document.getElementById("theme-toggle").addEventListener("click", () => {
+                    window.webkit.messageHandlers.previewTheme.postMessage(document.documentElement.dataset.theme);
+                });
             }
             """
         return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler, WKScriptMessageHandler {
         private let assets: FamilyAssets
 
         init(assets: URL) {
             self.assets = FamilyAssets(directory: assets)
+        }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "previewTheme", message.frameInfo.isMainFrame,
+                  message.frameInfo.request.url == FamilyAssets.entryPoint,
+                  let theme = message.body as? String, ["day", "night"].contains(theme) else {
+                return
+            }
+            UserDefaults.standard.set(theme, forKey: "previewTheme")
         }
 
         func webView(
