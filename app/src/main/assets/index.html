@@ -49,11 +49,17 @@ body{background:#fbfcf7}header,.intro{display:none}.layout{display:block;max-wid
 .dial-action{width:100%;min-height:64px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:19px;font-weight:750;overflow-wrap:anywhere}
 .dial-action span:first-child{font-size:23px;flex:none}
 .dial-action:focus-visible{outline:3px solid currentColor;outline-offset:-6px}
+.qr-panel h3{margin:8px 0}
+.qr-panel .qr-feedback{margin:8px 0;min-height:0;font-size:14px}
+.qr-panel .qr-feedback.error{margin:8px 0}
+.qr-panel .row{margin:8px 0}
+.qr-panel video{display:block;width:100%;height:min(42dvh,360px);object-fit:contain;background:#121b19;border-radius:12px}
+.password-visibility{margin-top:8px}
 </style></head><body>
 <header><div class="brand"><span class="mark">nX</span>neXt<span>Family</span></div><span class="pill">Interactive concept · no live traffic</span></header>
 <main class="layout"><section class="intro"><div class="eyebrow">A little closer. Wherever you are.</div><h1>Your people.<br>One simple place.</h1><p class="tagline">Tap a familiar face. Call or send a message.<br>Let neXt take care of the connection.</p><div class="principles"><div class="principle"><span class="number">01</span><div><b>A familiar circle</b><p>Only contacts approved by a trusted adult appear here. Only approved people and rooms on the home screen.</p></div></div><div class="principle"><span class="number">02</span><div><b>Connection without the guesswork</b><p>Choose automatically for each call or message. See the method, or change it yourself.</p></div></div><div class="principle"><span class="number">03</span><div><b>Simple for everyone</b><p>Clear names, generous buttons, and the same two choices for every person.</p></div></div></div><div class="demo"><label for="scenario">Try a connection scenario</label><select id="scenario"><option value="home">At home · all services reachable</option><option value="outside">Outside · Reticulum and radio</option><option value="reticulum">Reticulum only · no MeshCore</option><option value="radio">Off grid · MeshCore text only</option><option value="offline">No reachable services</option></select><p class="fine">Scenarios simulate contact reachability. Changes reset when this page reloads.</p></div></section>
 <section class="phone" aria-label="neXt Family"><div class="status"><span>9:41</span><span>▂▄▆ &nbsp; ▰</span></div><div class="appearance"><div id="radio-batteries" class="radio-batteries" aria-label="Connected radio batteries" hidden></div><button id="theme-toggle" type="button" aria-pressed="false">☾ Night mode</button></div><div class="screen" id="screen"></div><div class="foot"><span>♡ &nbsp; Your approved circle</span><button id="guardian">Guardian settings</button></div></section></main>
-<dialog id="gate"><form id="unlock"><h2>For trusted adults</h2><p>Enter the guardian password to manage contacts and device connections.</p><label for="password">Password</label><input id="password" type="password" autocomplete="off" required><div class="error" id="gate-error" role="status"></div><div class="row"><button class="secondary" type="button" id="cancel">Cancel</button><button class="primary">Unlock</button></div><p class="fine">Contact, room and connection changes require the guardian password in the native backend.</p></form></dialog>
+<dialog id="gate"><form id="unlock"><h2>For trusted adults</h2><p>Enter the guardian password to manage contacts and device connections.</p><label for="password">Password</label><input id="password" type="password" autocomplete="off" required><button type="button" id="toggle-guardian-password" class="secondary password-visibility" aria-controls="password">Show password</button><div class="error" id="gate-error" role="status"></div><div class="row"><button class="secondary" type="button" id="cancel">Cancel</button><button class="primary">Unlock</button></div><p class="fine">Contact, room and connection changes require the guardian password in the native backend.</p></form></dialog>
 <script src="jsQR.js"></script>
 <script src="family-map.js"></script>
 <script>
@@ -142,7 +148,13 @@ function lookupAddress(text){return text.trim().match(/^(?:lxmf(?::\/\/|@|:))?([
 function saveDiscovery(values){if(liveNative){const r=nativeRequest('preferences',{token:liveToken,values});if(!r.ok){alert(r.error);return false;}liveState=r;}return true;}
 function decodeQRImage(source){const canvas=document.createElement('canvas');const width=source.videoWidth||source.width,height=source.videoHeight||source.height;if(!width||!height)return null;const scale=Math.min(1,1600/Math.max(width,height));canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(source,0,0,canvas.width,canvas.height);const pixels=context.getImageData(0,0,canvas.width,canvas.height);return jsQR(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'})?.data||null;}
 function stopScan(){scanGeneration++;if(scanTimer)clearTimeout(scanTimer);scanTimer=null;if(scanStream)scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
-function reviewImport(data){if(!admin)return;const name=typeof data.name==='string'?data.name.slice(0,32):'';const addresses={};for(const k of ['lxmf','lxst','meshcore','sip'])addresses[k]=typeof data.addresses?.[k]==='string'?data.addresses[k].trim():'';if(!Object.values(addresses).some(Boolean))throw Error('No supported contact addresses found.');contactDraft={name,addresses,identityPublicKey:data.identityPublicKey};editing=null;view='contact-edit';render();}
+function reviewImport(data,fromQr=false){if(!admin)return;const name=typeof data.name==='string'?data.name.slice(0,32):'';const addresses={};for(const k of ['lxmf','lxst','meshcore','sip'])addresses[k]=typeof data.addresses?.[k]==='string'?data.addresses[k].trim():'';if(!Object.values(addresses).some(Boolean))throw Error('No supported contact addresses found.');contactDraft={name,addresses,identityPublicKey:data.identityPublicKey,fromQr};editing=null;view='contact-edit';render();
+    if(fromQr){
+        const result=$('qr-contact-result');
+        result.focus({preventScroll:true});
+        result.scrollIntoView({block:'nearest'});
+    }
+}
 function parseQR(raw){if(liveNative){const result=nativeRequest('qr_parse',{token:liveToken,text:raw,target:'contact'});if(!result.ok)throw Error(result.error);return result.card;}const text=raw.trim();if(!text||text.length>8192)throw Error('Use a contact code of up to 8 KB.');if(text.startsWith('{')){const data=JSON.parse(text);if(data.format!=='next-family-contact'||data.version!==1)throw Error('Unsupported contact-card format.');return {name:data.name,addresses:data.addresses};}if(/^sips?:/i.test(text))return {addresses:{sip:text}};if(/^lxmf:\/\/[a-f0-9]{32}$/i.test(text))return {addresses:{lxmf:text.slice(7)}};if(/^meshcore:\/\/[a-f0-9]{64}$/i.test(text))return {addresses:{meshcore:text.slice(11)}};throw Error('Unsupported code. Use the example family contact card, an LXMF address link, a MeshCore full-key link, or a SIP URI.');}
 
 const serviceEnabled={reticulum:true,meshcore:true,sip:true};
@@ -535,7 +547,7 @@ let contactPhoto='';
 if(!admin){view='home';render();return;}
 screen.classList.add('settings');
 const field=(id,label,value='',extra='')=>`<label for="${id}">${label}</label><input id="${id}" value="${escape(value)}" ${extra}>`;
-const shell=`<button class="back" id="done">← Lock and return</button><h2 class="view-title">Guardian settings</h2><div class="tabs"><button class="secondary" id="contacts-tab">Contacts</button><button class="secondary" id="rooms-tab">Rooms</button><button class="secondary" id="interfaces-tab">Connections</button><button class="secondary" id="maps-tab">Maps</button><button class="secondary" id="security-tab">Security</button></div>`;
+const shell=view==='qr-import'?`<button class="back" id="done">← ${qrTarget==='room'?'Rooms':'Contacts'}</button>`:`<button class="back" id="done">← Lock and return</button><h2 class="view-title">Guardian settings</h2><div class="tabs"><button class="secondary" id="contacts-tab">Contacts</button><button class="secondary" id="rooms-tab">Rooms</button><button class="secondary" id="interfaces-tab">Connections</button><button class="secondary" id="maps-tab">Maps</button><button class="secondary" id="security-tab">Security</button></div>`;
 if(liveNative&&['interfaces','interface-edit'].includes(view)){renderLiveConnections(shell);return;}
 let content='',lookupClient=null;
 if(view==='security')content='<h3>Guardian password</h3><p class="sub">Protect contact approval and connection settings with your own password.</p><form id="password-form"><label for="new-password">New password</label><input id="new-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required><label for="confirm-password">Confirm password</label><input id="confirm-password" type="password" autocomplete="new-password" required><p class="error" id="password-status" role="status"></p><button class="primary">Change password</button></form>';
@@ -545,7 +557,8 @@ if(['rooms','room-edit','room-discover','room-names'].includes(view))content=(se
 if(view==='admin')content=`${liveNative?'<button class="secondary" id="send-family-apk">Send APK</button><p class="fine" id="send-apk-status" role="status"></p>':''}<h3>Approved contacts</h3><p class="sub">One person, separate approved service addresses.</p>${contacts.map(c=>`<div class="admin-person"><div><b>${escape(c.name)}</b><small>${[c.addresses.lxmf?'Reticulum text':'',c.addresses.lxst?'Reticulum voice':'',c.addresses.meshcore?'MeshCore':'',c.addresses.sip?'SIP':''].filter(Boolean).join(' · ')}</small></div><button data-edit="${c.id}">Edit</button></div>`).join('')}<button class="primary" id="new-contact" style="margin-top:18px">Add approved contact</button><p class="fine">Verify each person and service address before approving access.</p>`;
 if(view==='contact-edit'){
 const c=contacts.find(c=>c.id===editing)||contactDraft||{name:'',addresses:{}};contactPhoto=c.photo||'';
-content=`<h3>${editing?'Edit':'Add'} contact</h3>${contactDraft&&!editing?'<p class="notice">Imported details are unverified. Check the person and every address before saving approval.</p>':''}<form id="contact-form">${field('name','Display name',c.name,'required maxlength="32"')}<div class="photo-editor"><div class="avatar" id="photo-preview">${contactAvatar(c)}</div><div><label for="contact-photo">Profile picture</label><input id="contact-photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><button type="button" class="secondary" id="remove-photo" ${contactPhoto?'':'hidden'}>Remove photo</button></div></div><p class="fine">Choose a photo up to 5 MB. Center-cropped to a square and saved privately on this device.</p><p class="error" id="photo-error" role="status"></p><fieldset ${serviceEnabled.reticulum?'':'hidden'}><legend>Reticulum</legend>${field('lxmf','LXMF destination · text',c.addresses.lxmf,'placeholder="32 hexadecimal characters"')}${field('lxst','LXST address · voice',c.addresses.lxst,'placeholder="32 hexadecimal characters"')}${liveNative&&editing&&c.addresses.lxmf?'<button type="button" class="secondary" id="derive-voice-address">Use this contact’s verified Reticulum identity for voice</button><p class="fine" id="derive-voice-status" role="status"></p>':''}<small>Text and voice have separate addresses. Leave unused services blank.</small></fieldset><fieldset ${serviceEnabled.meshcore?'':'hidden'}><legend>MeshCore</legend>${field('meshcore','Full contact public key',c.addresses.meshcore,'placeholder="64 hexadecimal characters"')}<small>Direct messages only. A short node name or key prefix is not a full contact identity.</small></fieldset><fieldset ${serviceEnabled.sip?'':'hidden'}><legend>SIP</legend>${field('sip','Contact SIP URI',c.addresses.sip,'placeholder="sip:extension@provider.example"')}<small>Include :port after the host if needed, such as sip:101@provider.example:5060. This is the other person’s address. Your device’s account belongs under Connections.</small></fieldset><div class="error" id="form-error" role="status"></div><button class="primary">Save approved contact</button></form>${editing?'<button class="secondary" id="remove-contact" style="margin-top:14px">Remove contact</button>':''}`;
+const fromQr=!!(contactDraft?.fromQr&&!editing);
+content=`<h3${fromQr?' id="qr-contact-result" tabindex="-1"':''}>${fromQr?'QR code read · Review contact':editing?'Edit contact':'Add contact'}</h3>${contactDraft&&!editing?'<p class="notice">Check the person and every address before saving approval.</p>':''}<form id="contact-form">${field('name','Display name',c.name,'required maxlength="32"')}<div class="photo-editor"><div class="avatar" id="photo-preview">${contactAvatar(c)}</div><div><label for="contact-photo">Profile picture</label><input id="contact-photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><button type="button" class="secondary" id="remove-photo" ${contactPhoto?'':'hidden'}>Remove photo</button></div></div><p class="fine">Choose a photo up to 5 MB. Center-cropped to a square and saved privately on this device.</p><p class="error" id="photo-error" role="status"></p><fieldset ${serviceEnabled.reticulum?'':'hidden'}><legend>Reticulum</legend>${field('lxmf','LXMF destination · text',c.addresses.lxmf,'placeholder="32 hexadecimal characters"')}${field('lxst','LXST address · voice',c.addresses.lxst,'placeholder="32 hexadecimal characters"')}${liveNative&&editing&&c.addresses.lxmf?'<button type="button" class="secondary" id="derive-voice-address">Use this contact’s verified Reticulum identity for voice</button><p class="fine" id="derive-voice-status" role="status"></p>':''}<small>Text and voice have separate addresses. Leave unused services blank.</small></fieldset><fieldset ${serviceEnabled.meshcore?'':'hidden'}><legend>MeshCore</legend>${field('meshcore','Full contact public key',c.addresses.meshcore,'placeholder="64 hexadecimal characters"')}<small>Direct messages only. A short node name or key prefix is not a full contact identity.</small></fieldset><fieldset ${serviceEnabled.sip?'':'hidden'}><legend>SIP</legend>${field('sip','Contact SIP URI',c.addresses.sip,'placeholder="sip:extension@provider.example"')}<small>Include :port after the host if needed, such as sip:101@provider.example:5060. This is the other person’s address. Your device’s account belongs under Connections.</small></fieldset><div class="error" id="form-error" role="status"></div><button class="primary">Save approved contact</button></form>${editing?'<button class="secondary" id="remove-contact" style="margin-top:14px">Remove contact</button>':''}`;
 }
 if(view==='admin'){
 const visibleAnnounces=announcements.filter(a=>serviceEnabled[a.service==='meshcore'?'meshcore':'reticulum']);
@@ -575,16 +588,33 @@ ${announceEnabled?`<h3 style="margin-top:22px">Announce stream</h3><button class
 <p class="fine" id="announce-refresh-status" role="status"></p><p class="fine">Received messaging-client announces · review before approval</p>
 ${visibleAnnounces.length?'':`<p class="fine" id="announce-empty">${escape(empty)}</p>`}${announcementRows}`:''}`;
 }
-if(view==='qr-import'){const target=qrTarget==='room'?'room':'contact';content=`<h3>Add ${target} by QR code</h3><p class="sub">Scan or import a code, then review its details before approval.</p><video id="qr-video" muted playsinline hidden style="width:100%;border-radius:12px"></video><div class="row"><button class="secondary" id="scan-qr">Scan with camera</button><button class="secondary" id="stop-qr" hidden>Stop camera</button></div><label for="qr-image">Or choose a QR image</label><input id="qr-image" type="file" accept="image/*"><p class="fine">QR codes are decoded on this device. Camera images are never uploaded. You can also paste a code below.</p><label for="qr-payload">${target==='room'?'Room':'Contact'} code</label><textarea id="qr-payload" rows="6" maxlength="8192" style="width:100%;border:1px solid #ccd7c5;border-radius:12px;padding:12px;font:inherit"></textarea><button class="secondary" id="qr-example">Use example ${target} code</button><div id="qr-status" class="error" role="status"></div><button class="primary" id="review-qr">Review ${target}</button><p class="fine">Accepts neXt identity QR codes, LXMF addresses, and family contact or room cards. Imported details always require your review.</p>`;}
+if(view==='qr-import'){
+const target=qrTarget==='room'?'room':'contact';
+content=`<section class="qr-panel" aria-labelledby="qr-heading">
+    <h3 id="qr-heading">Add ${target} by QR code</h3>
+    <p id="qr-status" class="qr-feedback" role="status" aria-live="polite">Keep the full code in view. Hold steady and move back a little if it looks blurry.</p>
+    <div class="row"><button type="button" class="secondary" id="scan-qr">Scan with camera</button><button type="button" class="secondary" id="stop-qr" hidden>Stop camera</button></div>
+    <video id="qr-video" muted playsinline hidden aria-describedby="qr-status"></video>
+</section>
+<section id="qr-alternatives">
+    <label for="qr-image">Or choose a QR image</label><input id="qr-image" type="file" accept="image/*">
+    <p class="fine">QR codes are decoded on this device. Camera images are never uploaded. You can also paste a code below.</p>
+    <label for="qr-payload">${target==='room'?'Room':'Contact'} code</label>
+    <textarea id="qr-payload" rows="6" maxlength="8192" style="width:100%;border:1px solid #ccd7c5;border-radius:12px;padding:12px;font:inherit"></textarea>
+    <button class="secondary" id="qr-example">Use example ${target} code</button>
+    <button class="primary" id="review-qr">Review ${target}</button>
+    <p class="fine">Accepts neXt identity QR codes, LXMF addresses, and Family contact or room cards.</p>
+</section>`;
+}
 if(view==='interfaces')content=`<fieldset><legend>Services your family uses</legend>${Object.entries(labels).map(([key,label])=>`<label><input type="checkbox" data-service="${key}" ${serviceEnabled[key]?'checked':''} ${liveNative&&key!=='reticulum'?'disabled':''}> ${label}</label>`).join('')}<small>Choose any combination. Disabled services are excluded from automatic and manual selection. Existing setup is retained.</small></fieldset><h3>Device connections</h3><p class="sub">Configure this device’s radios and accounts.</p>${interfaces.filter(i=>serviceEnabled[interfaceService(i.type)]).map(i=>`<div class="admin-person"><div><b>${escape(i.name)}</b><small>${escape({tcp:'Reticulum TCP',rnode:'RNode',lan:'Reticulum local network',meshcore:'MeshCore radio',sip:'SIP account'}[i.type])} · ${i.enabled?'Enabled in simulation':'Disabled'}</small></div><button data-interface="${i.id}">Edit</button></div>`).join('')}<button class="primary" id="new-interface" ${Object.values(serviceEnabled).some(Boolean)?'':'disabled'} style="margin-top:18px">Add connection</button><p class="notice">Demo setup only. No radio discovery, pairing, network connection or SIP registration takes place. Use example details, not real credentials.</p>`;
 if(view==='interface-edit'){
 const i=interfaces.find(i=>i.id===editingInterface)||{type:serviceEnabled.meshcore?'meshcore':serviceEnabled.reticulum?'tcp':'sip',name:'',enabled:true};
 content=`<h3>${editingInterface?'Edit':'Add'} connection</h3><form id="interface-form"><label for="type">Connection type</label><select id="type">${[['meshcore','MeshCore radio'],['rnode','RNode · Reticulum radio'],['tcp','Reticulum TCP peer'],['lan','Reticulum local network'],['sip','SIP account']].filter(([type])=>serviceEnabled[interfaceService(type)]&&(!liveNative||type==='tcp')).map(([v,t])=>`<option value="${v}" ${i.type===v?'selected':''}>${t}</option>`).join('')}</select>${field('connection-name','Connection name',i.name,'required maxlength="64"')}<div id="connection-fields"></div><label><input id="enabled" type="checkbox" ${i.enabled?'checked':''}> Enable for automatic selection</label><div class="error" id="form-error" role="status"></div><button class="primary">Save connection</button></form>${editingInterface?'<button class="secondary" id="remove-interface" style="margin-top:14px">Remove connection</button>':''}<p class="notice">Configuration preview only. Radio settings must match your hardware and local radio rules. Real credentials will need secure device storage.</p>`;
 }
 screen.innerHTML=shell+content;
-$('done').onclick=()=>{admin=false;lockLive();screen.classList.remove('settings');view='home';render();};
+$('done').onclick=()=>{if(view==='qr-import'){view=qrTarget==='room'?'rooms':'admin';render();return;}admin=false;lockLive();screen.classList.remove('settings');view='home';render();};
 screen.querySelectorAll('[data-service]').forEach(input=>input.onchange=()=>{serviceEnabled[input.dataset.service]=input.checked;if(liveNative&&input.dataset.service==='reticulum')persistLivePeer({...interfaces[0],type:'tcp',enabled:input.checked});clearUnavailableRoomSessions();render();});
-$('security-tab').onclick=()=>{view='security';render();};if($('password-form'))$('password-form').onsubmit=e=>{e.preventDefault();if($('new-password').value!==$('confirm-password').value){$('password-status').textContent='Passwords do not match.';return;}const r=nativeRequest('password',{token:liveToken,password:$('new-password').value});$('password-status').textContent=r.ok?'Password changed.':r.error;if(r.ok){$('new-password').value='';$('confirm-password').value='';}};
+if($('password-form'))$('password-form').onsubmit=e=>{e.preventDefault();if($('new-password').value!==$('confirm-password').value){$('password-status').textContent='Passwords do not match.';return;}const r=nativeRequest('password',{token:liveToken,password:$('new-password').value});$('password-status').textContent=r.ok?'Password changed.':r.error;if(r.ok){$('new-password').value='';$('confirm-password').value='';}};
 if($('device-name-form'))$('device-name-form').onsubmit=e=>{
     e.preventDefault();
     const input=$('device-name');
@@ -592,8 +622,10 @@ if($('device-name-form'))$('device-name-form').onsubmit=e=>{
     if(result.ok){liveState.deviceName=result.deviceName;input.value=result.deviceName;}
     $('device-name-status').textContent=result.ok?'Device name saved.':result.error;
 };
-bindFamilyUpdateSettings();bindMapSettings();$('maps-tab').onclick=()=>{view='map-settings';render();};bindRoomSettings();$('rooms-tab').onclick=()=>{view='rooms';render();};
-$('contacts-tab').onclick=()=>{view='admin';render();};$('interfaces-tab').onclick=()=>{view='interfaces';render();};
+bindFamilyUpdateSettings();bindMapSettings();bindRoomSettings();
+for(const [id,next] of [['contacts-tab','admin'],['rooms-tab','rooms'],['interfaces-tab','interfaces'],['maps-tab','map-settings'],['security-tab','security']]){
+    if($(id))$(id).onclick=()=>{view=next;render();};
+}
 if($('send-family-apk'))$('send-family-apk').onclick=()=>{
     const result=nativeRequest('apk_share',{token:liveToken});
     $('send-apk-status').textContent=result.ok?'':result.error;
@@ -647,14 +679,30 @@ if($('contact-search')){
 screen.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>{const a=announcements.find(a=>a.address===b.dataset.review);if(a)reviewImport({name:a.name,addresses:{[a.service]:a.address}});});
 if($('qr-import'))$('qr-import').onclick=()=>{qrTarget='contact';view='qr-import';render();};
 if($('review-qr')){
-const showError=e=>{if(admin&&view==='qr-import'&&$('qr-status'))$('qr-status').textContent=e.message||'Could not read that code.';};
-const decode=raw=>{try{if(qrTarget==='room')reviewRoomImport(parseRoomQR(raw));else reviewImport(parseQR(raw));}catch(e){showError(e);}};
+const feedback=(message,error=false)=>{
+    if(!admin||view!=='qr-import')return;
+    const status=$('qr-status');
+    status.textContent=message;
+    status.classList.toggle('error',error);
+    status.scrollIntoView({block:'nearest'});
+};
+const scanning=active=>{
+    $('scan-qr').hidden=active;
+    $('stop-qr').hidden=!active;
+    $('qr-alternatives').hidden=active;
+    if(!active){$('qr-video').hidden=true;$('qr-video').srcObject=null;}
+};
+const stopCamera=()=>{stopScan();scanning(false);};
+const showError=error=>feedback(error.message||'Could not read that code.',true);
+const decode=raw=>{try{if(qrTarget==='room')reviewRoomImport(parseRoomQR(raw));else reviewImport(parseQR(raw),true);}catch(error){showError(error);}};
 $('review-qr').onclick=()=>decode($('qr-payload').value);
 $('qr-example').onclick=()=>{$('qr-payload').value=JSON.stringify(qrTarget==='room'?(serviceEnabled.meshcore?{format:'next-family-room',version:1,service:'meshcore',name:'Cabin room',publicKey:'f2'.repeat(32)}:{format:'next-family-room',version:1,service:'reticulum',name:'Reticulum cabin room',hubHash:'e3'.repeat(16),room:'family'}):{format:'next-family-contact',version:1,name:'Aunt Maya',addresses:{lxmf:'d4'.repeat(16),lxst:'e5'.repeat(16),meshcore:'f6'.repeat(32),sip:'sip:204@example.invalid:5060'}},null,2);};
-$('stop-qr').onclick=()=>{stopScan();$('qr-video').hidden=true;$('stop-qr').hidden=true;$('qr-status').textContent='Camera stopped.';};
+$('stop-qr').onclick=()=>{stopCamera();feedback('Camera stopped. You can scan again or choose a QR image.');};
 $('scan-qr').onclick=async()=>{
     stopScan();
     const generation=scanGeneration;
+    scanning(true);
+    feedback('Starting camera…');
     try{
         if(liveNative&&!FamilyNative.authorizeCamera(liveToken))throw Error('Unlock guardian settings again.');
         const stream=await openQRCamera();
@@ -663,8 +711,7 @@ $('scan-qr').onclick=async()=>{
         const video=$('qr-video');
         video.hidden=false;
         video.srcObject=stream;
-        $('stop-qr').hidden=false;
-        $('qr-status').textContent='Hold steady and keep the full code in view. Move back a little if it looks blurry.';
+        feedback('Hold steady and keep the full code in view. Move back a little if it looks blurry.');
         await video.play();
         if(generation!==scanGeneration)return;
         void focusQRCamera(stream.getVideoTracks()[0]);
@@ -673,20 +720,17 @@ $('scan-qr').onclick=async()=>{
             try{
                 const raw=decodeQRImage(video);
                 if(raw){
-                    stopScan();
-                    video.hidden=true;
-                    $('stop-qr').hidden=true;
+                    stopCamera();
                     $('qr-payload').value=raw;
                     decode(raw);
                     return;
                 }
                 scanTimer=setTimeout(scan,350);
-            }catch(error){stopScan();showError(error);}
+            }catch(error){stopCamera();showError(error);}
         };
         scan();
-    }catch(error){if(generation===scanGeneration){stopScan();showError(error);}}
+    }catch(error){if(generation===scanGeneration){stopCamera();showError(error);}}
 };
-$('qr-image').onclick=()=>{stopScan();$('qr-video').hidden=true;$('stop-qr').hidden=true;};
 $('qr-image').onchange=async e=>{const file=e.target.files[0],generation=scanGeneration;if(!file)return;try{if(file.size>10*1024*1024)throw Error('Choose an image smaller than 10 MB.');const bitmap=await createImageBitmap(file);let codes;try{const raw=decodeQRImage(bitmap);codes=raw?[{rawValue:raw}]:[];}finally{bitmap.close();}if(generation!==scanGeneration||!admin||view!=='qr-import')return;if(!codes.length)throw Error('No QR code found in this image.');$('qr-payload').value=codes[0].rawValue;decode(codes[0].rawValue);}catch(e){showError(e);}};
 }
 if($('new-contact'))$('new-contact').onclick=()=>{editing=null;contactDraft=null;view='contact-edit';render();};
@@ -714,7 +758,13 @@ if($('remove-interface'))$('remove-interface').onclick=()=>{interfaces.splice(in
 }
 }
 
-function openGate(){if(liveNative&&liveState?.setupComplete===false){render();return;}if(admin){view='admin';render();return;}$('gate-error').textContent='';$('password').value='';$('gate').showModal();$('password').focus();}
+function showGuardianPassword(visible){
+    $('password').type=visible?'text':'password';
+    $('toggle-guardian-password').textContent=visible?'Hide password':'Show password';
+}
+$('toggle-guardian-password').onclick=()=>showGuardianPassword($('password').type==='password');
+$('gate').addEventListener('close',()=>{showGuardianPassword(false);$('password').value='';});
+function openGate(){if(liveNative&&liveState?.setupComplete===false){render();return;}if(admin){view='admin';render();return;}$('gate-error').textContent='';$('password').value='';showGuardianPassword(false);$('gate').showModal();$('password').focus();}
 $('guardian').onclick=openGate;$('cancel').onclick=()=>$('gate').close();$('unlock').onsubmit=e=>{e.preventDefault();if(unlockLive($('password').value)){admin=true;view='admin';$('password').value='';$('gate').close();render();}else $('gate-error').textContent='That password doesn’t match. Try again.';};
 const demo=document.createElement('details');demo.className='native-demo';demo.innerHTML='<summary>Preview connection scenario</summary>';demo.appendChild($('scenario'));document.querySelector('.phone').appendChild(demo);$('scenario').onchange=e=>{scenario=e.target.value;clearUnavailableRoomSessions();render();};window.addEventListener('family-native-background',()=>{if(liveNative)nativeRequest('room_close');if(admin){admin=false;lockLive();view='home';render();}});window.addEventListener('family-native-resume',()=>{if(liveNative&&view==='room'&&selectedRoom)nativeRequest('room_open',{roomId:selectedRoom});});window.addEventListener('pagehide',stopScan);window.addEventListener('pagehide',()=>{if(liveNative)nativeRequest('room_close');});document.addEventListener('visibilitychange',()=>{if(liveNative){if(document.hidden)nativeRequest('room_close');else if(view==='room'&&selectedRoom)nativeRequest('room_open',{roomId:selectedRoom});}const ownedDialog=liveNative&&(FamilyNative.guardianDialogOpen?.()||FamilyNative.mapPickerOpen?.());if(document.hidden&&!ownedDialog)stopScan();if(document.hidden&&admin&&!ownedDialog){admin=false;lockLive();view='home';render();}});if(liveNative){refreshLive(true);if(FamilyNative.notificationCall())window.familyOpenCall();if(FamilyNative.notificationReticulumCall())window.familyOpenReticulumCall();const roomTarget=FamilyNative.notificationRoom();if(roomTarget)window.familyOpenRoom(roomTarget);const target=FamilyNative.notificationContact();if(target)window.familyOpenContact(target);setInterval(()=>refreshLive(),2000);}else render();
 })();
