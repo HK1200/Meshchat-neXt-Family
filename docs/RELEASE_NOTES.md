@@ -1,3 +1,12 @@
+# neXt Family v0.6.18
+
+- Restore the Reticulum microphone speech filters and automatic level control that the Android capture bridge previously bypassed.
+- Correct LXST 0.5.4 amplitude gain targets and limits to use amplitude dB conversion.
+- Route Android volume buttons to call volume during calls.
+- Ignore delayed hang-up actions for ended calls while protecting a newer call.
+
+The speech-level changes pass quiet and loud signal regression checks. A live listening test on the two OnePlus 13 phones remains necessary.
+
 # neXt Family v0.6.17
 
 - Messaging, Reticulum calling, and SIP share one Android connection status card while idle. Incoming call controls and active location sharing keep their own notices.
