@@ -249,6 +249,10 @@ final class FamilyModel: ObservableObject {
         _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": true])
     }
 
+    func saveDeviceName(_ name: String) async -> Bool {
+        await perform("device_name", ["token": token, "name": name])
+    }
+
     func addContact(name: String, address: String) async -> Bool {
         let current = state?.contacts ?? []
         let existing = current.map { contact in
@@ -286,6 +290,10 @@ struct FamilyHome: View {
     @State private var password = ""
     @State private var confirmation = ""
     @State private var showGuardian = false
+    @AppStorage("next-family-appearance") private var appearance = ""
+    @Environment(\.colorScheme) private var systemAppearance
+
+    private var night: Bool { appearance.isEmpty ? systemAppearance == .dark : appearance == "night" }
 
     var body: some View {
         NavigationStack {
@@ -336,7 +344,16 @@ struct FamilyHome: View {
                 }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
-            .navigationTitle("neXt Family TCP")
+            .navigationTitle(family.state?.deviceName ?? "neXt Family")
+            .preferredColorScheme(appearance.isEmpty ? nil : appearance == "night" ? .dark : .light)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(night ? "Day mode" : "Night mode", systemImage: night ? "sun.max" : "moon") {
+                        appearance = night ? "day" : "night"
+                    }
+                    .accessibilityIdentifier("appearance-toggle")
+                }
+            }
             .sheet(isPresented: $showGuardian, onDismiss: { Task { await family.lock() } }) {
                 FamilyGuardian(family: family)
             }
@@ -355,11 +372,35 @@ struct FamilyGuardian: View {
     @State private var contactSaved = false
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
+    @State private var deviceName = ""
+    @State private var deviceNameSaved = false
+    @State private var showPassword = false
 
     var body: some View {
         NavigationStack {
             Form {
                 if family.unlocked {
+                    Section("Device name") {
+                        TextField("Device name", text: $deviceName)
+                            .accessibilityIdentifier("device-name")
+                        Button("Save device name") {
+                            Task { deviceNameSaved = await family.saveDeviceName(deviceName) }
+                        }
+                        if deviceNameSaved { Text("Device name saved") }
+                    }
+                    .onAppear {
+                        deviceName = family.state?.deviceName ?? "neXt Family"
+                        if let peer = family.state?.peer {
+                            host = peer.host
+                            port = String(peer.port)
+                        }
+                        #if DEBUG
+                        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
+                            host = ProcessInfo.processInfo.environment["FAMILY_TEST_HOST"] ?? host
+                            port = ProcessInfo.processInfo.environment["FAMILY_TEST_PORT"] ?? port
+                        }
+                        #endif
+                    }
                     Section("Reticulum TCP peer") {
                         TextField("Host", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
@@ -387,9 +428,24 @@ struct FamilyGuardian: View {
                     }
                     .onAppear { mailboxAddress = family.state?.mailbox?.address ?? "" }
                 } else {
-                    SecureField("Guardian password", text: $password)
-                        .accessibilityIdentifier("unlock-password")
-                    Button("Unlock") { Task { await family.unlock(password); password = "" } }
+                    Group {
+                        if showPassword {
+                            TextField("Guardian password", text: $password)
+                        } else {
+                            SecureField("Guardian password", text: $password)
+                        }
+                    }
+                    .accessibilityIdentifier("unlock-password")
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    Button(showPassword ? "Hide password" : "Show password") { showPassword.toggle() }
+                    Button("Unlock") {
+                        Task {
+                            await family.unlock(password)
+                            password = ""
+                            showPassword = false
+                        }
+                    }
                 }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }

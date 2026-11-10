@@ -1,6 +1,6 @@
 # neXt Family for iOS
 
-The iOS target runs the Family v0.6.15 interface in a native WebKit view for iPhone and iPad. On narrow windows contacts stay in a single column. Wider windows show two contact columns and give the map more room. It uses sample contacts, conversations, rooms, and map positions. The banner identifies preview mode on every screen. The app serves its interface and tiles from the bundle and blocks external navigation and network requests.
+The iOS target runs the shared Family interface in a native WebKit view for iPhone and iPad. On narrow windows contacts stay in a single column. Wider windows show two contact columns and give the map more room. It uses sample contacts, conversations, rooms, and map positions. The banner identifies preview mode on every screen. The app serves its interface and tiles from the bundle and blocks external navigation and network requests.
 
 ## Run the preview on a Mac
 
@@ -38,7 +38,7 @@ bash ios/test-live.sh iPhone
 bash ios/test-live.sh iPad
 ```
 
-The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families. The local live test also enables iOS message alerts, moves the app to the Home Screen and back during the conversation, checks for a delivered notification in Notification Center, then forces the TCP socket closed and verifies a second round trip after automatic reconnect.
+The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families. Both interfaces keep a manually selected day or night theme. The live target allows a guardian to change the advertised device name and verifies that the name, approved contact, and appearance survive an app relaunch. The local live test also enables iOS message alerts, moves the app to the Home Screen and back during the conversation, checks for a delivered notification in Notification Center, then forces the TCP socket closed and verifies a second round trip after automatic reconnect.
 
 To exercise the same messaging test through `rmap.world:4242`, append `rmap` to the command for each simulator. In GitHub Actions, add the `ios-rmap-test` label to the pull request or enable the `rmap` workflow input once the workflow is available on the default branch. Both endpoints use disposable LXMF identities and the peer echoes only the randomly generated test message. Test names and public LXMF addresses are announced to the Reticulum network.
 

@@ -14,6 +14,7 @@ final class FamilyLiveUITests: XCTestCase {
         let peer = try JSONDecoder().decode(Peer.self, from: Data(contentsOf: file))
         let app = XCUIApplication()
         app.launchArguments = ["--isolated-family-test"]
+        app.launchEnvironment["FAMILY_TEST_PROFILE"] = UUID().uuidString
         app.launchEnvironment["FAMILY_TEST_HOST"] = peer.host
         app.launchEnvironment["FAMILY_TEST_PORT"] = String(peer.port)
         let localTest = peer.host == "127.0.0.1"
@@ -22,6 +23,13 @@ final class FamilyLiveUITests: XCTestCase {
             app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
         }
         app.launch()
+
+        let appearance = app.buttons["appearance-toggle"]
+        XCTAssertTrue(appearance.waitForExistence(timeout: 20))
+        let previousAppearance = appearance.label
+        appearance.tap()
+        let changedAppearance = previousAppearance == "Day mode" ? "Night mode" : "Day mode"
+        XCTAssertTrue(app.buttons[changedAppearance].waitForExistence(timeout: 5))
 
         let password = "simulator guardian test"
         fill(app.secureTextFields["setup-password"], password)
@@ -36,6 +44,17 @@ final class FamilyLiveUITests: XCTestCase {
         let savePeer = app.buttons["Save peer"]
         XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
         savePeer.tap()
+        let deviceName = "Family simulator device"
+        let nameField = app.textFields["device-name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        nameField.tap()
+        // Clear the existing advertised name using the native text field's value.
+        if let value = nameField.value as? String {
+            nameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        nameField.typeText(deviceName)
+        app.buttons["Save device name"].tap()
+        XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
         fill(app.textFields["contact-name"], "Echo peer")
         fill(app.textFields["contact-address"], peer.address)
         let saveContact = app.buttons["Save approved contact"]
@@ -87,6 +106,13 @@ final class FamilyLiveUITests: XCTestCase {
             app.buttons["Send"].tap()
             XCTAssertTrue(app.staticTexts["Echo: " + reconnectMessage].waitForExistence(timeout: 90))
         }
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["Echo peer"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.navigationBars[deviceName].exists)
+        XCTAssertTrue(app.buttons[changedAppearance].exists)
+        app.buttons["Guardian settings"].tap()
+        XCTAssertTrue(app.secureTextFields["unlock-password"].waitForExistence(timeout: 10))
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

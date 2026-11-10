@@ -20,6 +20,12 @@ struct FamilyMailbox: Decodable, Sendable {
     let status: String
 }
 
+struct FamilyPeer: Decodable, Sendable {
+    let host: String
+    let port: Int
+    let enabled: Bool
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -28,6 +34,8 @@ struct FamilyReply: Decodable, Sendable {
     var tcpOnline: Bool?
     var tcpSession: String?
     var address: String?
+    var deviceName: String?
+    var peer: FamilyPeer?
     var mailbox: FamilyMailbox?
     var contacts: [FamilyContact]?
     var messages: [String: [FamilyMessage]]?
@@ -46,7 +54,11 @@ actor FamilyClient {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
                 folder = support.appendingPathComponent("SimulatorTests", isDirectory: true)
-                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                    .appendingPathComponent(
+                        UUID(uuidString: ProcessInfo.processInfo.environment["FAMILY_TEST_PROFILE"] ?? "")?.uuidString
+                            ?? UUID().uuidString,
+                        isDirectory: true
+                    )
             }
             #endif
             let home = resources.appendingPathComponent("python").path

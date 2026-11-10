@@ -35,6 +35,8 @@ print(max(candidates)[1])
 ' "$device_family")"
 
 xcodegen generate --spec "$specification"
+mkdir -p RuntimeBuild/results
+result="$PWD/RuntimeBuild/results/$scheme-$device_family-$(uuidgen).xcresult"
 xcodebuild test -project "$scheme.xcodeproj" -scheme "$scheme" \
     -destination "platform=iOS Simulator,id=$destination" \
-    -derivedDataPath DerivedData -parallel-testing-enabled NO "$signing"
+    -derivedDataPath DerivedData -resultBundlePath "$result" -parallel-testing-enabled NO "$signing"
