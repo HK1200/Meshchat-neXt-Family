@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     private static final int MAP_PICK_FILE = 15;
     private static final int MAP_LOCATION_PERMISSION = 17;
     private WebView web;
+    private String pendingVoiceAnswer;
     private PyObject runtime;
     private FamilyMapDownload mapDownload;
     private volatile String mapImportToken;
@@ -53,7 +54,7 @@ public class MainActivity extends Activity {
                 View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         if(web!=null)web.setBackgroundColor(color);
     }
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("openReticulumCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null);if(intent.getBooleanExtra("openCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenCall?.()",null);int room=intent.getIntExtra("roomId",0);if(web!=null&&room>0)web.evaluateJavascript("window.familyOpenRoom?.("+room+")",null);int contact=intent.getIntExtra("contactId",0);if(web!=null&&contact>0)web.evaluateJavascript("window.familyOpenContact?.("+contact+")",null);}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleReticulumAnswer(intent);if(intent.getBooleanExtra("openReticulumCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null);if(intent.getBooleanExtra("openCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenCall?.()",null);int room=intent.getIntExtra("roomId",0);if(web!=null&&room>0)web.evaluateJavascript("window.familyOpenRoom?.("+room+")",null);int contact=intent.getIntExtra("contactId",0);if(web!=null&&contact>0)web.evaluateJavascript("window.familyOpenContact?.("+contact+")",null);}
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FamilyRuntime.allowCalls(this);
@@ -127,9 +128,41 @@ public class MainActivity extends Activity {
         web.loadUrl("https://"+HOST+"/index.html");
         if(setupComplete&&startupState!=null&&startupState.optBoolean("messagingEnabled"))startForegroundService(new Intent(this, FamilyService.class));
         try{if(new org.json.JSONObject(backend.callAttr("voice_state").toString()).optBoolean("enabled"))startForegroundService(new Intent(this,FamilyVoiceService.class));}catch(Exception ignored){}
+        handleReticulumAnswer(getIntent());
         try{boolean active=new org.json.JSONObject(backend.callAttr("request","{\"action\":\"status\"}").toString()).getJSONObject("location").optBoolean("active");if(active)startForegroundService(new Intent(this,FamilyService.class).putExtra("locationSharing",true));}catch(Exception ignored){}
     }
     private boolean cameraAllowed(){try{return new org.json.JSONObject(runtime.callAttr("request",new org.json.JSONObject().put("action","authorize_camera").put("payload",new org.json.JSONObject().put("token",cameraToken)).toString()).toString()).optBoolean("ok");}catch(Exception e){return false;}}
+    private void handleReticulumAnswer(Intent intent) {
+        if (!"answerReticulumCall".equals(intent.getAction())) return;
+        pendingVoiceAnswer = intent.getStringExtra("callId");
+        intent.setAction(null);
+        answerPendingReticulumCall();
+    }
+    private void answerPendingReticulumCall() {
+        if (pendingVoiceAnswer == null) return;
+        try {
+            org.json.JSONObject call = new org.json.JSONObject(runtime.callAttr("voice_state").toString());
+            if (!pendingVoiceAnswer.equals(call.optString("call_id")) || !"incoming".equals(call.optString("call_state"))) {
+                pendingVoiceAnswer = null;
+                return;
+            }
+        } catch(Exception e) { pendingVoiceAnswer = null; return; }
+        setShowWhenLocked(true);
+        setTurnScreenOn(true);
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            ownedPermission = true;
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},16);
+            return;
+        }
+        String callId = pendingVoiceAnswer;
+        pendingVoiceAnswer = null;
+        statusWorker.execute(() -> {
+            try {
+                runtime.callAttr("request",new org.json.JSONObject().put("action","voice_answer").put("payload",new org.json.JSONObject().put("callId",callId)).toString());
+                runOnUiThread(() -> { if(web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null); });
+            } catch(Exception e) { android.util.Log.w("FamilyVoice", "Could not answer incoming call", e); }
+        });
+    }
     public static class NativeBridge {
         private final PyObject backend;
         private final MainActivity activity;
@@ -170,6 +203,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void requestBluetooth(){activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(android.os.Build.VERSION.SDK_INT>=31?new String[]{android.Manifest.permission.BLUETOOTH_SCAN,android.Manifest.permission.BLUETOOTH_CONNECT}:new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},12);});}
         @JavascriptInterface public boolean microphoneGranted(){return activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
         @JavascriptInterface public void requestMicrophone(){activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},16);});}
+        @JavascriptInterface public boolean setReticulumSpeaker(String callId,boolean enabled){return FamilyVoiceService.setSpeaker(callId,enabled);}
+        @JavascriptInterface public boolean reticulumSpeakerOn(){return FamilyVoiceService.isSpeakerOn();}
         @JavascriptInterface public boolean notificationReticulumCall(){return activity.getIntent().getBooleanExtra("openReticulumCall",false);}
         @JavascriptInterface public boolean notificationCall(){return activity.getIntent().getBooleanExtra("openCall",false);}
         @JavascriptInterface public int notificationRoom(){return activity.getIntent().getIntExtra("roomId",0);}
@@ -242,7 +277,7 @@ public class MainActivity extends Activity {
             if("setup".equals(action)&&new org.json.JSONObject(result).optBoolean("ok")){boolean messaging=new org.json.JSONObject(result).optBoolean("messagingEnabled");activity.runOnUiThread(()->{com.meshchatnext.sip.SipController.get(activity);if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));});}
             if(java.util.Arrays.asList("peer","rnode","meshcore_config").contains(action)&&new org.json.JSONObject(result).optBoolean("ok")){org.json.JSONObject snapshot=new org.json.JSONObject(result);boolean messaging=snapshot.optBoolean("messagingEnabled")||(snapshot.optJSONObject("location")!=null&&snapshot.getJSONObject("location").optBoolean("active"));activity.runOnUiThread(()->{if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));else activity.stopService(new Intent(activity,FamilyService.class));});}
             if("contacts".equals(action)&&new org.json.JSONObject(result).optBoolean("ok"))com.meshchatnext.sip.SipController.get(activity).send("{\"op\":\"reconcile_contacts\"}");
-            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
+            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject voice=state.optJSONObject("voice");if(voice==null||"idle".equals(voice.optString("call_state","idle")))activity.runOnUiThread(()->{activity.setShowWhenLocked(false);activity.setTurnScreenOn(false);});org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
             if(action.startsWith("location_")&&new org.json.JSONObject(result).optBoolean("ok")){boolean active=new org.json.JSONObject(result).getJSONObject("location").optBoolean("active");activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyService.class).putExtra("locationSharing",active)));}if(action.startsWith("voice_")&&new org.json.JSONObject(result).optBoolean("ok")&&new org.json.JSONObject(result).has("voice")&&new org.json.JSONObject(result).getJSONObject("voice").optBoolean("enabled"))activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyVoiceService.class)));return result;}
             catch(Exception e){return "{\"ok\":false,\"error\":\"Backend unavailable; check app diagnostics\"}";}
         }
@@ -353,6 +388,10 @@ public class MainActivity extends Activity {
             else mapDownload.unavailable();
         }
         if(requestCode==14||requestCode==12||requestCode==16)ownedPermission=false;
+        if(requestCode==16&&pendingVoiceAnswer!=null){
+            if(grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED)answerPendingReticulumCall();
+            else pendingVoiceAnswer=null;
+        }
         if(requestCode==13){ownedPermission=false;PermissionRequest pending=cameraRequest;cameraRequest=null;if(pending!=null){if(grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&cameraAllowed())pending.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});else pending.deny();}}
         if(requestCode==11&&grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&web!=null)web.evaluateJavascript("document.getElementById('notification-permission')?.remove();document.getElementById('home-notifications')?.remove()",null);
     }
