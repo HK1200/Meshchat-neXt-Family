@@ -29,8 +29,19 @@ The staging script verifies the wheel hash and includes Family's bundled LXMF so
 
 The loopback test in `tests/test_ios_tcp_runtime.py` starts two Family instances on a local Reticulum hub. Set `FAMILY_IOS_TCP_TEST_RUNTIME` to the absolute staged directory to exercise the staged clients with the iOS platform identifier and without optional Android and crypto modules.
 
-## Next native milestone
+## Live iPhone and iPad development target
 
-Embed a CPython XCFramework in an Xcode target and bundle the staged modules. The C bridge in `ios/LiveRuntime` starts the backend in an isolated interpreter and exchanges UTF-8 JSON. It has been compiled and exercised on Linux. Link it to the iOS framework and use the app’s private Application Support directory for the state before connecting the native UI. Build and exercise foreground messaging on both simulators first. Physical-device tests come later for Bluetooth, camera, location, and app lifecycle. SIP audio, incoming calls, background delivery, and distribution need iOS integrations.
+On a Mac with full Xcode, an iOS simulator runtime, XcodeGen, and Python 3.11 or newer, run:
+
+```sh
+bash ios/test-live.sh iPhone
+bash ios/test-live.sh iPad
+```
+
+The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families.
+
+**FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
+
+After the simulator checks, use a physical iPad for Bluetooth, camera, location and app lifecycle. SIP, notifications, background delivery, maps, and distribution remain separate iOS milestones.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app)

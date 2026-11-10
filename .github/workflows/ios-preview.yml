@@ -6,6 +6,7 @@ on:
     paths:
       - 'ios/**'
       - 'app/src/main/assets/**'
+      - 'app/src/main/python/**'
       - '.github/workflows/ios-preview.yml'
 
 permissions:
@@ -28,3 +29,5 @@ jobs:
         run: command -v xcodegen || brew install xcodegen
       - name: Run preview smoke test
         run: bash ios/test-preview.sh "${{ matrix.device }}"
+      - name: Run live Reticulum messaging test
+        run: bash ios/test-live.sh "${{ matrix.device }}"

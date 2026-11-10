@@ -7,6 +7,13 @@ case "$device_family" in
     *) echo "Usage: bash ios/test-preview.sh iPhone|iPad" >&2; exit 2 ;;
 esac
 
+scheme="${2:-FamilyPreview}"
+case "$scheme" in
+    FamilyPreview) specification=project.yml; signing=CODE_SIGNING_ALLOWED=NO ;;
+    FamilyLive) specification=project-live.yml; signing=CODE_SIGN_IDENTITY=- ;;
+    *) echo "Unknown test scheme" >&2; exit 2 ;;
+esac
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 destination="$(xcrun simctl list devices available --json | python3 -c '
 import json
@@ -27,7 +34,7 @@ if not candidates:
 print(max(candidates)[1])
 ' "$device_family")"
 
-xcodegen generate
-xcodebuild test -project FamilyPreview.xcodeproj -scheme FamilyPreview \
+xcodegen generate --spec "$specification"
+xcodebuild test -project "$scheme.xcodeproj" -scheme "$scheme" \
     -destination "platform=iOS Simulator,id=$destination" \
-    -derivedDataPath DerivedData -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO
+    -derivedDataPath DerivedData -parallel-testing-enabled NO "$signing"
