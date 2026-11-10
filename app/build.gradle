@@ -34,6 +34,8 @@ chaquopy {
   pip {
    install "$familyWheelDir/chaquopy_openblas-0.2.20-7-py3-none-android_24_arm64_v8a.whl"
    install "$familyWheelDir/lxst-0.5.4-py3-none-any.whl"
+   install "$familyWheelDir/chaquopy_libcodec2-1.2.0-0-py3-none-android_24_arm64_v8a.whl"
+   install "$familyWheelDir/pycodec2-4.1.1-0-cp311-cp311-android_24_arm64_v8a.whl"
    install "$familyWheelDir/lxst_filterlib_android-0.5.4-py3-none-android_24_arm64_v8a.whl"
    install "$familyWheelDir/numpy-1.26.2-2-cp311-cp311-android_24_arm64_v8a.whl"
    options "--no-index", "--no-deps"

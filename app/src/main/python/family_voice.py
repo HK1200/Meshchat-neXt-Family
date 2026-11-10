@@ -39,7 +39,7 @@ class VoicePlaybackBuffer:
 
 class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
-  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
+  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
   if state['voiceEnabled'] and autostart:threading.Thread(target=self._ensure,daemon=True).start()
@@ -76,15 +76,17 @@ class FamilyVoice:
     from LXST.Network import LinkSource
     if not hasattr(LinkSource,"samplerate"):LinkSource.samplerate=48000
     from LXST.Primitives import Telephony
+    from RNS.vendor import umsgpack
     self._install_audio(Telephony)
     phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self.allowed,wait_time=30)
+    phone.destination.set_default_app_data(lambda: umsgpack.packb([self.state.get('device_name','neXt Family'),None,None]))
     # LXST 0.5.4's worker reads ANNOUNCE_INTERVAL directly. Family schedules
     # announcements on its enabled routes, so suppress the library's broadcast.
     phone.last_announce=time.time();phone.ANNOUNCE_INTERVAL=2**31-1
     phone.set_busy_tone_time(0);phone.set_connect_timeout(30)
     phone.set_ringing_callback(self._ring);phone.set_established_callback(self._connected);phone.set_ended_callback(self._ended)
     if not self.state.get('voiceEnabled'):phone.teardown();return
-    with self.lock:self.phone=phone;self.error=''
+    with self.lock:self.phone=phone;self.profiles=Telephony.Profiles;self.error=''
    except Exception as exc:self.error=str(exc)[:200]
  def _install_audio(self,telephony):
   import numpy as np
@@ -220,4 +222,8 @@ class FamilyVoice:
    self.muted=muted
    if muted and self.input:self.input.pending.clear()
  def snapshot(self):
-  with self.lock:return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target}
+  with self.lock:
+   call=getattr(self.phone,'active_call',None)
+   profile=getattr(call,'profile',None)
+   profile_name=self.profiles.profile_name(profile) if self.profiles and profile is not None else ''
+   return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target,'profile':profile_name}
