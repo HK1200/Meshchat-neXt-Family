@@ -1,3 +1,13 @@
+# neXt Family v0.6.15
+
+- Reticulum TCP reconnects after a failed write and when Android switches networks.
+- Reticulum calls match the negotiated microphone frame size and buffer incoming audio to reduce gaps.
+- Guardian settings shows **Install now** when an update is available. Family resumes the Android install flow after the user enables install permission.
+
+The ARM64 APK uses the same signing certificate as previous public Family releases for in-place upgrades. [Initial setup guide](https://github.com/HK1200/Meshchat-neXt-Family/blob/main/docs/INITIAL_SETUP.md)
+
+---
+
 # neXt Family v0.6.14
 
 - Automatic texting retries over the other available approved service when Reticulum or MeshCore fails or the receipt window expires. One chat entry tracks the attempt. The receiving device may see two copies if the first receipt was lost. MeshCore accepts messages of up to 160 UTF-8 bytes.
