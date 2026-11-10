@@ -132,6 +132,17 @@ public class MainActivity extends Activity {
         try{boolean active=new org.json.JSONObject(backend.callAttr("request","{\"action\":\"status\"}").toString()).getJSONObject("location").optBoolean("active");if(active)startForegroundService(new Intent(this,FamilyService.class).putExtra("locationSharing",true));}catch(Exception ignored){}
     }
     private boolean cameraAllowed(){try{return new org.json.JSONObject(runtime.callAttr("request",new org.json.JSONObject().put("action","authorize_camera").put("payload",new org.json.JSONObject().put("token",cameraToken)).toString()).toString()).optBoolean("ok");}catch(Exception e){return false;}}
+    private void showCallOverLockscreen(boolean visible) {
+        if (android.os.Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(visible);
+            setTurnScreenOn(visible);
+        } else {
+            int flags = android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                    | android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            if (visible) getWindow().addFlags(flags);
+            else getWindow().clearFlags(flags);
+        }
+    }
     private void handleReticulumAnswer(Intent intent) {
         if (!"answerReticulumCall".equals(intent.getAction())) return;
         pendingVoiceAnswer = intent.getStringExtra("callId");
@@ -147,8 +158,7 @@ public class MainActivity extends Activity {
                 return;
             }
         } catch(Exception e) { pendingVoiceAnswer = null; return; }
-        setShowWhenLocked(true);
-        setTurnScreenOn(true);
+        showCallOverLockscreen(true);
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             ownedPermission = true;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},16);
@@ -277,7 +287,7 @@ public class MainActivity extends Activity {
             if("setup".equals(action)&&new org.json.JSONObject(result).optBoolean("ok")){boolean messaging=new org.json.JSONObject(result).optBoolean("messagingEnabled");activity.runOnUiThread(()->{com.meshchatnext.sip.SipController.get(activity);if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));});}
             if(java.util.Arrays.asList("peer","rnode","meshcore_config").contains(action)&&new org.json.JSONObject(result).optBoolean("ok")){org.json.JSONObject snapshot=new org.json.JSONObject(result);boolean messaging=snapshot.optBoolean("messagingEnabled")||(snapshot.optJSONObject("location")!=null&&snapshot.getJSONObject("location").optBoolean("active"));activity.runOnUiThread(()->{if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));else activity.stopService(new Intent(activity,FamilyService.class));});}
             if("contacts".equals(action)&&new org.json.JSONObject(result).optBoolean("ok"))com.meshchatnext.sip.SipController.get(activity).send("{\"op\":\"reconcile_contacts\"}");
-            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject voice=state.optJSONObject("voice");if(voice==null||"idle".equals(voice.optString("call_state","idle")))activity.runOnUiThread(()->{activity.setShowWhenLocked(false);activity.setTurnScreenOn(false);});org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
+            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject voice=state.optJSONObject("voice");if(voice==null||"idle".equals(voice.optString("call_state","idle")))activity.runOnUiThread(()->{activity.showCallOverLockscreen(false);});org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
             if(action.startsWith("location_")&&new org.json.JSONObject(result).optBoolean("ok")){boolean active=new org.json.JSONObject(result).getJSONObject("location").optBoolean("active");activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyService.class).putExtra("locationSharing",active)));}if(action.startsWith("voice_")&&new org.json.JSONObject(result).optBoolean("ok")&&new org.json.JSONObject(result).has("voice")&&new org.json.JSONObject(result).getJSONObject("voice").optBoolean("enabled"))activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyVoiceService.class)));return result;}
             catch(Exception e){return "{\"ok\":false,\"error\":\"Backend unavailable; check app diagnostics\"}";}
         }
