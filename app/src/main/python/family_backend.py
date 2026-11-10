@@ -10,6 +10,7 @@ signal.signal=_android_signal
 from pathlib import Path
 
 DEFAULT_DEVICE_NAME='neXt Family'
+ANNOUNCE_INTERVAL=60*60
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -40,7 +41,7 @@ _client_lookup={}
 _announce_lock=threading.RLock()
 _announced_sessions={}
 _announce_failures={}
-_last_primary=None
+_last_announce_primary={}
 _path_request_lock=threading.Lock()
 _path_request_last={}
 
@@ -379,30 +380,46 @@ def _room_transport_versions():
     return versions
 
 def _announce_available_routes():
-    """Refresh return paths once per usable session and preferred-path change."""
-    global _last_primary
+    """Advertise each enabled service at startup, on route changes, and hourly."""
     if _destination is None:return
     import RNS
     with _announce_lock:
         versions=_room_transport_versions();radio=getattr(_radio,'interface',None)
-        with _lock:peer_enabled=bool(_state['peer'].get('enabled'));radio_enabled=bool((_state.get('rnode') or {}).get('enabled'))
+        with _lock:
+            peer_enabled=bool(_state['peer'].get('enabled'))
+            radio_enabled=bool((_state.get('rnode') or {}).get('enabled'))
+            voice=_voice.phone if _voice and _state.get('voiceEnabled') and not _voice_deferred else None
         candidates=(_peer if peer_enabled else None,radio if radio_enabled and _radio and _radio.snapshot()['online'] else None)
-        interfaces=[interface for interface in candidates if interface is not None and interface.online and not getattr(interface,'detached',False) and interface in RNS.Transport.interfaces]
-        primary=(id(interfaces[0]),versions[id(interfaces[0])]) if interfaces else None
-        live={id(interface) for interface in interfaces}
-        for key in list(_announced_sessions):
-            if key not in live:_announced_sessions.pop(key,None);_announce_failures.pop(key,None)
-        if not interfaces:_last_primary=None
-        for interface in interfaces:
-            key=id(interface);version=versions[key]
-            if _announced_sessions.get(key)==version and not (primary[0]==key and _last_primary!=primary):continue
-            if time.monotonic()-_announce_failures.get(key,float('-inf'))<10:continue
-            try:
-                # Standard LXMF identity/name metadata only; never location.
-                _destination.announce(attached_interface=interface)
-                _announced_sessions[key]=version;_announce_failures.pop(key,None)
-                if primary[0]==key:_last_primary=primary
-            except Exception:_announce_failures[key]=time.monotonic()
+        interfaces=[interface for interface in candidates if interface is not None and interface.online and not getattr(interface,'detached',False) and interface in RNS.Transport.interfaces and id(interface) in versions]
+        services=[('text',_destination)]
+        if voice:services.append(('voice',voice))
+        else:_last_announce_primary.pop('voice',None)
+        live={(service,id(interface)) for service,_ in services for interface in interfaces}
+        for key in (_announced_sessions.keys()|_announce_failures.keys())-live:
+            _announced_sessions.pop(key,None);_announce_failures.pop(key,None)
+        if not interfaces:
+            _last_announce_primary.clear()
+            return
+        primary=id(interfaces[0])
+        now=time.monotonic()
+        for service,endpoint in services:
+            for interface in interfaces:
+                route=id(interface)
+                key=(service,route)
+                name=getattr(endpoint,'display_name',None) if service=='text' else None
+                version=(versions[route],endpoint,name)
+                primary_session=(route,version)
+                preferred=route==primary and _last_announce_primary.get(service)!=primary_session
+                previous=_announced_sessions.get(key)
+                if previous and previous[0]==version and now-previous[1]<ANNOUNCE_INTERVAL and not preferred:continue
+                if now-_announce_failures.get(key,float('-inf'))<10:continue
+                try:
+                    with _lock:
+                        if service=='voice' and (_voice_deferred or not _state.get('voiceEnabled') or _voice.phone is not endpoint):continue
+                        endpoint.announce(attached_interface=interface)
+                    _announced_sessions[key]=(version,now);_announce_failures.pop(key,None)
+                    if route==primary:_last_announce_primary[service]=primary_session
+                except Exception:_announce_failures[key]=now
 
 def _conversation_messages(contact):
     """Project approved direct rows while the caller holds the state lock."""
@@ -574,7 +591,6 @@ def request(raw):
                         _state['device_name']=previous
                         raise
                     if _destination is not None:_destination.display_name=name
-                    _announced_sessions.clear()
         elif action=='preferences':
             _authorized(p)
             values=p.get('values',{})

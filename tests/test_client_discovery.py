@@ -79,6 +79,44 @@ class ClientDiscoveryTests(unittest.TestCase):
         self.assertEqual(self.backend._client_lookup, {"pending": False, "message": ""})
 
 
+    def test_text_and_voice_announce_at_startup_hourly_and_after_reconnect(self):
+        text, voice = [], []
+        peer = self.backend._peer
+        self.backend._state.update(peer={"enabled": True}, voiceEnabled=True)
+        self.backend._destination = types.SimpleNamespace(announce=lambda attached_interface: text.append(attached_interface))
+        self.backend._voice = types.SimpleNamespace(phone=types.SimpleNamespace(announce=lambda attached_interface: voice.append(attached_interface)))
+        rns = types.SimpleNamespace(Transport=types.SimpleNamespace(interfaces=[peer]))
+        with patch.dict(sys.modules, {"RNS": rns}), patch.object(self.backend.time, "monotonic", side_effect=[0, 3599, 3600, 3601, 3602, 7200]):
+            self.backend._announce_available_routes()
+            self.assertEqual((text, voice), ([peer], [peer]))
+            self.backend._announce_available_routes()
+            self.assertEqual((len(text), len(voice)), (1, 1))
+            self.backend._announce_available_routes()
+            self.assertEqual((len(text), len(voice)), (2, 2))
+            peer.family_connection_epoch = 1
+            self.backend._announce_available_routes()
+            self.assertEqual((len(text), len(voice)), (3, 3))
+            self.backend._state["voiceEnabled"] = False
+            self.backend._announce_available_routes()
+            self.backend._announce_available_routes()
+            self.assertEqual((len(text), len(voice)), (3, 3))
+
+    def test_deferred_voice_announces_when_it_becomes_available(self):
+        text, voice = [], []
+        peer = self.backend._peer
+        self.backend._state.update(peer={"enabled": True}, voiceEnabled=True)
+        self.backend._destination = types.SimpleNamespace(announce=lambda attached_interface: text.append(attached_interface))
+        self.backend._voice = types.SimpleNamespace(phone=types.SimpleNamespace(announce=lambda attached_interface: voice.append(attached_interface)))
+        self.backend._voice_deferred = True
+        rns = types.SimpleNamespace(Transport=types.SimpleNamespace(interfaces=[peer]))
+        with patch.dict(sys.modules, {"RNS": rns}), patch.object(self.backend.time, "monotonic", return_value=0):
+            self.backend._announce_available_routes()
+            self.assertEqual((text, voice), ([peer], []))
+            self.backend._voice_deferred = False
+            self.backend._announce_available_routes()
+            self.assertEqual((text, voice), ([peer], [peer]))
+
+
 class MeshCoreDiscoveryTests(unittest.TestCase):
     def test_key_only_advert_keeps_unapproved_client_visible(self):
         spec = importlib.util.spec_from_file_location("discovery_meshcore", BACKEND.with_name("family_meshcore.py"))
