@@ -60,7 +60,7 @@ final class FamilyLiveUITests: XCTestCase {
         let saveContact = app.buttons["Save approved contact"]
         if !saveContact.isHittable { app.swipeUp() }
         saveContact.tap()
-        XCTAssertTrue(app.staticTexts["Contact saved"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))

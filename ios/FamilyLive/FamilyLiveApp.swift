@@ -413,10 +413,11 @@ struct FamilyGuardian: View {
                             .accessibilityIdentifier("contact-name")
                         TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
                             .accessibilityIdentifier("contact-address")
-                        Button("Save approved contact") {
+                        Button(contactSaved ? "Contact saved" : "Save approved contact") {
                             Task { contactSaved = await family.addContact(name: name, address: address) }
                         }
-                        if contactSaved { Text("Contact saved") }
+                        .onChange(of: name) { contactSaved = false }
+                        .onChange(of: address) { contactSaved = false }
                     }
                     Section("Offline message mailbox") {
                         TextField("LXMF propagation node address", text: $mailboxAddress)
