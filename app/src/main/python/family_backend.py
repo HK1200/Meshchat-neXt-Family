@@ -11,6 +11,11 @@ from pathlib import Path
 
 DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
+TCP_ONLY_ACTIONS=frozenset({
+    'setup','status','unlock','lock','password','contacts','peer',
+    'device_name','preferences','qr_parse','discover_client','conversation_read','send',
+})
+_tcp_only=False
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -48,10 +53,11 @@ _path_request_last={}
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
 
-def initialize(folder):
-    global _root,_state,_locations,_maps,_meshcore,_room_names
+def initialize(folder,*,tcp_only=False):
+    global _root,_state,_locations,_maps,_meshcore,_room_names,_tcp_only
     with _lock:
         if _root:return
+        _tcp_only=tcp_only
         _root=Path(folder);_root.mkdir(parents=True,exist_ok=True)
         p=_root/'state.json'
         existing=p.exists()
@@ -63,16 +69,17 @@ def initialize(folder):
             _state['password_salt']=secrets.token_hex(16)
             _state['password_hash']='' if not existing else _password(secrets.token_urlsafe(32))
             _save()
-    from family_room_names import RoomNames
-    _room_names=RoomNames(_state,_lock,_save)
-    from family_meshcore import FamilyMeshCore
-    _meshcore=FamilyMeshCore(_state,_lock,_save)
-    from family_maps import MapStore
-    _maps=MapStore(_root,_state,_lock,_save)
-    from family_location import FamilyLocation
-    _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
-    _meshcore.locations=_locations
-    threading.Thread(target=_location_loop,daemon=True).start()
+    if not _tcp_only:
+        from family_room_names import RoomNames
+        _room_names=RoomNames(_state,_lock,_save)
+        from family_meshcore import FamilyMeshCore
+        _meshcore=FamilyMeshCore(_state,_lock,_save)
+        from family_maps import MapStore
+        _maps=MapStore(_root,_state,_lock,_save)
+        from family_location import FamilyLocation
+        _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
+        _meshcore.locations=_locations
+        threading.Thread(target=_location_loop,daemon=True).start()
     if _state['setup_complete']:threading.Thread(target=_start,daemon=True).start()
 
 def _cancel_location():
@@ -157,15 +164,16 @@ def _start():
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive)
-        _meshcore.identity=identity
-        from family_voice import FamilyVoice
-        _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
-        try:
-            from family_rooms import FamilyRooms
-            _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
-        except Exception as exc:
-            _room_error=str(exc)
-            import traceback;traceback.print_exc()
+        if not _tcp_only:
+            _meshcore.identity=identity
+            from family_voice import FamilyVoice
+            _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
+            try:
+                from family_rooms import FamilyRooms
+                _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
+            except Exception as exc:
+                _room_error=str(exc)
+                import traceback;traceback.print_exc()
         class Clients:
             aspect_filter='lxmf.delivery'
             receive_path_responses=True
@@ -177,8 +185,9 @@ def _start():
                 if not m.get('incoming') and not m['status'].startswith(('Delivered','Failed','Not sent','Not confirmed')):
                     m['status']='Interrupted · delivery not confirmed'
             _save()
-        from family_radios import Radio
-        _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None);_radio.configure(_state.get('rnode'))
+        if not _tcp_only:
+            from family_radios import Radio
+            _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None);_radio.configure(_state.get('rnode'))
         for contact in _state['contacts']:
             if contact.get('identityPublicKey'):RNS.Identity.remember(None,bytes.fromhex(contact['addresses']['lxmf']),bytes.fromhex(contact['identityPublicKey']))
         _error=''
@@ -527,6 +536,8 @@ def request(raw):
     try:
         if len(raw)>1500000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
+        if _tcp_only and action not in TCP_ONLY_ACTIONS:
+            raise ValueError('This build supports Reticulum TCP messaging only.')
         if action=='setup':
             with _lock:
                 if _state.get('setup_complete'):raise ValueError('Guardian setup is already complete')

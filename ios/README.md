@@ -11,8 +11,26 @@ The iOS target runs the Family v0.6.14 interface in a native WebKit view for iPh
 
 The Xcode target references the shared Family web assets. The adaptive stylesheet is bundled only in the iPhone and iPad preview.
 
-## First live milestone
+## Simulator smoke checks
 
-Bundle a supported CPython runtime and the existing Family backend, then bring up first-run guardian setup and foreground Reticulum TCP messaging on iPhone and iPad. Keep approved-contact checks in the backend. After that, test BLE companion connections and background delivery on a physical device. SIP audio and incoming calls, notifications, location sharing, and signed distribution need iOS integrations.
+On a Mac with Xcode, XcodeGen, and simulator runtimes installed, run `bash ios/test-preview.sh iPhone` and `bash ios/test-preview.sh iPad` from the repository root. Each opens the bundled preview and starts a sample conversation. The **Family iOS simulator** GitHub Actions workflow defines these two jobs and requires no signing credentials.
 
-[Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple distribution guide](https://developer.apple.com/documentation/xcode/distributing-your-app-for-beta-testing-and-releases/)
+## Reticulum TCP runtime
+
+The shared Python backend supports a standalone TCP-only mode through `initialize(folder, tcp_only=True)`. It keeps the first-run guardian password, approved contacts, discovery, and signed LXMF delivery in the same backend as Android. The preview's WebKit window still uses sample data.
+
+With Python 3.11 or later, stage the runtime from the pinned `rns-1.5.7-py3-none-any.whl` using:
+
+```sh
+python3 ios/stage-runtime.py /path/to/rns-1.5.7-py3-none-any.whl ios/RuntimeBuild/staged
+```
+
+The staging script verifies the wheel hash and includes Family's bundled LXMF sources. It keeps Reticulum standalone, delays importing shared-instance IPC, and uses the internal crypto provider when external crypto is unavailable. On iOS, LXMF stamp generation runs in one process.
+
+The loopback test in `tests/test_ios_tcp_runtime.py` starts two Family instances on a local Reticulum hub. Set `FAMILY_IOS_TCP_TEST_RUNTIME` to the absolute staged directory to exercise the staged clients with the iOS platform identifier and without optional Android and crypto modules.
+
+## Next native milestone
+
+Embed a CPython XCFramework in an Xcode target and bundle the staged modules. The C bridge in `ios/LiveRuntime` starts the backend in an isolated interpreter and exchanges UTF-8 JSON. It has been compiled and exercised on Linux. Link it to the iOS framework and use the app’s private Application Support directory for the state before connecting the native UI. Build and exercise foreground messaging on both simulators first. Physical-device tests come later for Bluetooth, camera, location, and app lifecycle. SIP audio, incoming calls, background delivery, and distribution need iOS integrations.
+
+[Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app)

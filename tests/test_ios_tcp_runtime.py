@@ -1,0 +1,156 @@
+"""Exercise the first iOS runtime mode on an isolated local Reticulum network."""
+from contextlib import ExitStack
+import ctypes.util
+import importlib.util
+import json
+import multiprocessing
+import os
+import platform
+from pathlib import Path
+import socket
+import sys
+import time
+
+import pytest
+
+
+pytestmark = pytest.mark.skipif(importlib.util.find_spec("RNS") is None, reason="Requires Reticulum")
+
+
+def run_hub(folder, port, pipe):
+    import RNS
+
+    folder.mkdir()
+    (folder / "config").write_text(
+        "[reticulum]\nshare_instance = No\nenable_transport = Yes\n"
+        "[interfaces]\n[[Local Hub]]\ntype = TCPServerInterface\nenabled = Yes\n"
+        f"listen_ip = 127.0.0.1\nlisten_port = {port}\n"
+    )
+    RNS.Reticulum(configdir=str(folder), loglevel=1)
+    pipe.send(True)
+    pipe.recv()
+
+
+def run_family(folder, pipe):
+    staged = os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME")
+    source = staged or Path(__file__).resolve().parents[1] / "app/src/main/python"
+    sys.path.insert(0, str(source))
+    if staged:
+        class WithoutNativeModules:
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname.partition(".")[0] in {"cryptography", "java", "serial"} or fullname == "multiprocessing.connection":
+                    raise ModuleNotFoundError(fullname)
+
+        sys.meta_path.insert(0, WithoutNativeModules())
+        # Keep the host loader and OS information while exercising LXMF's iOS path.
+        platform.uname()
+        sys.platform = "ios"
+    import family_backend
+    if staged:
+        import RNS
+        from LXMF import LXStamper
+
+        assert RNS.Cryptography.Provider.backend() == "internal"
+        assert LXStamper.IS_IOS
+    family_backend.initialize(folder, tcp_only=True)
+    try:
+        while True:
+            action, payload = pipe.recv()
+            pipe.send(json.loads(family_backend.request(json.dumps({"action": action, "payload": payload}))))
+    except EOFError:
+        pass
+
+
+def start_process(stack, target, *args):
+    context = multiprocessing.get_context("spawn")
+    pipe, worker = context.Pipe()
+    process = context.Process(target=target, args=(*args, worker))
+    process.start()
+    worker.close()
+
+    def stop():
+        pipe.close()
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        process.close()
+
+    stack.callback(stop)
+    return pipe
+
+
+def request(pipe, action, *, succeeds=True, **payload):
+    pipe.send((action, payload))
+    assert pipe.poll(8), f"No response to {action}"
+    result = pipe.recv()
+    assert result["ok"] is succeeds, result
+    return result
+
+
+def wait_status(pipe, condition):
+    deadline = time.monotonic() + 25
+    while time.monotonic() < deadline:
+        status = request(pipe, "status")
+        if condition(status):
+            return status
+        time.sleep(0.2)
+    pytest.fail(f"Status timed out. Backend reported {status['error']!r}")
+
+
+def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    with ExitStack() as stack:
+        hub = start_process(stack, run_hub, tmp_path / "hub", port)
+        assert hub.poll(8) and hub.recv()
+        families = [start_process(stack, run_family, tmp_path / name) for name in ("a", "b")]
+
+        tokens, addresses = [], []
+        for pipe in families:
+            assert not request(pipe, "status")["setupComplete"]
+            password = "local test guardian password"
+            request(pipe, "setup", password=password, confirmation=password, reticulumEnabled=False)
+            request(pipe, "rnode", succeeds=False)
+            token = request(pipe, "unlock", password=password)["token"]
+            request(pipe, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            status = wait_status(pipe, lambda s: s["ready"] and s["tcpOnline"])
+            assert not status["rnodeRuntime"]["online"] and not status["meshcore"]
+            tokens.append(token)
+            addresses.append(status["address"])
+
+        def approve(index):
+            pipe = families[index]
+            contact = {"id": 1, "name": "Other Family", "addresses": {"lxmf": addresses[1 - index]}}
+            request(pipe, "contacts", succeeds=False, contacts=[contact])
+            request(pipe, "contacts", token=tokens[index], contacts=[contact])
+
+        def send(index, text):
+            pipe = families[index]
+            request(pipe, "send", contactId=1, text=text, method="auto")
+            wait_status(pipe, lambda s: any(
+                row["text"] == text and row["status"] == "Delivered"
+                for row in s["messages"]["1"]
+            ))
+
+        def wait_incoming(index, text):
+            wait_status(families[index], lambda s: any(
+                row["incoming"] and row["text"] == text for row in s["messages"]["1"]
+            ))
+
+        request(families[0], "send", succeeds=False, contactId=1, text="Unapproved")
+        approve(0)
+        send(0, "Before recipient approval")
+        assert request(families[1], "status")["messages"] == {}
+        approve(1)
+        send(0, "Approved outbound")
+        wait_incoming(1, "Approved outbound")
+        send(1, "Approved reply")
+        wait_incoming(0, "Approved reply")
+        assert not any(
+            row["text"] == "Before recipient approval"
+            for row in request(families[1], "status")["messages"]["1"]
+        )
