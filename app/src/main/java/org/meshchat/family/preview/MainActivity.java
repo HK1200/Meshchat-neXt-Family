@@ -30,15 +30,24 @@ public class MainActivity extends Activity {
     private boolean ownedDocument;
     private volatile String mapImportStatus="{\"busy\":false}";
     private final java.util.concurrent.ExecutorService lifecycle=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.ExecutorService statusWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
     private volatile ValueCallback<Uri[]> fileCallback;
+
+    private void setNightMode(boolean night) {
+        int color=night ? Color.rgb(25,37,32) : Color.rgb(251,252,247);
+        getWindow().setStatusBarColor(color);
+        getWindow().setNavigationBarColor(color);
+        getWindow().getDecorView().setSystemUiVisibility(night ? 0 :
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        if(web!=null)web.setBackgroundColor(color);
+    }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("openReticulumCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null);if(intent.getBooleanExtra("openCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenCall?.()",null);int room=intent.getIntExtra("roomId",0);if(web!=null&&room>0)web.evaluateJavascript("window.familyOpenRoom?.("+room+")",null);int contact=intent.getIntExtra("contactId",0);if(web!=null&&contact>0)web.evaluateJavascript("window.familyOpenContact?.("+contact+")",null);}
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FamilyRuntime.allowCalls(this);
         getSystemService(android.app.NotificationManager.class).cancel(FamilyBootReceiver.NOTICE);
-        getWindow().setStatusBarColor(Color.rgb(25,37,32));
-        getWindow().setNavigationBarColor(Color.rgb(25,37,32));
-        getWindow().getDecorView().setSystemUiVisibility(0);
+        setNightMode((getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES);
         PyObject backend=FamilyRuntime.backend(this);
         runtime=backend;
         mapDownload=new FamilyMapDownload(this,backend);
@@ -113,6 +122,21 @@ public class MainActivity extends Activity {
         private final PyObject backend;
         private final MainActivity activity;
         NativeBridge(MainActivity owner,PyObject module){activity=owner;backend=module;}
+        @JavascriptInterface public void setNightMode(boolean night) {
+            activity.runOnUiThread(() -> activity.setNightMode(night));
+        }
+        @JavascriptInterface public void pollStatus(int revision) {
+            activity.runOnUiThread(() -> {
+                if(activity.web==null)return;
+                activity.statusWorker.execute(() -> {
+                    String response=org.json.JSONObject.quote(request("{\"action\":\"status\"}"));
+                    activity.runOnUiThread(() -> {
+                        if(activity.web!=null)activity.web.evaluateJavascript(
+                                "window.familyReceiveStatus?.("+revision+","+response+")",null);
+                    });
+                });
+            });
+        }
         @JavascriptInterface public void importMap(String token) {
             try {
                 org.json.JSONObject command = new org.json.JSONObject().put("action","authorize_map_import")
@@ -321,5 +345,5 @@ public class MainActivity extends Activity {
         if(requestCode==11&&grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&web!=null)web.evaluateJavascript("document.getElementById('notification-permission')?.remove();document.getElementById('home-notifications')?.remove()",null);
     }
     @Override public void onBackPressed(){web.evaluateJavascript("(()=>{const gate=document.getElementById('gate');if(gate.open){gate.close();return true;}const back=document.querySelector('#map-back,#offline-back,#connection-back,#back,#discovery-back,#done');if(back){back.click();return true;}return false;})()",result->{if("false".equals(result))moveTaskToBack(true);});}
-    @Override protected void onDestroy(){if(cameraRequest!=null){cameraRequest.deny();cameraRequest=null;}if(fileCallback!=null){fileCallback.onReceiveValue(null);fileCallback=null;}if(web!=null){web.loadUrl("about:blank");web.destroy();web=null;}lifecycle.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){if(cameraRequest!=null){cameraRequest.deny();cameraRequest=null;}if(fileCallback!=null){fileCallback.onReceiveValue(null);fileCallback=null;}if(web!=null){web.loadUrl("about:blank");web.destroy();web=null;}statusWorker.shutdown();lifecycle.shutdown();super.onDestroy();}
 }

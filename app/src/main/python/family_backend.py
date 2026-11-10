@@ -472,7 +472,7 @@ def _announce_available_routes():
             for interface in interfaces:
                 route=id(interface)
                 key=(service,route)
-                name=getattr(endpoint,'display_name',None) if service=='text' else None
+                name=_state.get('device_name',DEFAULT_DEVICE_NAME)
                 version=(versions[route],endpoint,name)
                 primary_session=(route,version)
                 preferred=route==primary and _last_announce_primary.get(service)!=primary_session

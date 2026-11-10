@@ -58,13 +58,15 @@ class MeshCoreRooms:
    async with session._lock:await session._client.commands.send_logout(peer)
   finally:
    with self.lock:self.cleanup_logout.discard(peer)
+ def _queue_join(self,row,runtime):
+  runtime.update(joining=True,attempted=True,status='Joining room…',error='')
+  self.manager._submit(self._join(row['id'],self.manager.revision,runtime))
  def open(self,rid):
   with self.lock:
    row=self.record(rid);self._ready();self.active=rid;self._mark_read(rid);runtime=self._runtime(row['key'])
    if runtime['joined'] or runtime.get('joining'):return
    if runtime['uncertain']:raise ValueError('The previous login is unconfirmed. Reconnect the companion before retrying.')
-   runtime.update(joining=True,status='Joining room…',error='');revision=self.manager.revision
-  self.manager._submit(self._join(rid,revision))
+   self._queue_join(row,runtime)
  def close_view(self):
   with self.lock:self.active=None
  def _mark_read(self,rid):
@@ -79,34 +81,37 @@ class MeshCoreRooms:
    await manager._contacts()
   candidates=[p for p in manager.contacts if p.startswith(peer[:12])]
   if len(candidates)!=1 or candidates[0]!=peer or manager.contacts[peer].get('type')!=3:raise ValueError('Select an unambiguous room-server identity')
- async def _join(self,rid,revision):
+ async def _join(self,rid,revision,runtime):
   from meshcore import EventType
   manager=self.manager;peer=None;sent=False;subscriptions=[]
   try:
    with self.lock:
     row=self.record(rid);peer=row['key'];cipher=self.state['meshcore_room_keys'].get(str(rid));password=getattr(manager,'identity').decrypt(base64.b64decode(cipher)).decode() if cipher else '';self._ready()
+    if self.runtime.get(peer) is not runtime or revision!=manager.revision:return
    async with manager.session._lock:await self._contact(peer,row['name'])
    future=asyncio.get_running_loop().create_future()
    def receive(event):
     prefix=(event.payload or {}).get('pubkey_prefix') or (event.attributes or {}).get('pubkey_prefix')
     with self.lock:
-     valid=revision==manager.revision and self.policy(peer) and self._owner()==manager.owner
+     valid=revision==manager.revision and self.runtime.get(peer) is runtime and self.policy(peer) and self._owner()==manager.owner
     if valid and prefix==peer[:12] and not future.done():future.set_result(event)
    subscriptions=[manager.session._client.subscribe(t,receive) for t in [EventType.LOGIN_SUCCESS,EventType.LOGIN_FAILED]]
    async with manager.session._lock:
-    with self.lock:self.record(rid);self._ready()
+    with self.lock:
+     self.record(rid);self._ready()
+     if self.runtime.get(peer) is not runtime or revision!=manager.revision:return
     result=await manager.session._client.commands._send_login_raw(peer,password);password='';sent=True
    if result is None or result.type!=EventType.MSG_SENT:raise ValueError('The companion did not confirm login submission')
    suggested=(result.payload or {}).get('suggested_timeout',20000);timeout=min(90,max(20,float(suggested)/1000*1.5)) if type(suggested) in [int,float] and math.isfinite(suggested) else 30
    response=await asyncio.wait_for(future,timeout)
    with self.lock:
     self.record(rid)
-    if revision!=manager.revision:raise ValueError('The companion connection changed')
+    if revision!=manager.revision or self.runtime.get(peer) is not runtime:return
     if response.type==EventType.LOGIN_FAILED:raise ValueError('The room server rejected the login')
-    self._runtime(peer).update(joined=True,joining=False,status='Joined',error='',owner=manager.owner)
+    runtime.update(joined=True,joining=False,status='Joined',error='',owner=manager.owner)
   except Exception as exc:
    with self.lock:
-    if peer and revision==manager.revision and self.policy(peer):self._runtime(peer).update(joined=False,joining=False,status='Not joined',error=str(exc)[:160],uncertain=sent and isinstance(exc,TimeoutError))
+    if peer and revision==manager.revision and self.runtime.get(peer) is runtime and self.policy(peer):runtime.update(joined=False,joining=False,status='Not joined',error=str(exc)[:160],uncertain=sent and isinstance(exc,TimeoutError))
   finally:
    for subscription in subscriptions:
     try:subscription.unsubscribe()
@@ -181,6 +186,15 @@ class MeshCoreRooms:
     if time.time()<deadline:continue
     self.pending.pop(code,None);row=next((m for m in self.state['meshcore_room_messages'].get(str(rid),[]) if m['id']==mid and m.get('owner')==owner),None)
     if row and row.get('delivery')!='sent':row['delivery']='unconfirmed';row['status']='Not confirmed · room receipt timed out';self.save()
+   try:self._ready()
+   except ValueError:return
+   if any(data.get('joining') for data in self.runtime.values()):return
+   for row in self.records():
+    if str(row['id']) not in self.state['meshcore_room_keys']:continue
+    data=self._runtime(row['key'])
+    if not data['joined'] and not data.get('attempted'):
+     self._queue_join(row,data)
+     break
  def disconnected(self):
   with self.lock:
    for rid,mid,owner,deadline in self.pending.values():

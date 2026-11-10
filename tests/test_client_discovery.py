@@ -101,6 +101,35 @@ class ClientDiscoveryTests(unittest.TestCase):
             self.backend._announce_available_routes()
             self.assertEqual((len(text), len(voice)), (3, 3))
 
+    def test_renaming_reannounces_text_and_voice_without_waiting_an_hour(self):
+        text, voice = [], []
+        peer = self.backend._peer
+        state = self.backend._state
+        state.update(peer={"enabled": True}, voiceEnabled=True, device_name="neXt Family")
+        endpoint = types.SimpleNamespace(
+            display_name=state["device_name"], announce=lambda attached_interface: text.append(endpoint.display_name)
+        )
+        self.backend._destination = endpoint
+        self.backend._voice = types.SimpleNamespace(
+            phone=types.SimpleNamespace(announce=lambda attached_interface: voice.append(state["device_name"]))
+        )
+        rns = types.SimpleNamespace(Transport=types.SimpleNamespace(interfaces=[peer]))
+        def snapshot():
+            self.backend._announce_available_routes()
+            return {}
+        with (
+            patch.dict(sys.modules, {"RNS": rns}),
+            patch.object(self.backend, "_save"),
+            patch.object(self.backend, "_snapshot", side_effect=snapshot),
+        ):
+            self.backend._announce_available_routes()
+            payload = {"name": "Renamed Family", "token": self.token}
+            reply = self.backend.request(json.dumps({"action": "device_name", "payload": payload}))
+            self.assertTrue(json.loads(reply)["ok"], reply)
+            self.backend._announce_available_routes()
+        self.assertEqual(text, ["neXt Family", "Renamed Family"])
+        self.assertEqual(voice, text)
+
     def test_deferred_voice_announces_when_it_becomes_available(self):
         text, voice = [], []
         peer = self.backend._peer

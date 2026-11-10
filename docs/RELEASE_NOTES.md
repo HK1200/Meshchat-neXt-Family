@@ -1,3 +1,21 @@
+# neXt Family v0.6.17
+
+- Messaging, Reticulum calling, and SIP share one Android connection status card while idle. Incoming call controls and active location sharing keep their own notices.
+- Repair the Android Codec2 extension required by Low Bandwidth and Ultra Low Bandwidth Reticulum calls.
+
+---
+
+# neXt Family v0.6.16
+
+- Day and Night mode respond during connection checks, use a larger button, and remember the selected appearance.
+- Reticulum calls follow call-quality changes from neXt, including low-bandwidth Codec2 profiles.
+- Reticulum messaging and voice announcements use the device name set in Guardian settings → Security.
+- Tap a Family Map pin to see when that location was last updated.
+
+Install this ARM64 APK over the previous public release to keep your settings and approved contacts. [Initial setup guide](https://github.com/HK1200/Meshchat-neXt-Family/blob/v0.6.16/docs/INITIAL_SETUP.md)
+
+---
+
 # neXt Family v0.6.15
 
 - Reticulum TCP reconnects after a failed write and when Android switches networks.
