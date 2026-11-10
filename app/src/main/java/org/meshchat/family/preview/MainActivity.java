@@ -15,6 +15,18 @@ import java.util.*;
 
 /** Native companion host with guardian-controlled radio configuration. */
 public class MainActivity extends Activity {
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key == android.view.KeyEvent.KEYCODE_VOLUME_UP
+                || key == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+                || key == android.view.KeyEvent.KEYCODE_VOLUME_MUTE) {
+            android.media.AudioManager audio = getSystemService(android.media.AudioManager.class);
+            setVolumeControlStream(audio != null && audio.getMode() == android.media.AudioManager.MODE_IN_COMMUNICATION
+                    ? android.media.AudioManager.STREAM_VOICE_CALL : android.media.AudioManager.USE_DEFAULT_STREAM_TYPE);
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     private static final String HOST = "appassets.androidplatform.net";
     private static final int PICK_FILE = 10;
     private static final int MAP_PICK_FILE = 15;

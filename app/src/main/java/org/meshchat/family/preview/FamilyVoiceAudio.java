@@ -5,7 +5,7 @@ import com.chaquo.python.PyObject;
 /** PCM stays in memory and crosses the native/Python boundary only for the active call. */
 final class FamilyVoiceAudio {
  private static final int PCM_CHUNK_BYTES=1920; // 20 ms of 48 kHz mono PCM16.
- private final Context context;private final PyObject backend;private volatile boolean running;private AudioRecord microphone;private AudioTrack speaker;private AudioManager manager;private AudioFocusRequest focus;private android.media.audiofx.AcousticEchoCanceler echo;private String callId="";
+ private final Context context;private final PyObject backend;private volatile boolean running;private AudioRecord microphone;private AudioTrack speaker;private AudioManager manager;private AudioFocusRequest focus;private android.media.audiofx.AcousticEchoCanceler echo;private android.media.audiofx.AutomaticGainControl gainControl;private String callId="";
  FamilyVoiceAudio(Context c,PyObject backend){context=c;this.backend=backend;}
  synchronized void start(String id){if(running&&callId.equals(id))return;stop();try{
   if(context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED)throw new SecurityException("Microphone permission is required");
@@ -17,6 +17,10 @@ final class FamilyVoiceAudio {
   speaker=new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(output).setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(PCM_CHUNK_BYTES*3,AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT))).build();
   if(microphone.getState()!=AudioRecord.STATE_INITIALIZED||speaker.getState()!=AudioTrack.STATE_INITIALIZED)throw new IllegalStateException("Audio unavailable");
   if(android.media.audiofx.AcousticEchoCanceler.isAvailable()){echo=android.media.audiofx.AcousticEchoCanceler.create(microphone.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}
+  if(android.media.audiofx.AutomaticGainControl.isAvailable()){
+   try{gainControl=android.media.audiofx.AutomaticGainControl.create(microphone.getAudioSessionId());if(gainControl!=null&&gainControl.hasControl())gainControl.setEnabled(true);}catch(RuntimeException e){android.util.Log.w("FamilyVoiceAudio","Microphone gain control unavailable",e);}
+  }
+  speaker.setVolume(AudioTrack.getMaxVolume());
   callId=id;running=true;microphone.startRecording();final AudioRecord capture=microphone;final AudioTrack playback=speaker;
   new Thread(()->{
    try{
@@ -52,5 +56,5 @@ final class FamilyVoiceAudio {
   },"Family-LXST-playback").start();
  }catch(Exception e){stop();backend.callAttr("voice_audio_error","Native audio could not start");}}
  private boolean isCurrent(String id){return running&&id.equals(callId);}
- synchronized void stop(){running=false;callId="";try{if(microphone!=null){microphone.stop();microphone.release();}}catch(Exception ignored){}microphone=null;try{if(speaker!=null){speaker.stop();speaker.release();}}catch(Exception ignored){}speaker=null;if(echo!=null){echo.release();echo=null;}if(manager!=null){if(focus!=null)manager.abandonAudioFocusRequest(focus);manager.setMode(AudioManager.MODE_NORMAL);}focus=null;manager=null;}
+ synchronized void stop(){running=false;callId="";try{if(microphone!=null){microphone.stop();microphone.release();}}catch(Exception ignored){}microphone=null;try{if(speaker!=null){speaker.stop();speaker.release();}}catch(Exception ignored){}speaker=null;if(echo!=null){echo.release();echo=null;}if(gainControl!=null){gainControl.release();gainControl=null;}if(manager!=null){if(focus!=null)manager.abandonAudioFocusRequest(focus);manager.setMode(AudioManager.MODE_NORMAL);}focus=null;manager=null;}
 }

@@ -120,3 +120,15 @@ def test_capture_splits_or_joins_chunks_at_negotiated_profile(monkeypatch):
     assert source.push(pcm[:100]) == 0
     voice.set_muted(True)
     assert not source.pending
+
+
+def test_late_hangup_is_harmless_and_cannot_end_a_new_call():
+    voice = FamilyVoice(None, {}, threading.RLock(), lambda: None, autostart=False)
+    voice.hangup("already-ended")
+    voice.phase = "connected"
+    voice.call_id = "new-call"
+    voice.phone = types.SimpleNamespace(active_call=object())
+    generation = voice.generation
+    voice.hangup("already-ended")
+    assert voice.phase == "connected"
+    assert voice.call_id == "new-call" and voice.generation == generation

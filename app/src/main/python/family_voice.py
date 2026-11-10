@@ -197,7 +197,8 @@ class FamilyVoice:
   threading.Thread(target=answer_call,daemon=True).start()
  def hangup(self,call_id=None):
   with self.lock:
-   if call_id is not None and call_id!=self.call_id:raise ValueError('The call has changed')
+   # A delayed UI/notification action for an ended call must not affect a newer call.
+   if call_id is not None and call_id!=self.call_id:return
    self.generation+=1;self.phase='ending' if self.phone and self.phone.active_call else 'idle'
    if self.phase=='idle':self._ended();return
   def end():
