@@ -25,12 +25,12 @@ public class MainActivity extends Activity {
     private volatile String mapImportToken;
     private boolean guardianPaused;
     private PermissionRequest cameraRequest;
-    private String cameraToken="";
-    private boolean ownedPermission;
+    private volatile String cameraToken="";
+    private volatile boolean ownedPermission;
     private boolean ownedDocument;
     private volatile String mapImportStatus="{\"busy\":false}";
     private final java.util.concurrent.ExecutorService lifecycle=java.util.concurrent.Executors.newSingleThreadExecutor();
-    private ValueCallback<Uri[]> fileCallback;
+    private volatile ValueCallback<Uri[]> fileCallback;
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("openReticulumCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null);if(intent.getBooleanExtra("openCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenCall?.()",null);int room=intent.getIntExtra("roomId",0);if(web!=null&&room>0)web.evaluateJavascript("window.familyOpenRoom?.("+room+")",null);int contact=intent.getIntExtra("contactId",0);if(web!=null&&contact>0)web.evaluateJavascript("window.familyOpenContact?.("+contact+")",null);}
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -126,7 +126,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public String mapDownloadStatus() { return activity.mapDownload.status(); }
         @JavascriptInterface public String mapImportStatus(){return activity.mapImportStatus;}
-        @JavascriptInterface public boolean mapPickerOpen(){return activity.mapImportToken!=null;}
+        @JavascriptInterface public boolean guardianDialogOpen(){return activity.mapImportToken!=null||activity.ownedPermission||activity.fileCallback!=null;}
         @JavascriptInterface public String tileSource(int z,int x,int y){try{return backend.callAttr("map_source",z,x,y).toString();}catch(Exception e){return "";}}
         @JavascriptInterface public boolean locationPermissionGranted(){return activity.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
         @JavascriptInterface public void requestLocation(String token){try{org.json.JSONObject payload=new org.json.JSONObject().put("token",token);boolean allowed=new org.json.JSONObject(backend.callAttr("request",new org.json.JSONObject().put("action","authorize_location").put("payload",payload).toString()).toString()).optBoolean("ok");if(allowed)activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},14);});}catch(Exception ignored){}}

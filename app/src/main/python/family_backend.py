@@ -34,6 +34,7 @@ _sessions={}
 _outbound={}
 _pending_inbound=set()
 _announces={}
+_client_lookup={}
 _announce_lock=threading.RLock()
 _announced_sessions={}
 _announce_failures={}
@@ -164,13 +165,7 @@ def _start():
             aspect_filter='lxmf.delivery'
             receive_path_responses=True
             def received_announce(self,destination_hash,announced_identity,app_data,announce_packet_hash=None):
-                address=destination_hash.hex()
-                if _destination and address==_destination.hash.hex():return
-                try:name=LXMF.display_name_from_app_data(app_data) or 'Unnamed messaging client'
-                except Exception:name='Unnamed messaging client'
-                with _lock:
-                    _announces[address]={'name':str(name)[:64],'service':'lxmf','address':address,'seen':time.time()}
-                    if len(_announces)>200:_announces.pop(min(_announces,key=lambda key:_announces[key]['seen']))
+                _remember_client(destination_hash,app_data)
         RNS.Transport.register_announce_handler(Clients())
         with _lock:
             for m in _state['messages']:
@@ -297,6 +292,37 @@ def _await_identity(address,permitted,timeout=60):
         time.sleep(.3)
     return None
 
+def _remember_client(destination_hash,app_data):
+    import LXMF
+    address=destination_hash.hex()
+    if _destination and destination_hash==_destination.hash:return
+    try:name=LXMF.display_name_from_app_data(app_data) or 'Unnamed messaging client'
+    except Exception:name='Unnamed messaging client'
+    with _lock:
+        _announces[address]={'name':str(name)[:64],'service':'lxmf','address':address,'seen':time.time()}
+        if len(_announces)>200:_announces.pop(min(_announces,key=lambda key:_announces[key]['seen']))
+
+def _find_client(address,token):
+    global _client_lookup
+    import RNS
+    destination=bytes.fromhex(address)
+    def permitted():
+        with _lock:return _sessions.get(token,0)>time.time()
+    message='No client answered. Check the address and ask them to announce their Reticulum messaging identity.'
+    try:
+        identity=_await_identity(destination,permitted,timeout=25)
+        if identity and RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity)==destination:
+            with _lock:
+                if permitted():
+                    _remember_client(destination,RNS.Identity.recall_app_data(destination))
+                    message='Messaging client found. Review the address before approving it.'
+        elif identity:
+            message='This address belongs to a different Reticulum service.'
+    except Exception:
+        message='The Reticulum lookup failed. Check your connection and try again.'
+    finally:
+        with _lock:_client_lookup={'pending':False,'message':message if permitted() else ''}
+
 def _delivery_method(address):
     import RNS,LXMF
     interface=RNS.Transport.next_hop_interface(address)
@@ -403,6 +429,7 @@ def _snapshot():
         result['location']=_locations.snapshot() if _locations else {}
         if _meshcore:result['location']['meshcoreStatus']=_meshcore.location_status
         result['preferences']=dict(_state.get('preferences',{}))
+        result['clientLookup']=dict(_client_lookup)
         if _meshcore:
             mc_rooms=_meshcore.rooms.snapshot();room_data['rooms']+=mc_rooms['rooms'];room_data['roomRuntime'].update(mc_rooms['roomRuntime'])
         if _room_names:room_data=_room_names.decorate(room_data)
@@ -415,6 +442,7 @@ def background(lock_guardian=True):
     if _meshcore:_meshcore.rooms.close_view()
 
 def request(raw):
+    global _client_lookup
     try:
         if len(raw)>1500000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
@@ -526,6 +554,19 @@ def request(raw):
             values=p.get('values',{})
             if not isinstance(values,dict) or any(k not in ['announceEnabled','searchEnabled','roomAnnounceEnabled'] or not isinstance(v,bool) for k,v in values.items()):raise ValueError('Invalid discovery preferences')
             with _lock:_state['preferences'].update(values);_save()
+        elif action=='discover_client':
+            _authorized(p)
+            address=p.get('address','')
+            if not isinstance(address,str) or not re.fullmatch('[0-9a-fA-F]{32}',address):
+                raise ValueError('Enter a 32-character LXMF address.')
+            address=address.lower()
+            if not _online():raise ValueError('Connect Reticulum before looking up a client.')
+            if _destination and address==_destination.hash.hex():raise ValueError('This is Family’s own address.')
+            with _lock:
+                if _client_lookup.get('pending'):raise ValueError('A client lookup is already running.')
+                _client_lookup={'pending':True,'message':'Looking for this messaging client…'}
+            threading.Thread(target=_find_client,args=(address,p['token']),daemon=True).start()
+            return json.dumps({'ok':True})
         elif action=='discover':
             _authorized(p)
             if not _rns:raise ValueError('Reticulum is still starting')
