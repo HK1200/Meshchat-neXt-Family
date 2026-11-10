@@ -1,5 +1,6 @@
 """Offline contact/room cards. Parsing never approves or joins anything."""
 import json,re
+from urllib.parse import parse_qs, urlsplit
 
 def validate_public_key(address,key):
     import RNS
@@ -36,6 +37,14 @@ def parse(raw,target='contact'):
         result={'name':str(data.get('name',''))[:32],'addresses':addresses}
         if data.get('identityPublicKey'):result['identityPublicKey']=validate_public_key(addresses.get('lxmf',''),data['identityPublicKey'])
         return result
+    if text.lower().startswith('meshcore://contact/add?'):
+        params=parse_qs(urlsplit(text).query,max_num_fields=16)
+        keys=params.get('public_key',[])
+        if params.get('type')!=['1']:
+            raise ValueError('Use a MeshCore companion contact code for direct messages.')
+        if len(keys)!=1 or not re.fullmatch(r'[a-fA-F0-9]{64}',keys[0]):
+            raise ValueError('The QR code must contain a full MeshCore public key.')
+        return {'name':params.get('name',[''])[0][:32],'addresses':{'meshcore':keys[0].lower()}}
     if re.fullmatch(r'meshcore://[a-fA-F0-9]{64}',text,re.I):return {'addresses':{'meshcore':text[11:].lower()}}
     if re.fullmatch(r'sips?:[^\s@]+@[^\s@]+',text,re.I):return {'addresses':{'sip':text}}
     raise ValueError('Unsupported QR code. Use a neXt contact QR or family contact/room card.')
