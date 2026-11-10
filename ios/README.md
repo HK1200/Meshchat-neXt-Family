@@ -1,6 +1,6 @@
 # neXt Family for iOS
 
-The iOS target runs the Family v0.6.14 interface in a native WebKit view for iPhone and iPad. On narrow windows contacts stay in a single column. Wider windows show two contact columns and give the map more room. It uses sample contacts, conversations, rooms, and map positions. The banner identifies preview mode on every screen. The app serves its interface and tiles from the bundle and blocks external navigation and network requests.
+The iOS target runs the Family v0.6.15 interface in a native WebKit view for iPhone and iPad. On narrow windows contacts stay in a single column. Wider windows show two contact columns and give the map more room. It uses sample contacts, conversations, rooms, and map positions. The banner identifies preview mode on every screen. The app serves its interface and tiles from the bundle and blocks external navigation and network requests.
 
 ## Run the preview on a Mac
 
@@ -38,11 +38,11 @@ bash ios/test-live.sh iPhone
 bash ios/test-live.sh iPad
 ```
 
-The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families. The local live test also enables iOS message alerts, moves the app to the Home Screen and back during the conversation, and checks for a delivered notification in Notification Center.
+The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families. The local live test also enables iOS message alerts, moves the app to the Home Screen and back during the conversation, checks for a delivered notification in Notification Center, then forces the TCP socket closed and verifies a second round trip after automatic reconnect.
 
 To exercise the same messaging test through `rmap.world:4242`, append `rmap` to the command for each simulator. In GitHub Actions, add the `ios-rmap-test` label to the pull request or enable the `rmap` workflow input once the workflow is available on the default branch. Both endpoints use disposable LXMF identities and the peer echoes only the randomly generated test message. Test names and public LXMF addresses are announced to the Reticulum network.
 
-**FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
+**FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. It uses the same TCP write recovery as Android, reconnects when iOS reports a restored or changed network path, and rechecks the mailbox after reconnecting. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
 
 ## Notifications and background delivery
 
@@ -52,6 +52,6 @@ If Family is sending a message when iOS moves it to the background, it requests 
 
 To receive messages sent while Family is offline, open **Guardian settings → Offline message mailbox** and enter a trusted LXMF propagation node's 32-character address. The sender needs to use the same mailbox in propagated delivery mode. Exchange a direct message from each contact first so Family can keep the contact's verified public key. Family checks the mailbox on return to the app and requests periodic iOS Background App Refresh. iOS controls whether and when those background checks run. Leave the mailbox field blank and save to disable it.
 
-Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Bluetooth, camera, location, SIP, maps, and distribution are separate iOS milestones.
+Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Reticulum voice, Bluetooth, camera, location, SIP, maps, and distribution are separate iOS milestones. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)

@@ -14,7 +14,7 @@ ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
     'device_name','preferences','qr_parse','discover_client','conversation_read','send',
-    'mailbox_config','mailbox_sync',
+    'mailbox_config','mailbox_sync','tcp_network_changed',
 })
 _tcp_only=False
 _lock=threading.RLock()
@@ -26,6 +26,7 @@ _rooms=None
 _room_error=''
 _destination=None
 _peer=None
+_tcp_generation=0
 _radio=None
 _locations=None
 _maps=None
@@ -33,6 +34,7 @@ _meshcore=None
 _voice=None
 _voice_deferred=False
 _network_context="unknown"
+_tcp_network_context=""
 _room_names=None
 _location_outbound={}
 _error='Starting Reticulum'
@@ -51,6 +53,7 @@ _last_announce_primary={}
 _path_request_lock=threading.Lock()
 _path_request_last={}
 _mailbox_lock=threading.Lock()
+_mailbox_tcp_session=None
 
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
@@ -199,14 +202,15 @@ def _start():
         import traceback;traceback.print_exc()
 
 def _connect():
-    global _peer,_error,_connecting,_connect_pending
-    if _connecting:
-        _connect_pending=True;return
-    _connecting=True
+    global _peer,_error,_connecting,_connect_pending,_tcp_generation
+    with _lock:
+        if _connecting:
+            _connect_pending=True;return
+        _connecting=True
     try:
         if not _rns:return
         import RNS
-        from RNS.Interfaces.TCPInterface import TCPClientInterface
+        from family_tcp import FamilyTCPInterface
         if _peer:
             if _rooms:_rooms.retire_interface(_peer)
             _peer.detach()
@@ -215,25 +219,20 @@ def _connect():
             _announce_available_routes()
         with _lock:peer=dict(_state['peer'])
         if peer['enabled']:
-            class FamilyTCPInterface(TCPClientInterface):
-                def connect(self,*args,**kwargs):
-                    # A public TCP hub can sustain more announces than the default
-                    # startup threshold of 3/s. Keep burst control active on TCP.
-                    self.ic_burst_freq_new=max(self.ic_burst_freq_new,20)
-                    self.ic_burst_freq=max(self.ic_burst_freq,20)
-                    connected=super().connect(*args,**kwargs)
-                    if connected:self.family_connection_epoch=getattr(self,'family_connection_epoch',0)+1
-                    return connected
-            _peer=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
-            _rns._add_interface(_peer)
+            interface=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
+            _rns._add_interface(interface)
+            with _lock:
+                _tcp_generation+=1
+                _peer=interface
             _error=''
             _announce_available_routes()
     except Exception as e:_error=str(e)
     finally:
-        _connecting=False
-        if _connect_pending:
+        with _lock:
+            _connecting=False
+            pending=_connect_pending
             _connect_pending=False
-            threading.Thread(target=_connect,daemon=True).start()
+        if pending:threading.Thread(target=_connect,daemon=True).start()
 
 def _online():
     return bool((_peer and _peer.online) or (_radio and _radio.snapshot()['online']))
@@ -524,10 +523,19 @@ def _configure_mailbox(payload):
                 _state['mailbox']=previous
                 raise
 
+def _tcp_session():
+    with _lock:
+        return f'{_tcp_generation}:{_peer.family_connection_epoch}' if _peer and _peer.online else None
+
 def _sync_mailbox():
+    global _mailbox_tcp_session
     with _mailbox_lock:
         address=_state.get('mailbox','')
-        if not address or not _router or not _destination or not _online():return _mailbox_snapshot()
+        session=_tcp_session()
+        if not address or not _router or not _destination or session is None:return _mailbox_snapshot()
+        if session!=_mailbox_tcp_session:
+            _router.cancel_propagation_node_requests()
+            _mailbox_tcp_session=session
         phase=_router.propagation_transfer_state
         if _router.PR_IDLE<phase<_router.PR_COMPLETE:return _mailbox_snapshot()
         _router.set_outbound_propagation_node(bytes.fromhex(address))
@@ -553,7 +561,9 @@ def _snapshot():
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
         result['tcpOnline']=bool(_peer and _peer.online)
-        if _tcp_only:result['mailbox']=_mailbox_snapshot()
+        if _tcp_only:
+            result['mailbox']=_mailbox_snapshot()
+            result['tcpSession']=_tcp_session()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
@@ -609,6 +619,11 @@ def request(raw):
                     timer=getattr(hub,'_reconnect_timer',None)
                     hubs.append({'hubHash':hub.hub_hash.hex(),'status':hub.status,'autoReconnect':hub.auto_reconnect,'manualDisconnect':hub._manual_disconnect,'connectEpoch':getattr(hub,'_connect_epoch',0),'reconnectAttempts':hub._reconnect_attempts,'reconnectScheduled':bool(timer and timer.is_alive())})
             return json.dumps({'ok':True,'threads':threads,'hubs':hubs})
+        if action=='tcp_network_changed':
+            if not _tcp_only:raise ValueError('iOS network status is only available in the TCP build')
+            with _lock:reconnect=bool(_rns and _state['peer'].get('enabled'))
+            if reconnect:threading.Thread(target=_connect,daemon=True).start()
+            return json.dumps({'ok':True})
         if action in ['mailbox_config','mailbox_sync']:
             if not _tcp_only:raise ValueError('Mailbox sync is only available in the TCP build')
             if action=='mailbox_sync':return json.dumps({'ok':True,'mailbox':_sync_mailbox()})
@@ -813,7 +828,7 @@ def request(raw):
             elif action=='voice_hangup':_voice.hangup(p.get('callId'))
             elif action=='voice_mute':
                 if type(p.get('muted')) is not bool:raise ValueError('Invalid mute setting')
-                _voice.muted=p['muted']
+                _voice.set_muted(p['muted'])
         elif action=='conversation_read':
             with _lock:
                 contact=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)
@@ -909,5 +924,11 @@ def set_voice_deferred(deferred):
         threading.Thread(target=_voice._ensure,daemon=True).start()
 
 def set_network_context(context):
-    global _network_context
-    _network_context=str(context)[:128]
+    global _network_context,_tcp_network_context
+    context=str(context)[:128]
+    with _lock:
+        _network_context=context
+        if not context.partition(':')[0].isdigit() or context==_tcp_network_context:return
+        reconnect=bool(_tcp_network_context and _state and _state['peer'].get('enabled') and _rns)
+        _tcp_network_context=context
+    if reconnect:threading.Thread(target=_connect,daemon=True).start()

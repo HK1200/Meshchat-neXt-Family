@@ -1,4 +1,5 @@
 import BackgroundTasks
+import Network
 import SwiftUI
 import UIKit
 
@@ -43,6 +44,12 @@ final class FamilyModel: ObservableObject {
     @Published private(set) var notificationsAllowed = false
     #if DEBUG
     @Published private(set) var testNotificationDelivered = false
+
+    var testTCPRecovered: Bool {
+        guard ProcessInfo.processInfo.environment["FAMILY_TEST_RECONNECT"] == "1",
+              let epoch = state?.tcpSession?.split(separator: ":").last else { return false }
+        return (Int(epoch) ?? 0) > 1
+    }
     #endif
     weak var notifications: FamilyNotifications?
     private var sendTask: UIBackgroundTaskIdentifier = .invalid
@@ -53,11 +60,31 @@ final class FamilyModel: ObservableObject {
     var finishingSend: Bool { sendTask != .invalid }
 
     private let client = FamilyClient()
+    private let networkMonitor = NWPathMonitor()
+    private var lastNetworkPath: NWPath?
     private var token = ""
+
+    init() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in await self?.networkPathChanged(path) }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "family.network-path"))
+    }
+
+    private func networkPathChanged(_ path: NWPath) async {
+        let previous = lastNetworkPath
+        lastNetworkPath = path
+        guard let previous, previous != path, path.status == .satisfied, state?.setupComplete == true else { return }
+        _ = try? await request("tcp_network_changed")
+    }
 
     func refresh() async {
         do {
-            state = try await request("status")
+            let updated = try await request("status")
+            if let session = updated.tcpSession, session != state?.tcpSession {
+                checkMailboxOnNextRefresh()
+            }
+            state = updated
             if notificationsAllowed {
                 await notifications?.publish(messages)
                 #if DEBUG
@@ -411,6 +438,7 @@ struct FamilyChat: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG
                 if family.testNotificationDelivered { Text("Message notification delivered") }
+                if family.testTCPRecovered { Text("Reticulum TCP reconnected") }
                 #endif
             }
         }

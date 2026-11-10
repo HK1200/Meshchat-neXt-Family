@@ -6,6 +6,7 @@ final class FamilyLiveUITests: XCTestCase {
         let port: Int
         let address: String
         let message: String
+        let reconnectMessage: String?
     }
 
     func testGuardianApprovedMessageRoundTrip() throws {
@@ -16,7 +17,10 @@ final class FamilyLiveUITests: XCTestCase {
         app.launchEnvironment["FAMILY_TEST_HOST"] = peer.host
         app.launchEnvironment["FAMILY_TEST_PORT"] = String(peer.port)
         let localTest = peer.host == "127.0.0.1"
-        if localTest { app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1" }
+        if localTest {
+            app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1"
+            app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
+        }
         app.launch()
 
         let password = "simulator guardian test"
@@ -74,6 +78,11 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
         if localTest {
             XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
+            let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
+            fill(app.textFields["message-draft"], reconnectMessage)
+            app.buttons["Send"].tap()
+            XCTAssertTrue(app.staticTexts["Echo: " + reconnectMessage].waitForExistence(timeout: 90))
         }
     }
 

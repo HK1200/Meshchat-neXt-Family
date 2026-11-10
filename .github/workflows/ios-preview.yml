@@ -40,6 +40,18 @@ jobs:
       - name: Run public Reticulum messaging test
         if: ${{ !cancelled() && matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test')) }}
         run: bash ios/test-live.sh "${{ matrix.device }}" rmap
+      - name: Build Family for physical iPhone and iPad
+        if: ${{ !cancelled() && matrix.device == 'iPad' && matrix.suite == 'live' }}
+        working-directory: ios
+        run: |
+          bash prepare-live.sh
+          xcodegen generate --spec project-live.yml
+          xcodebuild build -project FamilyLive.xcodeproj -scheme FamilyLive \
+            -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO
+          app=DerivedData/Build/Products/Debug-iphoneos/FamilyLive.app
+          lipo -verify_arch arm64 "$app/FamilyLive"
+          test -f "$app/Frameworks/Python.framework/Python"
+          test -f "$app/staged/family_tcp.py"
       - name: Run preview smoke test
         if: matrix.suite == 'preview'
         run: bash ios/test-preview.sh "${{ matrix.device }}"

@@ -26,6 +26,7 @@ struct FamilyReply: Decodable, Sendable {
     var token: String?
     var setupComplete: Bool?
     var tcpOnline: Bool?
+    var tcpSession: String?
     var address: String?
     var mailbox: FamilyMailbox?
     var contacts: [FamilyContact]?

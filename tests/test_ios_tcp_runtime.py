@@ -170,11 +170,19 @@ def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path, public_
             for row in request(families[1], "status")["messages"]["1"]
         )
 
+        if not public_peer:
+            previous = request(families[0], "status")["tcpSession"]
+            request(families[0], "tcp_network_changed")
+            restarted = wait_status(families[0], lambda s: s["tcpSession"] and s["tcpSession"] != previous)
+            assert restarted["address"] == addresses[0]
+            send(0, "After network change")
+            wait_incoming(1, "After network change")
+
 
 def run_simulator_peer(folder, public_peer, _pipe):
     root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME") or str(root / "app/src/main/python"))
-    runpy.run_path(str(root / "ios/simulator-peer.py"))["main"](folder, public_peer)
+    runpy.run_path(str(root / "ios/simulator-peer.py"))["main"](folder, public_peer, drop_test=not public_peer)
 
 
 @pytest.mark.parametrize("public_peer", PUBLIC_PEERS)
@@ -198,17 +206,25 @@ def test_simulator_echo_fixture(tmp_path, public_peer):
         request(client, "contacts", token=token, contacts=[
             {"id": 1, "name": "Echo peer", "addresses": {"lxmf": peer["address"]}}
         ])
-        wait_status(client, lambda s: s["tcpOnline"])
-        request(client, "send", contactId=1, text=peer["message"], method="auto")
-        received = "Echo: " + peer["message"]
-        def round_trip_complete(status):
-            rows = status["messages"]["1"]
-            return (
-                any(row["incoming"] and row["text"] == received for row in rows)
-                and any(not row["incoming"] and row["status"] == "Delivered" for row in rows)
-            )
+        initial = wait_status(client, lambda s: s["tcpOnline"])["tcpSession"]
 
-        wait_status(client, round_trip_complete, timeout=90)
+        def round_trip(text):
+            request(client, "send", contactId=1, text=text, method="auto")
+
+            def complete(status):
+                rows = status["messages"]["1"]
+                return (
+                    any(row["incoming"] and row["text"] == "Echo: " + text for row in rows)
+                    and any(not row["incoming"] and row["text"] == text and row["status"] == "Delivered" for row in rows)
+                )
+
+            wait_status(client, complete, timeout=90)
+
+        round_trip(peer["message"])
+        if not public_peer:
+            after = wait_status(client, lambda s: s["tcpSession"] and s["tcpSession"] != initial)["tcpSession"]
+            assert after.split(":")[0] == initial.split(":")[0]
+            round_trip(peer["reconnectMessage"])
 
 
 def run_mailbox(folder, port, pipe):
