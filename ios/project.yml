@@ -27,3 +27,25 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
+
+  FamilyPreviewUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: FamilyPreviewUITests
+    dependencies:
+      - target: FamilyPreview
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.preview.uitests
+        TEST_TARGET_NAME: FamilyPreview
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  FamilyPreview:
+    build:
+      targets:
+        FamilyPreview: all
+    test:
+      targets:
+        - FamilyPreviewUITests

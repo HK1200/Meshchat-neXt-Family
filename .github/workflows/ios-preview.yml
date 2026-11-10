@@ -1,0 +1,30 @@
+name: Family iOS simulator
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'app/src/main/assets/**'
+      - '.github/workflows/ios-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    name: ${{ matrix.device }} preview
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Run preview smoke test
+        run: bash ios/test-preview.sh "${{ matrix.device }}"
