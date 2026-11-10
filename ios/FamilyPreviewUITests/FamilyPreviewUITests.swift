@@ -9,13 +9,11 @@ final class FamilyPreviewUITests: XCTestCase {
         let webView = app.webViews.firstMatch
         XCTAssertTrue(webView.staticTexts["Mom"].waitForExistence(timeout: 15))
 
-        let textButton = webView.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Text")
-        ).firstMatch
-        XCTAssertTrue(textButton.exists)
+        let textButton = webView.buttons["Text Mom"]
+        XCTAssertTrue(textButton.waitForExistence(timeout: 10))
         textButton.tap()
 
-        XCTAssertTrue(webView.staticTexts["Text Mom"].waitForExistence(timeout: 5))
+        XCTAssertTrue(webView.textFields["Message"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["iOS preview · Sample data only"].exists)
     }
 }

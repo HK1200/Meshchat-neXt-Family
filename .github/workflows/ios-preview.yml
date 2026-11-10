@@ -27,7 +27,8 @@ jobs:
           persist-credentials: false
       - name: Install XcodeGen
         run: command -v xcodegen || brew install xcodegen
-      - name: Run preview smoke test
-        run: bash ios/test-preview.sh "${{ matrix.device }}"
       - name: Run live Reticulum messaging test
         run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Run preview smoke test
+        if: ${{ !cancelled() }}
+        run: bash ios/test-preview.sh "${{ matrix.device }}"
