@@ -41,6 +41,10 @@ private struct FamilyWebView: UIViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
         configuration.setURLSchemeHandler(context.coordinator, forURLScheme: FamilyAssets.scheme)
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.defaultWebpagePreferences.preferredContentMode = .mobile
+        if let script = Self.layoutScript() {
+            configuration.userContentController.addUserScript(script)
+        }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -51,6 +55,23 @@ private struct FamilyWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    private static func layoutScript() -> WKUserScript? {
+        guard let url = Bundle.main.url(forResource: "FamilyPreview", withExtension: "css"),
+              let css = try? String(contentsOf: url, encoding: .utf8),
+              let encoded = try? JSONEncoder().encode(css),
+              let literal = String(data: encoded, encoding: .utf8) else {
+            return nil
+        }
+        let source = """
+            if (location.href === "family://bundle/index.html") {
+                const style = document.createElement("style");
+                style.textContent = \(literal);
+                document.head.appendChild(style);
+            }
+            """
+        return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+    }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler {
         private let assets: FamilyAssets

@@ -8,6 +8,10 @@ targets:
     platform: iOS
     sources:
       - path: FamilyPreview
+        excludes:
+          - FamilyPreview.css
+      - path: FamilyPreview/FamilyPreview.css
+        buildPhase: resources
       - path: ../app/src/main/assets
         type: folder
         buildPhase: resources
@@ -19,5 +23,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: neXt Family Preview
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
