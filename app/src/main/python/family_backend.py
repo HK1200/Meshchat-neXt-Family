@@ -206,6 +206,10 @@ def _connect():
         if peer['enabled']:
             class FamilyTCPInterface(TCPClientInterface):
                 def connect(self,*args,**kwargs):
+                    # A public TCP hub can sustain more announces than the default
+                    # startup threshold of 3/s. Keep burst control active on TCP.
+                    self.ic_burst_freq_new=max(self.ic_burst_freq_new,20)
+                    self.ic_burst_freq=max(self.ic_burst_freq,20)
                     connected=super().connect(*args,**kwargs)
                     if connected:self.family_connection_epoch=getattr(self,'family_connection_epoch',0)+1
                     return connected
