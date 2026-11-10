@@ -2,6 +2,7 @@
 
 - Messaging, Reticulum calling, and SIP share one Android connection status card while idle. Incoming call controls and active location sharing keep their own notices.
 - Repair the Android Codec2 extension required by Low Bandwidth and Ultra Low Bandwidth Reticulum calls.
+- Automatically sign into approved MeshCore rooms with their saved passwords when the companion connects. Leaving a room screen keeps the session.
 
 ---
 
