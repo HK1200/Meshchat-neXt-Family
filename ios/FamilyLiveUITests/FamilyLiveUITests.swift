@@ -74,7 +74,10 @@ final class FamilyLiveUITests: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
             app.activate()
         }
-        XCTAssertTrue(app.staticTexts["Delivered"].waitForExistence(timeout: 90))
+        XCTAssertTrue(
+            app.staticTexts["Delivered"].waitForExistence(timeout: 90),
+            "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
+        )
         XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
         if localTest {
             XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
