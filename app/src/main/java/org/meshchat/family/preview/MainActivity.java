@@ -142,6 +142,22 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void requestNotifications(){activity.runOnUiThread(()->{if(android.os.Build.VERSION.SDK_INT>=33)activity.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},11);});}
         @JavascriptInterface public String request(String request){
             try{org.json.JSONObject input=new org.json.JSONObject(request);String action=input.optString("action");
+            if ("apk_share".equals(action)) {
+                org.json.JSONObject auth = new org.json.JSONObject(input.toString());
+                auth.put("action", "authorize_apk_share");
+                String response = backend.callAttr("request", auth.toString()).toString();
+                if (!new org.json.JSONObject(response).optBoolean("ok")) return response;
+                final Intent chooser;
+                try {
+                    chooser = FamilyApkShare.chooser(activity);
+                } catch (java.io.FileNotFoundException unavailable) {
+                    return new org.json.JSONObject().put("ok", false)
+                            .put("error", "Family could not share this installation. Use the standalone APK from GitHub Releases.")
+                            .toString();
+                }
+                activity.runOnUiThread(() -> activity.startActivity(chooser));
+                return response;
+            }
             if ("update_install".equals(action)) {
                 Intent installer = FamilyUpdates.get(activity).installerIntent(activity);
                 if (installer == null) {

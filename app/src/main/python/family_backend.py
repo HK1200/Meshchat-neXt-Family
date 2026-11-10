@@ -540,7 +540,7 @@ def request(raw):
             elif action=='location_stop':
                 if not _locations.permissions(guardian):raise ValueError('Location sharing is managed by your guardian')
                 _locations.stop()
-        elif action=='authorize_update_config':
+        elif action in ['authorize_update_config','authorize_apk_share']:
             _authorized(p)
             return json.dumps({'ok': True})
         elif action=='authorize_camera':
