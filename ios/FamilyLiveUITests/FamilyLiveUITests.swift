@@ -5,6 +5,7 @@ final class FamilyLiveUITests: XCTestCase {
         let host: String
         let port: Int
         let address: String
+        let message: String
     }
 
     func testGuardianApprovedMessageRoundTrip() throws {
@@ -14,6 +15,8 @@ final class FamilyLiveUITests: XCTestCase {
         app.launchArguments = ["--isolated-family-test"]
         app.launchEnvironment["FAMILY_TEST_HOST"] = peer.host
         app.launchEnvironment["FAMILY_TEST_PORT"] = String(peer.port)
+        let localTest = peer.host == "127.0.0.1"
+        if localTest { app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1" }
         app.launch()
 
         let password = "simulator guardian test"
@@ -38,13 +41,40 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))
+        if localTest {
+            let enableNotifications = app.buttons["Enable message notifications"]
+            if enableNotifications.exists {
+                enableNotifications.tap()
+                let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+                let allow = springboard.alerts.buttons["Allow"]
+                if allow.waitForExistence(timeout: 10) { allow.tap() }
+                let dismissed = XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "exists == false"), object: enableNotifications
+                )
+                XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+            }
+        }
         let contact = app.buttons["Echo peer"]
         XCTAssertTrue(contact.waitForExistence(timeout: 10))
         contact.tap()
-        fill(app.textFields["message-draft"], "Hello from simulator")
+        fill(app.textFields["message-draft"], peer.message)
         app.buttons["Send"].tap()
-        XCTAssertTrue(app.staticTexts["Delivered"].waitForExistence(timeout: 75))
-        XCTAssertTrue(app.staticTexts["Echo: Hello from simulator"].waitForExistence(timeout: 75))
+        if localTest {
+            XCUIDevice.shared.press(.home)
+            let backgrounded = XCTNSPredicateExpectation(
+                predicate: NSPredicate { _, _ in
+                    app.state == .runningBackground || app.state == .runningBackgroundSuspended
+                },
+                object: nil
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
+            app.activate()
+        }
+        XCTAssertTrue(app.staticTexts["Delivered"].waitForExistence(timeout: 90))
+        XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
+        if localTest {
+            XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
+        }
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

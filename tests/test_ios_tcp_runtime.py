@@ -6,6 +6,7 @@ import json
 import multiprocessing
 import os
 import platform
+import runpy
 from pathlib import Path
 import socket
 import sys
@@ -15,6 +16,12 @@ import pytest
 
 
 pytestmark = pytest.mark.skipif(importlib.util.find_spec("RNS") is None, reason="Requires Reticulum")
+PUBLIC_PEERS = [
+    pytest.param(False, id="loopback"),
+    pytest.param(True, id="rmap", marks=pytest.mark.skipif(
+        os.getenv("FAMILY_TEST_RMAP") != "1", reason="Opt-in public peer test"
+    )),
+]
 
 
 def run_hub(folder, port, pipe):
@@ -90,23 +97,29 @@ def request(pipe, action, *, succeeds=True, **payload):
     return result
 
 
-def wait_status(pipe, condition):
-    deadline = time.monotonic() + 25
+def wait_status(pipe, condition, timeout=25):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         status = request(pipe, "status")
         if condition(status):
             return status
         time.sleep(0.2)
-    pytest.fail(f"Status timed out. Backend reported {status['error']!r}")
+    rows = [row["status"] for messages in status["messages"].values() for row in messages]
+    pytest.fail(f"Status timed out. Backend error {status['error']!r}, message statuses {rows}")
 
 
-def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path):
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
+@pytest.mark.parametrize("public_peer", PUBLIC_PEERS)
+def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path, public_peer):
     with ExitStack() as stack:
-        hub = start_process(stack, run_hub, tmp_path / "hub", port)
-        assert hub.poll(8) and hub.recv()
+        if public_peer:
+            host, port = "rmap.world", 4242
+        else:
+            host = "127.0.0.1"
+            with socket.socket() as sock:
+                sock.bind((host, 0))
+                port = sock.getsockname()[1]
+            hub = start_process(stack, run_hub, tmp_path / "hub", port)
+            assert hub.poll(8) and hub.recv()
         families = [start_process(stack, run_family, tmp_path / name) for name in ("a", "b")]
 
         tokens, addresses = [], []
@@ -116,7 +129,9 @@ def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path):
             request(pipe, "setup", password=password, confirmation=password, reticulumEnabled=False)
             request(pipe, "rnode", succeeds=False)
             token = request(pipe, "unlock", password=password)["token"]
-            request(pipe, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            if public_peer:
+                request(pipe, "device_name", token=token, name="Family TCP test")
+            request(pipe, "peer", token=token, host=host, port=port, enabled=True)
             status = wait_status(pipe, lambda s: s["ready"] and s["tcpOnline"])
             assert not status["rnodeRuntime"]["online"] and not status["meshcore"]
             tokens.append(token)
@@ -154,3 +169,43 @@ def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path):
             row["text"] == "Before recipient approval"
             for row in request(families[1], "status")["messages"]["1"]
         )
+
+
+def run_simulator_peer(folder, public_peer, _pipe):
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME") or str(root / "app/src/main/python"))
+    runpy.run_path(str(root / "ios/simulator-peer.py"))["main"](folder, public_peer)
+
+
+@pytest.mark.parametrize("public_peer", PUBLIC_PEERS)
+def test_simulator_echo_fixture(tmp_path, public_peer):
+    with ExitStack() as stack:
+        folder = tmp_path / "echo"
+        start_process(stack, run_simulator_peer, folder, public_peer)
+        fixture = folder / "peer.json"
+        deadline = time.monotonic() + 30
+        while not fixture.exists():
+            assert time.monotonic() < deadline, "Simulator echo peer did not publish its manifest"
+            time.sleep(0.2)
+        peer = json.loads(fixture.read_text())
+
+        client = start_process(stack, run_family, tmp_path / "client")
+        password = "local test guardian password"
+        request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+        token = request(client, "unlock", password=password)["token"]
+        request(client, "device_name", token=token, name="Family iOS simulator test")
+        request(client, "peer", token=token, host=peer["host"], port=peer["port"], enabled=True)
+        request(client, "contacts", token=token, contacts=[
+            {"id": 1, "name": "Echo peer", "addresses": {"lxmf": peer["address"]}}
+        ])
+        wait_status(client, lambda s: s["tcpOnline"])
+        request(client, "send", contactId=1, text=peer["message"], method="auto")
+        received = "Echo: " + peer["message"]
+        def round_trip_complete(status):
+            rows = status["messages"]["1"]
+            return (
+                any(row["incoming"] and row["text"] == received for row in rows)
+                and any(not row["incoming"] and row["status"] == "Delivered" for row in rows)
+            )
+
+        wait_status(client, round_trip_complete, timeout=90)

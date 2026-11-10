@@ -13,7 +13,7 @@ The Xcode target references the shared Family web assets. The adaptive styleshee
 
 ## Simulator smoke checks
 
-On a Mac with Xcode, XcodeGen, and simulator runtimes installed, run `bash ios/test-preview.sh iPhone` and `bash ios/test-preview.sh iPad` from the repository root. Each opens the bundled preview and starts a sample conversation. The **Family iOS simulator** GitHub Actions workflow defines these two jobs and requires no signing credentials.
+On a Mac with Xcode, XcodeGen, and simulator runtimes installed, run `bash ios/test-preview.sh iPhone` and `bash ios/test-preview.sh iPad` from the repository root. Each opens the bundled preview and starts a sample conversation. The **Family iOS simulator** GitHub Actions workflow runs the preview on both devices and requires no signing credentials.
 
 ## Reticulum TCP runtime
 
@@ -27,7 +27,7 @@ python3 ios/stage-runtime.py /path/to/rns-1.5.7-py3-none-any.whl ios/RuntimeBuil
 
 The staging script verifies the wheel hash and includes Family's bundled LXMF sources. It keeps Reticulum standalone, delays importing shared-instance IPC, and uses the internal crypto provider when external crypto is unavailable. On iOS, LXMF stamp generation runs in one process.
 
-The loopback test in `tests/test_ios_tcp_runtime.py` starts two Family instances on a local Reticulum hub. Set `FAMILY_IOS_TCP_TEST_RUNTIME` to the absolute staged directory to exercise the staged clients with the iOS platform identifier and without optional Android and crypto modules.
+The loopback test in `tests/test_ios_tcp_runtime.py` starts two Family instances on a local Reticulum hub. Set `FAMILY_IOS_TCP_TEST_RUNTIME` to the absolute staged directory to exercise the staged clients with the iOS platform identifier and without optional Android and crypto modules. Set `FAMILY_TEST_RMAP=1` to also exercise public TCP and the simulator echo fixture on the host.
 
 ## Live iPhone and iPad development target
 
@@ -38,10 +38,18 @@ bash ios/test-live.sh iPhone
 bash ios/test-live.sh iPad
 ```
 
-The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families.
+The script verifies and stages the pinned CPython XCFramework and Reticulum wheel. It starts a private loopback peer, generates the **FamilyLive** Xcode project, and launches a test that sets up guardian access, approves the peer, and verifies an outgoing delivery receipt and incoming echo. The GitHub workflow runs the preview and live checks on both simulator families. The local live test also enables iOS message alerts, moves the app to the Home Screen and back during the conversation, and checks for a delivered notification in Notification Center.
+
+To exercise the same messaging test through `rmap.world:4242`, append `rmap` to the command for each simulator. In GitHub Actions, add the `ios-rmap-test` label to the pull request or enable the `rmap` workflow input once the workflow is available on the default branch. Both endpoints use disposable LXMF identities and the peer echoes only the randomly generated test message. Test names and public LXMF addresses are announced to the Reticulum network.
 
 **FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
 
-After the simulator checks, use a physical iPad for Bluetooth, camera, location and app lifecycle. SIP, notifications, background delivery, maps, and distribution remain separate iOS milestones.
+## Notifications and background delivery
 
-[Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app)
+Tap **Enable message notifications** on the home screen. Incoming messages from approved contacts can trigger a local alert while the app is running. The alert leaves out the sender and message text. Family keeps a record of posted alerts to avoid repeating them on refresh.
+
+If Family is sending a message when iOS moves it to the background, it requests a short period to finish the send. iOS can suspend the app and its TCP connection. Delivery while suspended needs a relay that can hold encrypted messages for the recipient and a push provider to send generic alerts through Apple Push Notification service. Push alerts can tell the recipient to open Family and retrieve pending messages. Silent refresh pushes are best effort.
+
+Use a signed build on a physical iPad to check the lock screen, background lifecycle, and push delivery once the relay and push integration are available. Bluetooth, camera, location, SIP, maps, and distribution are separate iOS milestones.
+
+[Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)

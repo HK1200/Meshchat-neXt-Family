@@ -1,8 +1,10 @@
 import SwiftUI
+import UIKit
 
 @main
 @MainActor
 struct FamilyLiveApp: App {
+    @UIApplicationDelegateAdaptor(FamilyNotifications.self) private var notifications
     @StateObject private var family = FamilyModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -10,11 +12,13 @@ struct FamilyLiveApp: App {
         WindowGroup {
             FamilyHome(family: family)
                 .task(id: scenePhase) {
-                    if scenePhase != .active {
+                    family.notifications = notifications
+                    if scenePhase == .active {
+                        await family.refreshNotificationPermission()
+                    } else {
                         await family.lock()
-                        return
                     }
-                    while !Task.isCancelled {
+                    while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
                         await family.refresh()
                         do { try await Task.sleep(for: .seconds(1)) }
                         catch { break }
@@ -29,12 +33,76 @@ final class FamilyModel: ObservableObject {
     @Published private(set) var state: FamilyReply?
     @Published private(set) var unlocked = false
     @Published var error = ""
+    @Published private(set) var notificationsAllowed = false
+    #if DEBUG
+    @Published private(set) var testNotificationDelivered = false
+    #endif
+    weak var notifications: FamilyNotifications?
+    private var sendTask: UIBackgroundTaskIdentifier = .invalid
+    private var sendsStarting = 0
+    private var guardianEpoch = 0
+    var finishingSend: Bool { sendTask != .invalid }
+
     private let client = FamilyClient()
     private var token = ""
 
     func refresh() async {
-        do { state = try await request("status") }
-        catch { self.error = error.localizedDescription }
+        do {
+            state = try await request("status")
+            if notificationsAllowed {
+                await notifications?.publish(messages)
+                #if DEBUG
+                if !testNotificationDelivered &&
+                    ProcessInfo.processInfo.environment["FAMILY_TEST_NOTIFICATIONS"] == "1" {
+                    testNotificationDelivered = await notifications?.hasDeliveredMessage(from: messages) ?? false
+                }
+                #endif
+            }
+            finishSendIfIdle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private var messages: [FamilyMessage] {
+        state?.messages?.values.flatMap { $0 } ?? []
+    }
+
+    func refreshNotificationPermission() async {
+        notificationsAllowed = await notifications?.isAuthorized() ?? false
+    }
+
+    func enableNotifications() async {
+        do {
+            notificationsAllowed = try await notifications?.authorize(existingMessages: messages) ?? false
+            error = notificationsAllowed ? "" : "Allow neXt Family notifications in iOS Settings."
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func send(contactID: Int, text: String) async -> Bool {
+        sendsStarting += 1
+        if !finishingSend {
+            sendTask = UIApplication.shared.beginBackgroundTask(withName: "Finish Family message") { [weak self] in
+                self?.endSendTask()
+            }
+        }
+        defer {
+            sendsStarting -= 1
+            finishSendIfIdle()
+        }
+        return await perform("send", ["contactId": contactID, "text": text, "method": "auto"])
+    }
+
+    private func finishSendIfIdle() {
+        let pending = messages.contains {
+            !$0.incoming && ["Finding path", "Sending", "Sent · awaiting delivery proof"].contains($0.status)
+        }
+        if sendsStarting == 0 && !pending { endSendTask() }
+    }
+
+    private func endSendTask() {
+        guard finishingSend else { return }
+        let task = sendTask
+        sendTask = .invalid
+        UIApplication.shared.endBackgroundTask(task)
     }
 
     func perform(_ action: String, _ payload: [String: Any] = [:]) async -> Bool {
@@ -50,9 +118,15 @@ final class FamilyModel: ObservableObject {
     }
 
     func unlock(_ password: String) async {
+        let epoch = guardianEpoch
         do {
             let reply = try await request("unlock", ["password": password])
-            token = reply.token ?? ""
+            let newToken = reply.token ?? ""
+            guard epoch == guardianEpoch else {
+                _ = try? await request("lock", ["token": newToken])
+                return
+            }
+            token = newToken
             unlocked = !token.isEmpty
             error = ""
         } catch {
@@ -61,6 +135,7 @@ final class FamilyModel: ObservableObject {
     }
 
     func lock() async {
+        guardianEpoch += 1
         guard !token.isEmpty else { return }
         let current = token
         token = ""
@@ -69,6 +144,11 @@ final class FamilyModel: ObservableObject {
     }
 
     func savePeer(host: String, port: Int) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), host == "rmap.world" {
+            guard await perform("device_name", ["token": token, "name": "Family iOS simulator test"]) else { return }
+        }
+        #endif
         _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": true])
     }
 
@@ -138,6 +218,9 @@ struct FamilyHome: View {
                             NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
                         }
                         Button("Guardian settings") { showGuardian = true }
+                    }
+                    if !family.notificationsAllowed {
+                        Button("Enable message notifications") { Task { await family.enableNotifications() } }
                     }
                 } else {
                     ProgressView("Starting Family")
@@ -226,13 +309,16 @@ struct FamilyChat: View {
                     let text = draft
                     submitting = true
                     Task {
-                        if await family.perform("send", ["contactId": contact.id, "text": text, "method": "auto"]),
+                        if await family.send(contactID: contact.id, text: text),
                            draft == text { draft = "" }
                         submitting = false
                     }
                 }
                 .disabled(submitting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+                #if DEBUG
+                if family.testNotificationDelivered { Text("Message notification delivered") }
+                #endif
             }
         }
         .navigationTitle(contact.name)

@@ -11,6 +11,7 @@ struct FamilyMessage: Decodable, Identifiable, Sendable {
     let text: String
     let status: String
     let incoming: Bool
+    var read: Bool?
 }
 
 struct FamilyReply: Decodable, Sendable {

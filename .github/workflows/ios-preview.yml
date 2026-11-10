@@ -2,7 +2,13 @@ name: Family iOS simulator
 
 on:
   workflow_dispatch:
+    inputs:
+      rmap:
+        description: Run live messaging through rmap.world on both simulators
+        type: boolean
+        default: false
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'ios/**'
       - 'app/src/main/assets/**'
@@ -31,6 +37,9 @@ jobs:
       - name: Run live Reticulum messaging test
         if: matrix.suite == 'live'
         run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Run public Reticulum messaging test
+        if: matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test'))
+        run: bash ios/test-live.sh "${{ matrix.device }}" rmap
       - name: Run preview smoke test
         if: matrix.suite == 'preview'
         run: bash ios/test-preview.sh "${{ matrix.device }}"
