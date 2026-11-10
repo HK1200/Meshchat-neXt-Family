@@ -4,6 +4,7 @@
 - Correct LXST 0.5.4 amplitude gain targets and limits to use amplitude dB conversion.
 - Route Android volume buttons to call volume during calls.
 - Ignore delayed hang-up actions for ended calls while protecting a newer call.
+- Add a speaker button to Reticulum calls. Answering from the Android call notification opens Family and handles microphone permission.
 
 The speech-level changes pass quiet and loud signal regression checks. A live listening test on the two OnePlus 13 phones remains necessary.
 
