@@ -431,11 +431,12 @@ struct FamilyGuardian: View {
                     Group {
                         if showPassword {
                             TextField("Guardian password", text: $password)
+                                .accessibilityIdentifier("unlock-password")
                         } else {
                             SecureField("Guardian password", text: $password)
+                                .accessibilityIdentifier("unlock-password")
                         }
                     }
-                    .accessibilityIdentifier("unlock-password")
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     Button(showPassword ? "Hide password" : "Show password") { showPassword.toggle() }
