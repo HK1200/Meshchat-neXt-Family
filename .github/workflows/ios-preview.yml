@@ -14,13 +14,14 @@ permissions:
 
 jobs:
   simulator:
-    name: ${{ matrix.device }} preview
+    name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         device: [iPhone, iPad]
+        suite: [live, preview]
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
@@ -28,7 +29,8 @@ jobs:
       - name: Install XcodeGen
         run: command -v xcodegen || brew install xcodegen
       - name: Run live Reticulum messaging test
+        if: matrix.suite == 'live'
         run: bash ios/test-live.sh "${{ matrix.device }}"
       - name: Run preview smoke test
-        if: ${{ !cancelled() }}
+        if: matrix.suite == 'preview'
         run: bash ios/test-preview.sh "${{ matrix.device }}"

@@ -19,10 +19,10 @@ if [[ ! -f RuntimeBuild/Python.xcframework/build/utils.sh ]]; then
     tar -xzf "$support" -C RuntimeBuild Python.xcframework
 fi
 
-wheel=RuntimeBuild/rns-1.5.7-py3-none-any.whl
-if [[ ! -f "$wheel" ]]; then
-    python3 -m pip download --disable-pip-version-check --no-deps --only-binary=:all: --dest RuntimeBuild rns==1.5.7
-fi
+mkdir -p RuntimeBuild/public
+wheel=RuntimeBuild/public/rns-1.5.7-py3-none-any.whl
+fetch https://files.pythonhosted.org/packages/6a/5a/ee933b9f465040039286ffa76c5e509f334b61014061cdc1b0e46bcb3753/rns-1.5.7-py3-none-any.whl \
+    0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf "$wheel"
 stage="$(mktemp -d "$PWD/RuntimeBuild/staging.XXXXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 python3 stage-runtime.py "$wheel" "$stage/staged"

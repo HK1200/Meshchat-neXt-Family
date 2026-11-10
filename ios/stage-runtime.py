@@ -7,7 +7,7 @@ import shutil
 from zipfile import ZipFile
 
 
-RNS_SHA256 = "f14a08106a10cb3cafdf0cad74f1adc7f0eb396b7a2796ea76bcbbd1aab983d1"
+RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
 FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
 FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py")
 
