@@ -8,6 +8,8 @@ def _android_signal(sig,handler):
         raise
 signal.signal=_android_signal
 from pathlib import Path
+
+DEFAULT_DEVICE_NAME='neXt Family'
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -54,6 +56,7 @@ def initialize(folder):
         existing=p.exists()
         _state=json.loads(p.read_text()) if existing else {'contacts':[],'messages':[],'peer':{'host':'rmap.world','port':4242,'enabled':False}}
         _state.setdefault('setup_complete',existing)
+        _state.setdefault('device_name',DEFAULT_DEVICE_NAME)
         _state.setdefault('preferences',{'announceEnabled':False,'searchEnabled':False,'roomAnnounceEnabled':False})
         if 'password_salt' not in _state:
             _state['password_salt']=secrets.token_hex(16)
@@ -150,7 +153,8 @@ def _start():
         identity=RNS.Identity.from_file(str(identity_path)) if identity_path.exists() else RNS.Identity()
         if not identity_path.exists():identity.to_file(str(identity_path));os.chmod(identity_path,0o600)
         _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False)
-        _destination=_router.register_delivery_identity(identity,display_name='neXt Family',stamp_cost=0)
+        with _announce_lock,_lock:
+            _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive)
         _meshcore.identity=identity
         from family_voice import FamilyVoice
@@ -429,6 +433,7 @@ def _snapshot():
         result['location']=_locations.snapshot() if _locations else {}
         if _meshcore:result['location']['meshcoreStatus']=_meshcore.location_status
         result['preferences']=dict(_state.get('preferences',{}))
+        result['deviceName']=_state.get('device_name',DEFAULT_DEVICE_NAME)
         result['clientLookup']=dict(_client_lookup)
         if _meshcore:
             mc_rooms=_meshcore.rooms.snapshot();room_data['rooms']+=mc_rooms['rooms'];room_data['roomRuntime'].update(mc_rooms['roomRuntime'])
@@ -549,6 +554,22 @@ def request(raw):
             _authorized(p)
             from family_cards import parse
             return json.dumps({'ok':True,'card':parse(p.get('text'),p.get('target','contact'))})
+        elif action=='device_name':
+            name=p.get('name')
+            with _announce_lock,_lock:
+                _authorized(p)
+                if not isinstance(name,str) or not 1<=len(name.strip())<=32 or not name.strip().isprintable():
+                    raise ValueError('Enter a device name of 1–32 printable characters.')
+                name=name.strip()
+                previous=_state['device_name']
+                if name!=previous:
+                    _state['device_name']=name
+                    try:_save()
+                    except OSError:
+                        _state['device_name']=previous
+                        raise
+                    if _destination is not None:_destination.display_name=name
+                    _announced_sessions.clear()
         elif action=='preferences':
             _authorized(p)
             values=p.get('values',{})
