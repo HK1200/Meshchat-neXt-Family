@@ -17,10 +17,10 @@ Tap the key icon on the home screen, enter the guardian password, and open **Con
 | Connection | How to set it up |
 | --- | --- |
 | Reticulum over the internet | Choose **Configure TCP peer**. Enter the peer hostname and port, enable the peer, and save. The suggested starting point is `rmap.world` on port `4242`. |
-| Reticulum over LoRa | Configure an **RNode radio**. Choose its supported Bluetooth, USB serial, or Wi-Fi connection and select or enter the device address. Match the frequency, bandwidth, spreading factor, and coding rate to your local network. Set the transmit power to the value appropriate for your hardware and location. Enable the RNode and save. TCP and an RNode can both be enabled. |
+| Reticulum over LoRa | Configure an **RNode radio**. Choose its supported Bluetooth, USB serial, or Wi-Fi connection and select or enter the device address. Match the frequency, bandwidth, spreading factor, and coding rate to your local network. Set the transmit power to the value appropriate for your hardware and location. New profiles start at 914.875 MHz, 125 kHz, SF8, CR 4/7 and 17 dBm. Edit the values to match your network before enabling and saving. TCP and an RNode can both be enabled. |
 | MeshCore | Use a separate radio running MeshCore companion firmware. For Bluetooth, grant **Allow Bluetooth access**, tap **Find Bluetooth companions**, and select the radio. For USB serial, attach it with a data-capable adapter and grant Android’s USB permission. Enable MeshCore and **Receive messages on this device**, then choose **Save and connect**. |
 | Reticulum calls | Open **Configure Reticulum calls** and enable calling. The contact must have an approved LXST address and a Reticulum path with enough capacity for voice. |
-| SIP calls | Choose **Configure SIP account**. Enter your provider’s server, port, your own extension and password, and any transport setting the provider requires. Save and wait for the account to register. |
+| SIP calls | Choose **Configure SIP account**. The editable Hams Over IP preset is `premium.hamsoverip.com` on port `5160`. Family uses SIP over UDP. Enter your own extension and password, save, and wait for the account to register. |
 
 A MeshCore companion should be used by one phone app at a time. If Family cannot connect, disconnect the radio in the other app first. For LoRa, use the parameters supplied by the network you intend to join.
 
@@ -33,11 +33,11 @@ A MeshCore companion should be used by one phone app at a time. If Family cannot
    | --- | --- |
    | Reticulum text | The person’s 32-character hexadecimal **LXMF destination**. |
    | Reticulum voice | The person’s 32-character hexadecimal **LXST address**. Family can offer to derive it when the approved Reticulum identity is known. |
-   | MeshCore | The person’s full 64-character hexadecimal **public key**. Use the full key from their companion. |
-   | SIP | The other person’s SIP URI, for example `sip:101@provider.example:5060`. Enter their port when needed. Your own account belongs under **Connections**. |
+   | MeshCore | Scan the person’s MeshCore companion QR, search received announces by name or key, or enter their full 64-character public key. Both import options are available when editing an existing contact. |
+   | SIP | The other person’s numeric extension on your configured SIP server, or their full SIP URI for another server, such as `sip:101@provider.example:5060`. Your own account belongs under **Connections**. |
 
 3. Save with **Save approved contact**. You can import contact details from a QR code, or enable the announce stream and search under **Contact discovery**. Verify the address with the person before approving it. The contact discovery list is for clients. Room servers are approved separately.
-4. Choose **Lock and return**. Tap **Text** or **Call** on the person’s card. **Automatic** uses an available compatible route. Use the connection picker when you want to choose it yourself.
+4. Choose **Lock and return**. Tap **Text** or **Call** on the person’s card. **Automatic** chooses a compatible route. If a text fails or delivery is unconfirmed after the service’s retry window, Family tries the other available approved service. The MeshCore route supports up to 160 UTF-8 bytes, and a missing receipt can lead to a duplicate on the recipient’s device. Use the connection picker to keep a send on a specific service.
 5. Send one short message and have the person reply. If calling is enabled, make a short call in both directions and verify the incoming **Answer** and **Decline** controls.
 
 MeshCore supports private text in Family. Use SIP or Reticulum for calls.

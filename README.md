@@ -6,7 +6,7 @@ neXt Family is an Android companion to Meshchat neXt. A guardian approves the pe
 - **MeshCore** provides private text and approved room servers through a separate companion radio.
 - **SIP** provides extension calls with your own SIP provider account.
 
-You can enable any combination. Family keeps these services separate and uses an available route supported by the contact and the action. A person can also choose a service manually.
+You can enable any combination. Family keeps these services separate and uses an available route supported by the contact and the action. Automatic texting can retry over another approved service after a failed or unconfirmed attempt. A person can also choose a service manually.
 
 ## Install and set up
 
