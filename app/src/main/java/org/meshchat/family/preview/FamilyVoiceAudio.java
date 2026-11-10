@@ -17,6 +17,7 @@ final class FamilyVoiceAudio {
   speaker=new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(output).setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(PCM_CHUNK_BYTES*3,AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT))).build();
   if(microphone.getState()!=AudioRecord.STATE_INITIALIZED||speaker.getState()!=AudioTrack.STATE_INITIALIZED)throw new IllegalStateException("Audio unavailable");
   if(android.media.audiofx.AcousticEchoCanceler.isAvailable()){echo=android.media.audiofx.AcousticEchoCanceler.create(microphone.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}
+  speaker.setVolume(AudioTrack.getMaxVolume());
   callId=id;running=true;microphone.startRecording();final AudioRecord capture=microphone;final AudioTrack playback=speaker;
   new Thread(()->{
    try{

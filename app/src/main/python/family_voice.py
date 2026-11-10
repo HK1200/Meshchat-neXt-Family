@@ -96,6 +96,8 @@ class FamilyVoice:
   manager=self
   class Input(LocalSource):
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):
+    from lxst_audio_processing import prepare_capture_filters
+    self.filters=prepare_capture_filters(kwargs.get('filters'))
     self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
     self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
     self.pending=bytearray()
@@ -114,6 +116,7 @@ class FamilyVoice:
      del self.pending[:self.frame_bytes]
      if self.sink.can_receive(from_source=self):
       samples=(np.frombuffer(frame,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
+      for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
       self.sink.handle_frame(self.codec.encode(samples),self)
       sent+=1
     return sent
@@ -197,7 +200,8 @@ class FamilyVoice:
   threading.Thread(target=answer_call,daemon=True).start()
  def hangup(self,call_id=None):
   with self.lock:
-   if call_id is not None and call_id!=self.call_id:raise ValueError('The call has changed')
+   # A delayed UI/notification action for an ended call must not affect a newer call.
+   if call_id is not None and call_id!=self.call_id:return
    self.generation+=1;self.phase='ending' if self.phone and self.phone.active_call else 'idle'
    if self.phase=='idle':self._ended();return
   def end():
