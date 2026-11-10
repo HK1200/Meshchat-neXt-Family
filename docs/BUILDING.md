@@ -10,3 +10,7 @@ The app ID is `org.meshchat.family.preview`. Keeping it stable lets production-s
 Production packages are signed outside Gradle. To install over an existing production release, Android requires the same app ID and compatible signing certificate. The release updater also verifies the downloaded APK’s size, SHA-256, version, app ID, and certificate before opening Android’s installer.
 
 For Codec2, verify the Android wheel’s `pycodec2/pycodec2.so` exports `PyInit_pycodec2` with the Android NDK’s `llvm-readelf --dyn-syms`. A wheel can contain `libcodec2.so` and still fail to import if that export is missing. Before shipping, test an actual Codec2 encode/decode on the target device.
+
+The reproducible repair tool accepts the pinned wheel, matching NumPy wheel, the per-ABI Chaquopy Python target ZIP, and the Android NDK LLVM toolchain. Run it for each needed ABI, preserve its provenance file, then build with the repaired private vendor directory.
+
+[Codec2 repair tool](https://github.com/HK1200/Meshchat-neXt/blob/v0.1.11/scripts/android/rebuild-pycodec2-wheel.py)
