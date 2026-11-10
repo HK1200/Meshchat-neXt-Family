@@ -1,5 +1,6 @@
 """Guardian-configured RNode interfaces; Android USB and RNode-over-IP."""
 import json,re,threading
+from decimal import Decimal
 _context=None
 
 def set_context(context):
@@ -24,6 +25,28 @@ def bluetooth(action,address=None):
     if action=='pair':return bool(helper.pair(_context,address))
     return json.loads(str(helper.snapshot()))
 
+def frequency_hz(raw):
+    """Normalize radio profile frequencies from MHz, kHz, or Hz."""
+    error='Enter an RNode frequency from 137 to 1020 MHz, for example 914.875 MHz or 914875000 Hz.'
+    text=str(raw).strip()
+    if len(text)>32:raise ValueError(error)
+    match=re.fullmatch(r'([0-9]+(?:[.,][0-9]+)*)\s*(mhz|khz|hz)?',text,re.I)
+    if not match:raise ValueError(error)
+    value,unit=match.groups()
+    unit=unit.lower() if unit else None
+    if re.fullmatch(r'[0-9]{1,3}(?:,[0-9]{3})+',value) and (value.count(',')>1 or unit in ['khz','hz']):
+        value=value.replace(',','')
+    elif re.fullmatch(r'[0-9]+[.,][0-9]+',value):
+        value=value.replace(',','.')
+    elif not value.isascii() or not value.isdigit():
+        raise ValueError(error)
+    amount=Decimal(value)
+    scales={'mhz':1000000,'khz':1000,'hz':1}
+    for scale in (scales[unit],) if unit else scales.values():
+        hz=amount*scale
+        if 137000000<=hz<=1020000000 and hz==hz.to_integral_value():return int(hz)
+    raise ValueError(error)
+
 def validate(raw):
     if not isinstance(raw,dict):raise ValueError('Invalid RNode settings')
     enabled=raw.get('enabled',False)
@@ -40,7 +63,7 @@ def validate(raw):
         if not low<=value<=high or not value.is_integer():raise ValueError('Invalid '+key)
         return int(value)
     return dict(enabled=enabled,transport=transport,endpoint=endpoint,
-        frequency=number('frequency',137000000,1020000000,1000000),
+        frequency=frequency_hz(raw.get('frequency','')),
         bandwidth=number('bandwidth',7800,500000,1000),sf=number('sf',5,12),
         cr=number('cr',5,8),power=number('power',0,30))
 

@@ -8,6 +8,9 @@ def _android_signal(sig,handler):
         raise
 signal.signal=_android_signal
 from pathlib import Path
+
+DEFAULT_DEVICE_NAME='neXt Family'
+ANNOUNCE_INTERVAL=60*60
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -34,10 +37,11 @@ _sessions={}
 _outbound={}
 _pending_inbound=set()
 _announces={}
+_client_lookup={}
 _announce_lock=threading.RLock()
 _announced_sessions={}
 _announce_failures={}
-_last_primary=None
+_last_announce_primary={}
 _path_request_lock=threading.Lock()
 _path_request_last={}
 
@@ -53,6 +57,7 @@ def initialize(folder):
         existing=p.exists()
         _state=json.loads(p.read_text()) if existing else {'contacts':[],'messages':[],'peer':{'host':'rmap.world','port':4242,'enabled':False}}
         _state.setdefault('setup_complete',existing)
+        _state.setdefault('device_name',DEFAULT_DEVICE_NAME)
         _state.setdefault('preferences',{'announceEnabled':False,'searchEnabled':False,'roomAnnounceEnabled':False})
         if 'password_salt' not in _state:
             _state['password_salt']=secrets.token_hex(16)
@@ -149,7 +154,8 @@ def _start():
         identity=RNS.Identity.from_file(str(identity_path)) if identity_path.exists() else RNS.Identity()
         if not identity_path.exists():identity.to_file(str(identity_path));os.chmod(identity_path,0o600)
         _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False)
-        _destination=_router.register_delivery_identity(identity,display_name='neXt Family',stamp_cost=0)
+        with _announce_lock,_lock:
+            _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive)
         _meshcore.identity=identity
         from family_voice import FamilyVoice
@@ -164,13 +170,7 @@ def _start():
             aspect_filter='lxmf.delivery'
             receive_path_responses=True
             def received_announce(self,destination_hash,announced_identity,app_data,announce_packet_hash=None):
-                address=destination_hash.hex()
-                if _destination and address==_destination.hash.hex():return
-                try:name=LXMF.display_name_from_app_data(app_data) or 'Unnamed messaging client'
-                except Exception:name='Unnamed messaging client'
-                with _lock:
-                    _announces[address]={'name':str(name)[:64],'service':'lxmf','address':address,'seen':time.time()}
-                    if len(_announces)>200:_announces.pop(min(_announces,key=lambda key:_announces[key]['seen']))
+                _remember_client(destination_hash,app_data)
         RNS.Transport.register_announce_handler(Clients())
         with _lock:
             for m in _state['messages']:
@@ -206,6 +206,10 @@ def _connect():
         if peer['enabled']:
             class FamilyTCPInterface(TCPClientInterface):
                 def connect(self,*args,**kwargs):
+                    # A public TCP hub can sustain more announces than the default
+                    # startup threshold of 3/s. Keep burst control active on TCP.
+                    self.ic_burst_freq_new=max(self.ic_burst_freq_new,20)
+                    self.ic_burst_freq=max(self.ic_burst_freq,20)
                     connected=super().connect(*args,**kwargs)
                     if connected:self.family_connection_epoch=getattr(self,'family_connection_epoch',0)+1
                     return connected
@@ -269,7 +273,7 @@ def _receive(message):
 def _update(mid,status):
     with _lock:
         row=next((m for m in _state['messages'] if m['id']==mid),None)
-        if row:
+        if row and row.get('service','reticulum')=='reticulum' and not row['status'].startswith('Delivered'):
             row['status']=status
             if status=='Delivered':row['deliveredAt']=time.time()
             _save()
@@ -297,12 +301,86 @@ def _await_identity(address,permitted,timeout=60):
         time.sleep(.3)
     return None
 
+def _remember_client(destination_hash,app_data):
+    import LXMF
+    address=destination_hash.hex()
+    if _destination and destination_hash==_destination.hash:return
+    try:name=LXMF.display_name_from_app_data(app_data) or 'Unnamed messaging client'
+    except Exception:name='Unnamed messaging client'
+    with _lock:
+        _announces[address]={'name':str(name)[:64],'service':'lxmf','address':address,'seen':time.time()}
+        if len(_announces)>200:_announces.pop(min(_announces,key=lambda key:_announces[key]['seen']))
+
+def _find_client(address,token):
+    global _client_lookup
+    import RNS
+    destination=bytes.fromhex(address)
+    def permitted():
+        with _lock:return _sessions.get(token,0)>time.time()
+    message='No client answered. Check the address and ask them to announce their Reticulum messaging identity.'
+    client=None
+    try:
+        identity=_await_identity(destination,permitted,timeout=25)
+        if identity and RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity)==destination:
+            with _lock:
+                if permitted():
+                    _remember_client(destination,RNS.Identity.recall_app_data(destination))
+                    client=dict(_announces[address])
+                    message='Messaging client found. Review the address before approving it.'
+        elif identity:
+            message='This address belongs to a different Reticulum service.'
+    except Exception:
+        message='The Reticulum lookup failed. Check your connection and try again.'
+    finally:
+        with _lock:
+            allowed=permitted()
+            _client_lookup={'pending':False,'message':message if allowed else ''}
+            if client and allowed:_client_lookup['client']=client
+
 def _delivery_method(address):
     import RNS,LXMF
     interface=RNS.Transport.next_hop_interface(address)
     return LXMF.LXMessage.OPPORTUNISTIC if _radio and interface is _radio.interface else LXMF.LXMessage.DIRECT
 
-def _send(mid,peer,text):
+def _dispatch_message(mid,service,peer,text,on_failure=None):
+    if service=='reticulum':
+        threading.Thread(target=_send,args=(mid,peer,text,on_failure),daemon=True).start()
+    else:
+        _meshcore.send(mid,peer,text,on_failure)
+
+def _retry_message(mid,contact_id,service,peer,alternate,alternate_peer,status):
+    """Switch a single conversation row to its other approved destination."""
+    with _lock:
+        row=next((m for m in _state['messages'] if m['id']==mid),None)
+        contact=next((c for c in _state['contacts'] if c['id']==contact_id),None)
+        if not row or not contact or row.get('service')!=service or row.get('peer')!=peer:
+            return False
+        if row['status'].startswith(('Delivered','Cancelled')):return False
+        addresses=contact['addresses']
+        current_key,alternate_key=('lxmf','meshcore') if service=='reticulum' else ('meshcore','lxmf')
+        if addresses.get(current_key,'').lower()!=peer or addresses.get(alternate_key,'').lower()!=alternate_peer:
+            return False
+        if not any(route['service']==alternate for route in _message_routes(contact,row['text'])):
+            return False
+        text=row['text']
+        row['fallbackFrom']={key:row[key] for key in ('service','peer','owner')}
+        row['fallbackFrom']['status']=status
+        row.update(service=alternate,peer=alternate_peer,
+                   owner=(_state.get('meshcore') or {}).get('publicKey','') if alternate=='meshcore' else '',
+                   status='Trying MeshCore' if alternate=='meshcore' else 'Trying Reticulum')
+        row.pop('hash',None)
+        _outbound.pop(mid,None)
+        _save()
+    _dispatch_message(mid,alternate,alternate_peer,text)
+    return True
+
+def _send(mid,peer,text,on_failure=None):
+    send_started=False
+    message=None
+    def fail(status):
+        if send_started:status='Not confirmed · Reticulum'
+        if on_failure is None or not on_failure(status):
+            _update(mid,status)
     try:
         import RNS,LXMF
         if not _online():raise ValueError('No Reticulum connection is online')
@@ -313,21 +391,33 @@ def _send(mid,peer,text):
             if not permitted():raise ValueError('Contact approval was removed')
             raise ValueError('No path to contact after 60 seconds')
         dest=RNS.Destination(identity,RNS.Destination.OUT,RNS.Destination.SINGLE,'lxmf','delivery')
-        # On the approved low-bandwidth radio, LXMF can encrypt and sign a
-        # short message in one packet, avoiding a multi-packet link handshake.
-        # LXMF itself upgrades oversized content to link delivery before send.
-        message=LXMF.LXMessage(dest,_destination,text,desired_method=_delivery_method(bytes.fromhex(peer)),include_ticket=True)
+        class TrackedMessage(LXMF.LXMessage):
+            def send(self):
+                nonlocal send_started
+                send_started=True
+                return super().send()
+        # On an RNode, short messages can avoid a multi-packet link handshake.
+        message=TrackedMessage(dest,_destination,text,desired_method=_delivery_method(bytes.fromhex(peer)),include_ticket=True)
         message.register_delivery_callback(lambda m:_update(mid,'Delivered'))
-        message.register_failed_callback(lambda m:_update(mid,'Failed'))
+        def failed(m):
+            if m.state!=LXMF.LXMessage.CANCELLED:
+                fail('Failed · Reticulum could not send')
+        message.register_failed_callback(failed)
         # Recheck approval immediately before handing the packet to LXMF.
         with _lock:
             if not _contact(peer):raise ValueError('Contact approval was removed')
+            row=next((m for m in _state['messages'] if m['id']==mid),None)
+            if row is None:return
             _outbound[mid]=message
+            row['status']='Sending'
             _router.handle_outbound(message)
-            row=next(m for m in _state['messages'] if m['id']==mid)
-            row['hash']=message.hash.hex() if message.hash else None
-            row['status']='Sending';_save()
-    except Exception as e:_update(mid,'Failed · '+str(e))
+            if row['service']=='reticulum':
+                row['hash']=message.hash.hex() if message.hash else None
+                _save()
+    except Exception as e:
+        # The router can report failure synchronously before raising.
+        if message is None or message.state not in (LXMF.LXMessage.FAILED,LXMF.LXMessage.REJECTED,LXMF.LXMessage.CANCELLED):
+            fail('Failed · '+str(e))
 
 def _message_routes(contact,text=None):
     from family_routes import choices
@@ -344,30 +434,46 @@ def _room_transport_versions():
     return versions
 
 def _announce_available_routes():
-    """Refresh return paths once per usable session and preferred-path change."""
-    global _last_primary
+    """Advertise each enabled service at startup, on route changes, and hourly."""
     if _destination is None:return
     import RNS
     with _announce_lock:
         versions=_room_transport_versions();radio=getattr(_radio,'interface',None)
-        with _lock:peer_enabled=bool(_state['peer'].get('enabled'));radio_enabled=bool((_state.get('rnode') or {}).get('enabled'))
+        with _lock:
+            peer_enabled=bool(_state['peer'].get('enabled'))
+            radio_enabled=bool((_state.get('rnode') or {}).get('enabled'))
+            voice=_voice.phone if _voice and _state.get('voiceEnabled') and not _voice_deferred else None
         candidates=(_peer if peer_enabled else None,radio if radio_enabled and _radio and _radio.snapshot()['online'] else None)
-        interfaces=[interface for interface in candidates if interface is not None and interface.online and not getattr(interface,'detached',False) and interface in RNS.Transport.interfaces]
-        primary=(id(interfaces[0]),versions[id(interfaces[0])]) if interfaces else None
-        live={id(interface) for interface in interfaces}
-        for key in list(_announced_sessions):
-            if key not in live:_announced_sessions.pop(key,None);_announce_failures.pop(key,None)
-        if not interfaces:_last_primary=None
-        for interface in interfaces:
-            key=id(interface);version=versions[key]
-            if _announced_sessions.get(key)==version and not (primary[0]==key and _last_primary!=primary):continue
-            if time.monotonic()-_announce_failures.get(key,float('-inf'))<10:continue
-            try:
-                # Standard LXMF identity/name metadata only; never location.
-                _destination.announce(attached_interface=interface)
-                _announced_sessions[key]=version;_announce_failures.pop(key,None)
-                if primary[0]==key:_last_primary=primary
-            except Exception:_announce_failures[key]=time.monotonic()
+        interfaces=[interface for interface in candidates if interface is not None and interface.online and not getattr(interface,'detached',False) and interface in RNS.Transport.interfaces and id(interface) in versions]
+        services=[('text',_destination)]
+        if voice:services.append(('voice',voice))
+        else:_last_announce_primary.pop('voice',None)
+        live={(service,id(interface)) for service,_ in services for interface in interfaces}
+        for key in (_announced_sessions.keys()|_announce_failures.keys())-live:
+            _announced_sessions.pop(key,None);_announce_failures.pop(key,None)
+        if not interfaces:
+            _last_announce_primary.clear()
+            return
+        primary=id(interfaces[0])
+        now=time.monotonic()
+        for service,endpoint in services:
+            for interface in interfaces:
+                route=id(interface)
+                key=(service,route)
+                name=getattr(endpoint,'display_name',None) if service=='text' else None
+                version=(versions[route],endpoint,name)
+                primary_session=(route,version)
+                preferred=route==primary and _last_announce_primary.get(service)!=primary_session
+                previous=_announced_sessions.get(key)
+                if previous and previous[0]==version and now-previous[1]<ANNOUNCE_INTERVAL and not preferred:continue
+                if now-_announce_failures.get(key,float('-inf'))<10:continue
+                try:
+                    with _lock:
+                        if service=='voice' and (_voice_deferred or not _state.get('voiceEnabled') or _voice.phone is not endpoint):continue
+                        endpoint.announce(attached_interface=interface)
+                    _announced_sessions[key]=(version,now);_announce_failures.pop(key,None)
+                    if route==primary:_last_announce_primary[service]=primary_session
+                except Exception:_announce_failures[key]=now
 
 def _conversation_messages(contact):
     """Project approved direct rows while the caller holds the state lock."""
@@ -403,6 +509,8 @@ def _snapshot():
         result['location']=_locations.snapshot() if _locations else {}
         if _meshcore:result['location']['meshcoreStatus']=_meshcore.location_status
         result['preferences']=dict(_state.get('preferences',{}))
+        result['deviceName']=_state.get('device_name',DEFAULT_DEVICE_NAME)
+        result['clientLookup']=dict(_client_lookup)
         if _meshcore:
             mc_rooms=_meshcore.rooms.snapshot();room_data['rooms']+=mc_rooms['rooms'];room_data['roomRuntime'].update(mc_rooms['roomRuntime'])
         if _room_names:room_data=_room_names.decorate(room_data)
@@ -415,6 +523,7 @@ def background(lock_guardian=True):
     if _meshcore:_meshcore.rooms.close_view()
 
 def request(raw):
+    global _client_lookup
     try:
         if len(raw)>1500000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
@@ -512,7 +621,7 @@ def request(raw):
             elif action=='location_stop':
                 if not _locations.permissions(guardian):raise ValueError('Location sharing is managed by your guardian')
                 _locations.stop()
-        elif action=='authorize_update_config':
+        elif action in ['authorize_update_config','authorize_apk_share']:
             _authorized(p)
             return json.dumps({'ok': True})
         elif action=='authorize_camera':
@@ -521,11 +630,39 @@ def request(raw):
             _authorized(p)
             from family_cards import parse
             return json.dumps({'ok':True,'card':parse(p.get('text'),p.get('target','contact'))})
+        elif action=='device_name':
+            name=p.get('name')
+            with _announce_lock,_lock:
+                _authorized(p)
+                if not isinstance(name,str) or not 1<=len(name.strip())<=32 or not name.strip().isprintable():
+                    raise ValueError('Enter a device name of 1–32 printable characters.')
+                name=name.strip()
+                previous=_state['device_name']
+                if name!=previous:
+                    _state['device_name']=name
+                    try:_save()
+                    except OSError:
+                        _state['device_name']=previous
+                        raise
+                    if _destination is not None:_destination.display_name=name
         elif action=='preferences':
             _authorized(p)
             values=p.get('values',{})
             if not isinstance(values,dict) or any(k not in ['announceEnabled','searchEnabled','roomAnnounceEnabled'] or not isinstance(v,bool) for k,v in values.items()):raise ValueError('Invalid discovery preferences')
             with _lock:_state['preferences'].update(values);_save()
+        elif action=='discover_client':
+            _authorized(p)
+            address=p.get('address','')
+            if not isinstance(address,str) or not re.fullmatch('[0-9a-fA-F]{32}',address):
+                raise ValueError('Enter a 32-character LXMF address.')
+            address=address.lower()
+            if not _online():raise ValueError('Connect Reticulum before looking up a client.')
+            if _destination and address==_destination.hash.hex():raise ValueError('This is Family’s own address.')
+            with _lock:
+                if _client_lookup.get('pending'):raise ValueError('A client lookup is already running.')
+                _client_lookup={'pending':True,'message':'Looking for this messaging client…'}
+            threading.Thread(target=_find_client,args=(address,p['token']),daemon=True).start()
+            return json.dumps({'ok':True})
         elif action=='discover':
             _authorized(p)
             if not _rns:raise ValueError('Reticulum is still starting')
@@ -628,10 +765,11 @@ def request(raw):
                 c=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)
                 if not c:raise ValueError('Contact is not approved')
                 method=p.get('method','auto')
+                automatic=method=='auto'
                 if method not in ['auto','reticulum','meshcore']:raise ValueError('Unsupported message method')
                 reticulum=bool(c['addresses'].get('lxmf') and _online())
                 meshcore=bool(c['addresses'].get('meshcore') and _meshcore and _meshcore.connected)
-                if method=='auto':
+                if automatic:
                     options=_message_routes(c,str(p.get('text','')).strip())
                     method=options[0]['service'] if options else 'auto'
                 if method=='reticulum' and not reticulum:raise ValueError('Reticulum is not connected or not approved for this contact')
@@ -644,8 +782,13 @@ def request(raw):
                 owner=(_state.get('meshcore') or {}).get('publicKey','') if method=='meshcore' else ''
                 _state['messages']=_state['messages'][-499:]
                 _state['messages'].append({'id':mid,'peer':peer,'owner':owner,'service':method,'text':text,'incoming':False,'status':'Finding path' if method=='reticulum' else 'Sending to MeshCore companion','timestamp':time.time()});_save()
-            if method=='reticulum':threading.Thread(target=_send,args=(mid,peer,text),daemon=True).start()
-            else:_meshcore.send(mid,peer,text)
+                alternate,alternate_key=('meshcore','meshcore') if method=='reticulum' else ('reticulum','lxmf')
+                alternate_peer=c['addresses'].get(alternate_key,'').lower()
+                on_failure=None
+                if automatic and alternate_peer and (alternate!='meshcore' or len(text.encode())<=160):
+                    def on_failure(status):
+                        return _retry_message(mid,c['id'],method,peer,alternate,alternate_peer,status)
+            _dispatch_message(mid,method,peer,text,on_failure)
         elif action not in ['status','contacts','peer','password','discover']:raise ValueError('Unsupported action')
         return json.dumps({'ok':True,**_snapshot()})
     except Exception as e:return json.dumps({'ok':False,'error':str(e)})

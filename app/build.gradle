@@ -7,15 +7,24 @@ android {
     compileSdk 35
     defaultConfig {
         applicationId 'org.meshchat.family.preview'
+        manifestPlaceholders = [familyAppLabel: 'neXt Family']
         minSdk 26
         testInstrumentationRunner 'org.meshchat.family.preview.FamilyTestInstrumentation'
         ndk { abiFilters "arm64-v8a" }
         targetSdk 35
-        versionCode 21
-        versionName '0.6.12'
+        versionCode 23
+        versionName '0.6.14'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { debug { applicationIdSuffix project.hasProperty('isolatedSetupTest') ? '.setuptest' : '' }; release { minifyEnabled false } }
+    buildTypes {
+        debug {
+            if (project.hasProperty('isolatedSetupTest')) {
+                applicationIdSuffix '.setuptest'
+                manifestPlaceholders = [familyAppLabel: 'neXt Family Preview']
+            }
+        }
+        release { minifyEnabled false }
+    }
 }
 
 chaquopy {

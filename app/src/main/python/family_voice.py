@@ -42,7 +42,9 @@ class FamilyVoice:
     from LXST.Primitives import Telephony
     self._install_audio(Telephony)
     phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self.allowed,wait_time=30)
-    phone.last_announce=time.time();phone.set_announce_interval(2**31-1)
+    # LXST 0.5.4's worker reads ANNOUNCE_INTERVAL directly. Family schedules
+    # announcements on its enabled routes, so suppress the library's broadcast.
+    phone.last_announce=time.time();phone.ANNOUNCE_INTERVAL=2**31-1
     phone.set_busy_tone_time(0);phone.set_connect_timeout(30)
     phone.set_ringing_callback(self._ring);phone.set_established_callback(self._connected);phone.set_ended_callback(self._ended)
     if not self.state.get('voiceEnabled'):phone.teardown();return
