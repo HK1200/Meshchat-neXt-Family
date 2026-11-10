@@ -1,6 +1,7 @@
 package org.meshchat.family.preview;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -32,6 +33,8 @@ public final class FamilyUpdateActivity extends Activity {
     private FamilyUpdates.Release release;
     private volatile boolean cancelled;
     private boolean ownsDownload;
+    private boolean awaitingPermission;
+    private boolean staging;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -96,19 +99,22 @@ public final class FamilyUpdateActivity extends Activity {
 
     private void continueInstall() {
         File file = verified;
-        if (file == null || !file.isFile() || cancelled) return;
+        if (file == null || !file.isFile() || cancelled || awaitingPermission || staging) return;
         proceed.setEnabled(false);
         if (!getPackageManager().canRequestPackageInstalls()) {
             message.setText("Allow Family to install updates in Android settings, then return here.");
             try {
+                awaitingPermission = true;
                 startActivityForResult(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:" + getPackageName())), INSTALL_PERMISSION);
             } catch (RuntimeException error) {
+                awaitingPermission = false;
                 message.setText("Android could not open install permissions.");
                 proceed.setEnabled(true);
             }
             return;
         }
+        staging = true;
         message.setText("Preparing Android’s install confirmation…");
         new Thread(() -> stage(file), "family-install-update").start();
     }
@@ -152,7 +158,14 @@ public final class FamilyUpdateActivity extends Activity {
                         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 int flags = PendingIntent.FLAG_UPDATE_CURRENT;
                 if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
-                session.commit(PendingIntent.getActivity(this, id, result, flags).getIntentSender());
+                Bundle options = null;
+                if (Build.VERSION.SDK_INT >= 35) {
+                    options = ActivityOptions.makeBasic()
+                            .setPendingIntentCreatorBackgroundActivityStartMode(
+                                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                            .toBundle();
+                }
+                session.commit(PendingIntent.getActivity(this, id, result, flags, options).getIntentSender());
             }
             id = -1; // The committed session now belongs to Android.
         } catch (Exception error) {
@@ -169,7 +182,18 @@ public final class FamilyUpdateActivity extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request != INSTALL_PERMISSION) return;
+        if (request == INSTALL_PERMISSION) resumeInstallPermission();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (awaitingPermission) resumeInstallPermission();
+    }
+
+    private void resumeInstallPermission() {
+        if (!awaitingPermission) return;
+        awaitingPermission = false;
         if (getPackageManager().canRequestPackageInstalls()) {
             continueInstall();
         } else {
@@ -200,7 +224,11 @@ public final class FamilyUpdateActivity extends Activity {
                     : intent.getParcelableExtra(Intent.EXTRA_INTENT);
             if (confirmation != null) {
                 message.setText("Approve the update in Android’s installer.");
-                startActivity(confirmation);
+                try {
+                    startActivity(confirmation);
+                } catch (RuntimeException error) {
+                    show("Android could not open the install confirmation. Close this screen and retry.");
+                }
             } else {
                 show("Android did not provide an install confirmation.");
             }
@@ -216,8 +244,13 @@ public final class FamilyUpdateActivity extends Activity {
             });
             proceed.setEnabled(true);
         } else {
-            message.setText(status == PackageInstaller.STATUS_FAILURE_ABORTED
-                    ? "The update was cancelled." : "Android could not install the update.");
+            if (status == PackageInstaller.STATUS_FAILURE_ABORTED) {
+                message.setText("The update was cancelled.");
+            } else if (status == PackageInstaller.STATUS_FAILURE_BLOCKED) {
+                message.setText("Android blocked the update. Check the installer or Play Protect for details.");
+            } else {
+                message.setText("Android could not install the update.");
+            }
         }
     }
 

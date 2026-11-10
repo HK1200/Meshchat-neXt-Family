@@ -27,6 +27,7 @@ _meshcore=None
 _voice=None
 _voice_deferred=False
 _network_context="unknown"
+_tcp_network_context=""
 _room_names=None
 _location_outbound={}
 _error='Starting Reticulum'
@@ -189,13 +190,14 @@ def _start():
 
 def _connect():
     global _peer,_error,_connecting,_connect_pending
-    if _connecting:
-        _connect_pending=True;return
-    _connecting=True
+    with _lock:
+        if _connecting:
+            _connect_pending=True;return
+        _connecting=True
     try:
         if not _rns:return
         import RNS
-        from RNS.Interfaces.TCPInterface import TCPClientInterface
+        from family_tcp import FamilyTCPInterface
         if _peer:
             if _rooms:_rooms.retire_interface(_peer)
             _peer.detach()
@@ -204,25 +206,17 @@ def _connect():
             _announce_available_routes()
         with _lock:peer=dict(_state['peer'])
         if peer['enabled']:
-            class FamilyTCPInterface(TCPClientInterface):
-                def connect(self,*args,**kwargs):
-                    # A public TCP hub can sustain more announces than the default
-                    # startup threshold of 3/s. Keep burst control active on TCP.
-                    self.ic_burst_freq_new=max(self.ic_burst_freq_new,20)
-                    self.ic_burst_freq=max(self.ic_burst_freq,20)
-                    connected=super().connect(*args,**kwargs)
-                    if connected:self.family_connection_epoch=getattr(self,'family_connection_epoch',0)+1
-                    return connected
             _peer=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
             _rns._add_interface(_peer)
             _error=''
             _announce_available_routes()
     except Exception as e:_error=str(e)
     finally:
-        _connecting=False
-        if _connect_pending:
+        with _lock:
+            _connecting=False
+            pending=_connect_pending
             _connect_pending=False
-            threading.Thread(target=_connect,daemon=True).start()
+        if pending:threading.Thread(target=_connect,daemon=True).start()
 
 def _online():
     return bool((_peer and _peer.online) or (_radio and _radio.snapshot()['online']))
@@ -746,7 +740,7 @@ def request(raw):
             elif action=='voice_hangup':_voice.hangup(p.get('callId'))
             elif action=='voice_mute':
                 if type(p.get('muted')) is not bool:raise ValueError('Invalid mute setting')
-                _voice.muted=p['muted']
+                _voice.set_muted(p['muted'])
         elif action=='conversation_read':
             with _lock:
                 contact=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)
@@ -842,5 +836,11 @@ def set_voice_deferred(deferred):
         threading.Thread(target=_voice._ensure,daemon=True).start()
 
 def set_network_context(context):
-    global _network_context
-    _network_context=str(context)[:128]
+    global _network_context,_tcp_network_context
+    context=str(context)[:128]
+    with _lock:
+        _network_context=context
+        if not context.partition(':')[0].isdigit() or context==_tcp_network_context:return
+        reconnect=bool(_tcp_network_context and _state and _state['peer'].get('enabled') and _rns)
+        _tcp_network_context=context
+    if reconnect:threading.Thread(target=_connect,daemon=True).start()

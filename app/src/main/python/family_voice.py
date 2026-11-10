@@ -1,9 +1,45 @@
 """Approved LXST calls with native Android PCM; no host audio or auto-answer."""
-import threading,time,uuid,queue
+import threading,time,uuid
+
+PCM_BYTES_PER_MS = 96
+PLAYBACK_CHUNK = 20 * PCM_BYTES_PER_MS
+
+
+class VoicePlaybackBuffer:
+ """Bounded 48 kHz mono PCM buffer. The Android audio clock paces playback."""
+
+ def __init__(self):
+  self.clear()
+
+ def clear(self):
+  self.pcm=bytearray()
+  self.playing=False
+  self.underruns=0
+  self.dropped_bytes=0
+
+ def append(self,pcm):
+  self.pcm.extend(pcm)
+  excess=len(self.pcm)-500*PCM_BYTES_PER_MS
+  if excess>0:
+   del self.pcm[:excess]
+   self.dropped_bytes+=excess
+
+ def pull(self):
+  if not self.playing:
+   if len(self.pcm)<120*PCM_BYTES_PER_MS:return b''
+   self.playing=True
+  if len(self.pcm)<PLAYBACK_CHUNK:
+   self.playing=False
+   self.underruns+=1
+   return b''
+  chunk=bytes(self.pcm[:PLAYBACK_CHUNK])
+  del self.pcm[:PLAYBACK_CHUNK]
+  return chunk
+
 
 class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
-  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=queue.Queue(3);self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
+  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
   if state['voiceEnabled'] and autostart:threading.Thread(target=self._ensure,daemon=True).start()
@@ -58,15 +94,27 @@ class FamilyVoice:
   manager=self
   class Input(LocalSource):
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):
-    self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False;manager.input=self
+    self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
+    self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
+    self.pending=bytearray()
+    manager.input=self
    def start(self):self.should_run=True
-   def stop(self):self.should_run=False
+   def stop(self):
+    with manager.lock:self.should_run=False;self.pending.clear()
    def can_receive(self,from_source=None):return True
    def handle_frame(self,frame,source=None):pass
    def push(self,data):
-    if not self.should_run or not self.sink:return
-    samples=(np.frombuffer(data,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
-    if self.sink.can_receive(from_source=self):self.sink.handle_frame(self.codec.encode(samples),self)
+    if not self.should_run or not self.sink:return 0
+    self.pending.extend(data)
+    sent=0
+    while len(self.pending)>=self.frame_bytes:
+     frame=bytes(self.pending[:self.frame_bytes])
+     del self.pending[:self.frame_bytes]
+     if self.sink.can_receive(from_source=self):
+      samples=(np.frombuffer(frame,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
+      self.sink.handle_frame(self.codec.encode(samples),self)
+      sent+=1
+    return sent
   class Output(LocalSink):
    def __init__(self,*args,**kwargs):self.samplerate=48000;self.channels=1;self.bitdepth=16;self.streaming=False;self.should_run=False;self.buffer_max_height=3;self.autostart_min=1
    def start(self):self.should_run=True;self.streaming=True
@@ -81,10 +129,7 @@ class FamilyVoice:
      if data.ndim==2 and data.shape[1]>1:data=data.mean(axis=1)
      pcm=(np.clip(data,-1,1)*32767).astype('<i2').tobytes()
      if not pcm or len(pcm)>65536:return
-     if manager.pcm.full():
-      try:manager.pcm.get_nowait()
-      except queue.Empty:pass
-     manager.pcm.put_nowait(pcm);manager.received+=1
+     manager.pcm.append(pcm);manager.received+=1
   telephony.LineSource=Input;telephony.LineSink=Output
  def _ring(self,identity):
   with self.lock:
@@ -104,9 +149,7 @@ class FamilyVoice:
     self.state['callQuality']=(self.state.get('callQuality',[])+[{'service':'reticulum','target':self.target,'context':self.quality_context,'timestamp':time.time(),'failed':bool(self.error),'metrics':metrics}])[-64:];self.save()
    self.outgoing=False;self.connected_at=0.
    self.generation+=1;self.phase='idle';self.peer='';self.target='';self.call_id='';self.muted=False;self._gate(False)
-   while not self.pcm.empty():
-    try:self.pcm.get_nowait()
-    except queue.Empty:break
+   self.pcm.clear()
  def call(self,contact_id,automatic=False):
   with self.lock:
    contact=next((c for c in self.state['contacts'] if c['id']==contact_id),None)
@@ -167,11 +210,14 @@ class FamilyVoice:
    if call_id!=self.call_id or self.phase!='connected' or not self.allowed(bytes.fromhex(self.peer)) or self.muted or not self.input:return
    data=bytes(data)
    if not data or len(data)>11520 or len(data)%2:return
-   self.input.push(data);self.sent+=1
+   self.sent+=self.input.push(data)
  def pull(self,call_id):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.peer or not self.allowed(bytes.fromhex(self.peer)):return b''
-   try:return self.pcm.get_nowait()
-   except queue.Empty:return b''
+   return self.pcm.pull()
+ def set_muted(self,muted):
+  with self.lock:
+   self.muted=muted
+   if muted and self.input:self.input.pending.clear()
  def snapshot(self):
-  with self.lock:return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'muted':self.muted,'target':self.target}
+  with self.lock:return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target}
