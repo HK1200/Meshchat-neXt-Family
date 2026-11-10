@@ -111,7 +111,7 @@ function refreshRadioBatteries(state){
 window.addEventListener('family-native-background',()=>{batteryPaused=true;});
 window.addEventListener('family-native-resume',()=>{batteryPaused=false;batteryRefreshAt=0;});
 function refreshLive(first=false){if(!liveNative)return;const r=nativeRequest('status');if(!r.ok){liveState={...(liveState||{}),error:r.error};$('radio-batteries').hidden=true;return;}const fingerprint=JSON.stringify([r.online,r.ready,r.error,r.messageRoutes,r.callRoutes,r.peer,r.rnode,r.rnodeRuntime,r.tcpOnline,r.sip,r.voice,r.contacts,r.messages,r.meshcore,r.rooms,r.roomRuntime,r.roomDiscovery,r.rrcHubs,r.roomError,r.location,r.mapPacks,r.activeMap,r.announces,r.clientLookup,r.preferences,r.updates]);const sharingChanged=sharingSessionKey(liveState?.location)!==sharingSessionKey(r.location);liveState=r;refreshRadioBatteries(r);announceEnabled=!!r.preferences?.announceEnabled;searchEnabled=!!r.preferences?.searchEnabled;roomAnnounceEnabled=!!r.preferences?.roomAnnounceEnabled;announcements.splice(0,announcements.length,...(r.announces||[]));rooms.splice(0,rooms.length,...(r.rooms||[]));roomAnnouncements.splice(0,roomAnnouncements.length,...(r.rrcHubs||[]).map(h=>({name:h.name,key:h.hubHash,service:'reticulum',kind:3})),...(r.meshcore?.roomAnnounces||[]));nextRoomId=Math.max(0,...rooms.map(room=>room.id))+1;serviceEnabled.meshcore=!!r.meshcore?.enabled;profiles.home.meshcore=r.meshcore?.connected?78:0;serviceEnabled.reticulum=!!(r.peer.enabled||r.rnode?.enabled);profiles.home.reticulum=r.online?88:0;scenario='home';serviceEnabled.sip=!!r.sip?.enabled;profiles.home.sip=r.sip?.registered?92:0;const si=interfaces.findIndex(i=>i.type==='sip');if(si>=0)interfaces.splice(si,1);if(r.sip?.enabled)interfaces.push({id:4,type:'sip',enabled:true});renderIncomingCall(r.sip);renderReticulumIncoming(r.voice);if(view==='sip-settings'&&$('sip-runtime'))$('sip-runtime').textContent=sipStatus(r.sip);messages=r.messages||{};contacts.splice(0,contacts.length,...r.contacts);if(selected)selected=contacts.find(c=>c.id===selected.id)||selected;if(first){contacts.splice(0,contacts.length,...r.contacts);nextId=Math.max(0,...contacts.map(c=>c.id))+1;interfaces.splice(0,interfaces.length,{id:1,type:'tcp',name:'Reticulum TCP',endpoint:r.peer.host,port:String(r.peer.port),enabled:r.peer.enabled});if(r.rnode)interfaces.push({id:2,type:'rnode',name:'RNode radio',enabled:r.rnode.enabled});if(r.meshcore?.config)interfaces.push({id:3,type:'meshcore',name:r.meshcore.name||'MeshCore companion',enabled:r.meshcore.enabled});nextInterfaceId=4;serviceEnabled.reticulum=!!(r.peer.enabled||r.rnode?.enabled);serviceEnabled.meshcore=!!r.meshcore?.enabled;serviceEnabled.sip=!!r.sip?.enabled;for(const key of Object.keys(locationSamples))delete locationSamples[key];const demo=document.querySelector('.native-demo');if(demo)demo.hidden=true;}
-applyLiveLocations(r);if($('update-config-status'))$('update-config-status').textContent=r.updates?.message||'';if(view==='map-settings')refreshGuardianSharing(sharingChanged);if(first||fingerprint!==liveFingerprint){liveFingerprint=fingerprint;if(view==='map'&&mapWidget?.moving()){mapRefreshPending=true;return;}if(first||(liveState?.setupComplete!==false&&['home','text','room','room-discover','connection-status','call-live','reticulum-call','call','map','admin','rooms'].includes(view))){const fields={};for(const id of ['message','room-message','live-hub-hash','live-room-search','live-mc-room-search','contact-search','client-lookup-address',...(!sharingChanged?['share-duration']:[])])if($(id))fields[id]=$(id).value;const focus=document.activeElement?.id;render();for(const [id,value] of Object.entries(fields))if($(id)){$(id).value=value;if(id==='live-room-search'||id==='live-mc-room-search'||id==='contact-search')$(id).dispatchEvent(new Event('input'));}updateSharingStart('share-duration','start-sharing');if(focus&&$(focus))$(focus).focus();}}}
+applyLiveLocations(r);if($('update-config-status'))$('update-config-status').textContent=r.updates?.message||'';if(view==='map-settings')refreshGuardianSharing(sharingChanged);if(first||fingerprint!==liveFingerprint){liveFingerprint=fingerprint;if(view==='map'&&mapWidget?.moving()){mapRefreshPending=true;return;}if(first||(liveState?.setupComplete!==false&&['home','text','room','room-discover','connection-status','call-live','reticulum-call','call','map','admin','rooms'].includes(view))){const fields={};for(const id of ['message','room-message','live-hub-hash','live-room-search','live-mc-room-search','contact-search',...(!sharingChanged?['share-duration']:[])])if($(id))fields[id]=$(id).value;const focus=document.activeElement?.id;render();for(const [id,value] of Object.entries(fields))if($(id)){$(id).value=value;if(id==='live-room-search'||id==='live-mc-room-search'||id==='contact-search')$(id).dispatchEvent(new Event('input'));}updateSharingStart('share-duration','start-sharing');if(focus&&$(focus))$(focus).focus();}}}
 
 let theme;
 try{theme=localStorage.getItem('next-family-theme');}catch{}
@@ -138,6 +138,7 @@ async function focusQRCamera(track){
     try{await track.applyConstraints({advanced:[{focusMode:'continuous'}]});}catch{}
 }
 const announcements=[{name:'Trail station',service:'lxmf',address:'a1'.repeat(16)},{name:'Family base radio',service:'meshcore',address:'b2'.repeat(32)},{name:'Cabin voice',service:'lxst',address:'c3'.repeat(16)}];
+function lookupAddress(text){return text.trim().match(/^(?:lxmf(?::\/\/|@|:))?([0-9a-f]{32})$/i)?.[1].toLowerCase()||'';}
 function saveDiscovery(values){if(liveNative){const r=nativeRequest('preferences',{token:liveToken,values});if(!r.ok){alert(r.error);return false;}liveState=r;}return true;}
 function decodeQRImage(source){const canvas=document.createElement('canvas');const width=source.videoWidth||source.width,height=source.videoHeight||source.height;if(!width||!height)return null;const scale=Math.min(1,1600/Math.max(width,height));canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(source,0,0,canvas.width,canvas.height);const pixels=context.getImageData(0,0,canvas.width,canvas.height);return jsQR(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'})?.data||null;}
 function stopScan(){scanGeneration++;if(scanTimer)clearTimeout(scanTimer);scanTimer=null;if(scanStream)scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
@@ -536,7 +537,7 @@ screen.classList.add('settings');
 const field=(id,label,value='',extra='')=>`<label for="${id}">${label}</label><input id="${id}" value="${escape(value)}" ${extra}>`;
 const shell=`<button class="back" id="done">← Lock and return</button><h2 class="view-title">Guardian settings</h2><div class="tabs"><button class="secondary" id="contacts-tab">Contacts</button><button class="secondary" id="rooms-tab">Rooms</button><button class="secondary" id="interfaces-tab">Connections</button><button class="secondary" id="maps-tab">Maps</button><button class="secondary" id="security-tab">Security</button></div>`;
 if(liveNative&&['interfaces','interface-edit'].includes(view)){renderLiveConnections(shell);return;}
-let content='';
+let content='',lookupClient=null;
 if(view==='security')content='<h3>Guardian password</h3><p class="sub">Protect contact approval and connection settings with your own password.</p><form id="password-form"><label for="new-password">New password</label><input id="new-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required><label for="confirm-password">Confirm password</label><input id="confirm-password" type="password" autocomplete="new-password" required><p class="error" id="password-status" role="status"></p><button class="primary">Change password</button></form>';
 if(view==='security'&&liveNative)content=`<fieldset><legend>Device name</legend><form id="device-name-form">${field('device-name','Reticulum display name',liveState?.deviceName||'neXt Family','required maxlength="64" autocomplete="off"')}<p class="fine">Use 1–32 characters. Other Reticulum users can see this name in client announcements.</p><button class="secondary">Save device name</button><p class="fine" id="device-name-status" role="status"></p></form></fieldset>`+content+familyUpdateSettings();
 if(view==='map-settings')content=mapSettings();
@@ -550,10 +551,29 @@ if(view==='admin'){
 const visibleAnnounces=announcements.filter(a=>serviceEnabled[a.service==='meshcore'?'meshcore':'reticulum']);
 const announcementRows=visibleAnnounces.map(a=>`<div class="admin-person" data-announcement><div><b>${escape(a.name)}</b><small>${escape(a.service.toUpperCase())} · ${escape(a.address)}</small></div><button data-review="${escape(a.address)}">Review</button></div>`).join('');
 const lookup=liveState?.clientLookup||{};
+lookupClient=serviceEnabled.reticulum?lookup.client:null;
 const empty=liveNative&&serviceEnabled.reticulum&&liveState?.online
-    ? 'Reticulum is connected. No messaging clients have announced to this device yet. Ask your contact to announce, or look up their LXMF address below.'
+    ? 'Reticulum is connected. No messaging clients have announced to this device yet. Ask your contact to announce, or look up their LXMF address.'
     : 'No messaging clients received yet. Connect an enabled messaging service and wait for client announces.';
-content+=`<fieldset><legend>Contact discovery</legend><label><input id="announce-enabled" type="checkbox" ${announceEnabled?'checked':''}> Show announce stream</label><label><input id="search-enabled" type="checkbox" ${searchEnabled?'checked':''}> Enable contact search</label><small>Search or browse received messaging clients, including people you haven’t approved yet. Review each address before saving.</small></fieldset><button class="secondary" id="qr-import">Add by QR code</button>${searchEnabled?'<label for="contact-search">Search approved contacts and received clients</label><input id="contact-search" type="search" placeholder="Name or full address"><div id="search-status" class="fine" role="status"></div>':''}${searchEnabled&&!announceEnabled?`<section id="announce-search-results" hidden>${announcementRows}</section>`:''}${announceEnabled?'<h3 style="margin-top:22px">Announce stream</h3><button class="secondary" id="refresh-announces">Refresh received announces</button><p class="fine" id="announce-refresh-status" role="status"></p><p class="fine">Received messaging-client announces · review before approval</p>'+(!visibleAnnounces.length?`<p class="fine" id="announce-empty">${escape(empty)}</p>`:'')+(liveNative&&serviceEnabled.reticulum?`<form id="client-lookup"><label for="client-lookup-address">Look up an LXMF address</label><input id="client-lookup-address" type="text" maxlength="32" autocapitalize="none" spellcheck="false" required><button class="secondary" ${lookup.pending?'disabled':''}>Find messaging client</button><p class="fine" id="client-lookup-status" role="status">${escape(lookup.message||'')}</p></form>`:'')+announcementRows:''}`;
+const searchForm=`<form id="contact-search-form">
+    <label for="contact-search">Search by name or address</label>
+    <input id="contact-search" type="search" maxlength="80" placeholder="Name or LXMF address" autocomplete="off" autocapitalize="none" spellcheck="false">
+    <small>Names match approved contacts and received clients. To look up a new client over Reticulum, enter their full LXMF address.</small>
+    ${liveNative&&serviceEnabled.reticulum?`<button class="secondary" ${lookup.pending?'disabled':''}>Find messaging client</button>`:''}
+    <p id="search-status" class="fine" role="status"></p>
+    <p id="client-lookup-status" class="fine" role="status">${escape(lookup.message||'')}</p>
+    ${lookupClient?`<div class="admin-person" id="client-lookup-result"><div><b>${escape(lookupClient.name)}</b><small>LXMF · ${escape(lookupClient.address)}</small></div><button type="button" id="review-client-lookup">Review</button></div>`:''}
+</form>`;
+content+=`<fieldset><legend>Contact discovery</legend>
+    <label><input id="announce-enabled" type="checkbox" ${announceEnabled?'checked':''}> Show announce stream</label>
+    <label><input id="search-enabled" type="checkbox" ${searchEnabled?'checked':''}> Show search when the stream is hidden</label>
+    <small>Review each address before approving a contact.</small>
+</fieldset><button class="secondary" id="qr-import">Add by QR code</button>
+${announceEnabled||searchEnabled?searchForm:''}
+${searchEnabled&&!announceEnabled?`<section id="announce-search-results" hidden>${announcementRows}</section>`:''}
+${announceEnabled?`<h3 style="margin-top:22px">Announce stream</h3><button class="secondary" id="refresh-announces">Refresh received announces</button>
+<p class="fine" id="announce-refresh-status" role="status"></p><p class="fine">Received messaging-client announces · review before approval</p>
+${visibleAnnounces.length?'':`<p class="fine" id="announce-empty">${escape(empty)}</p>`}${announcementRows}`:''}`;
 }
 if(view==='qr-import'){const target=qrTarget==='room'?'room':'contact';content=`<h3>Add ${target} by QR code</h3><p class="sub">Scan or import a code, then review its details before approval.</p><video id="qr-video" muted playsinline hidden style="width:100%;border-radius:12px"></video><div class="row"><button class="secondary" id="scan-qr">Scan with camera</button><button class="secondary" id="stop-qr" hidden>Stop camera</button></div><label for="qr-image">Or choose a QR image</label><input id="qr-image" type="file" accept="image/*"><p class="fine">QR codes are decoded on this device. Camera images are never uploaded. You can also paste a code below.</p><label for="qr-payload">${target==='room'?'Room':'Contact'} code</label><textarea id="qr-payload" rows="6" maxlength="8192" style="width:100%;border:1px solid #ccd7c5;border-radius:12px;padding:12px;font:inherit"></textarea><button class="secondary" id="qr-example">Use example ${target} code</button><div id="qr-status" class="error" role="status"></div><button class="primary" id="review-qr">Review ${target}</button><p class="fine">Accepts neXt identity QR codes, LXMF addresses, and family contact or room cards. Imported details always require your review.</p>`;}
 if(view==='interfaces')content=`<fieldset><legend>Services your family uses</legend>${Object.entries(labels).map(([key,label])=>`<label><input type="checkbox" data-service="${key}" ${serviceEnabled[key]?'checked':''} ${liveNative&&key!=='reticulum'?'disabled':''}> ${label}</label>`).join('')}<small>Choose any combination. Disabled services are excluded from automatic and manual selection. Existing setup is retained.</small></fieldset><h3>Device connections</h3><p class="sub">Configure this device’s radios and accounts.</p>${interfaces.filter(i=>serviceEnabled[interfaceService(i.type)]).map(i=>`<div class="admin-person"><div><b>${escape(i.name)}</b><small>${escape({tcp:'Reticulum TCP',rnode:'RNode',lan:'Reticulum local network',meshcore:'MeshCore radio',sip:'SIP account'}[i.type])} · ${i.enabled?'Enabled in simulation':'Disabled'}</small></div><button data-interface="${i.id}">Edit</button></div>`).join('')}<button class="primary" id="new-interface" ${Object.values(serviceEnabled).some(Boolean)?'':'disabled'} style="margin-top:18px">Add connection</button><p class="notice">Demo setup only. No radio discovery, pairing, network connection or SIP registration takes place. Use example details, not real credentials.</p>`;
@@ -583,15 +603,47 @@ if($('refresh-announces'))$('refresh-announces').onclick=()=>{
     const status=$('announce-refresh-status');
     if(status)status.textContent=liveNative&&liveState?.online?'Listening for messaging-client announces…':'Checked received messaging-client announces.';
 };
-if($('client-lookup'))$('client-lookup').onsubmit=e=>{
-    e.preventDefault();
-    const r=nativeRequest('discover_client',{token:liveToken,address:$('client-lookup-address').value.trim()});
-    if(r.ok)refreshLive();
-    else $('client-lookup-status').textContent=r.error;
-};
 if($('announce-enabled'))$('announce-enabled').onchange=e=>{if(saveDiscovery({announceEnabled:e.target.checked}))announceEnabled=e.target.checked;render();};
 if($('search-enabled'))$('search-enabled').onchange=e=>{if(saveDiscovery({searchEnabled:e.target.checked}))searchEnabled=e.target.checked;render();};
-if($('contact-search'))$('contact-search').oninput=e=>{const q=e.target.value.trim().toLowerCase();const results=$('announce-search-results');if(results)results.hidden=!q;let matches=0;screen.querySelectorAll('[data-edit]').forEach(b=>{const c=contacts.find(c=>c.id===+b.dataset.edit),show=[c.name,...Object.values(c.addresses)].some(v=>v.toLowerCase().includes(q));b.closest('.admin-person').hidden=!show;if(show)matches++;});screen.querySelectorAll('[data-review]').forEach(b=>{const a=announcements.find(a=>a.address===b.dataset.review),show=a&&(a.name+' '+a.address).toLowerCase().includes(q);b.closest('.admin-person').hidden=!show;if(show&&(!results||q))matches++;});$('search-status').textContent=matches+' matching contacts or received clients';};
+if($('contact-search')){
+    const filter=()=>{
+        const text=$('contact-search').value.trim();
+        const address=lookupAddress(text);
+        const query=(address||text).normalize('NFKC').toLowerCase();
+        const results=$('announce-search-results');
+        if(results)results.hidden=!query;
+        $('client-lookup-status').hidden=!!query&&!address;
+        if($('client-lookup-result'))$('client-lookup-result').hidden=!!query&&address!==lookupClient.address;
+        let matches=0;
+        const match=(button,values)=>{
+            const shown=values.some(value=>String(value).normalize('NFKC').toLowerCase().includes(query));
+            button.closest('.admin-person').hidden=!shown;
+            if(shown)matches++;
+        };
+        screen.querySelectorAll('[data-edit]').forEach(button=>{
+            const contact=contacts.find(c=>c.id===Number(button.dataset.edit));
+            if(contact)match(button,[contact.name,...Object.values(contact.addresses)]);
+        });
+        screen.querySelectorAll('[data-review]').forEach(button=>{
+            const client=announcements.find(a=>a.address===button.dataset.review);
+            if(client)match(button,[client.name,client.address]);
+        });
+        $('search-status').textContent=query?`${matches} matching contacts or received clients`:'';
+    };
+    $('contact-search').oninput=filter;
+    $('contact-search-form').onsubmit=e=>{
+        e.preventDefault();
+        filter();
+        const address=lookupAddress($('contact-search').value);
+        if(!address||!liveNative||!serviceEnabled.reticulum)return;
+        const result=nativeRequest('discover_client',{token:liveToken,address});
+        if(result.ok)refreshLive();
+        else $('client-lookup-status').textContent=result.error;
+    };
+    if($('review-client-lookup'))$('review-client-lookup').onclick=()=>{
+        reviewImport({name:lookupClient.name,addresses:{lxmf:lookupClient.address}});
+    };
+}
 screen.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>{const a=announcements.find(a=>a.address===b.dataset.review);if(a)reviewImport({name:a.name,addresses:{[a.service]:a.address}});});
 if($('qr-import'))$('qr-import').onclick=()=>{qrTarget='contact';view='qr-import';render();};
 if($('review-qr')){

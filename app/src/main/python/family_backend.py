@@ -313,19 +313,24 @@ def _find_client(address,token):
     def permitted():
         with _lock:return _sessions.get(token,0)>time.time()
     message='No client answered. Check the address and ask them to announce their Reticulum messaging identity.'
+    client=None
     try:
         identity=_await_identity(destination,permitted,timeout=25)
         if identity and RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity)==destination:
             with _lock:
                 if permitted():
                     _remember_client(destination,RNS.Identity.recall_app_data(destination))
+                    client=dict(_announces[address])
                     message='Messaging client found. Review the address before approving it.'
         elif identity:
             message='This address belongs to a different Reticulum service.'
     except Exception:
         message='The Reticulum lookup failed. Check your connection and try again.'
     finally:
-        with _lock:_client_lookup={'pending':False,'message':message if permitted() else ''}
+        with _lock:
+            allowed=permitted()
+            _client_lookup={'pending':False,'message':message if allowed else ''}
+            if client and allowed:_client_lookup['client']=client
 
 def _delivery_method(address):
     import RNS,LXMF
