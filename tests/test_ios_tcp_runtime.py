@@ -209,3 +209,111 @@ def test_simulator_echo_fixture(tmp_path, public_peer):
             )
 
         wait_status(client, round_trip_complete, timeout=90)
+
+
+def run_mailbox(folder, port, pipe):
+    import LXMF
+    import RNS
+
+    folder.mkdir()
+    (folder / "config").write_text(
+        "[reticulum]\nshare_instance = No\nenable_transport = Yes\n"
+        "[interfaces]\n[[Private mailbox]]\ntype = TCPServerInterface\nenabled = Yes\n"
+        f"listen_ip = 127.0.0.1\nlisten_port = {port}\n"
+    )
+    RNS.Reticulum(configdir=str(folder), loglevel=2)
+    router = LXMF.LXMRouter(storagepath=str(folder), autopeer=False, propagation_cost=13)
+    router.enable_propagation()
+    pipe.send(router.propagation_destination.hash.hex())
+    pipe.recv()
+
+
+def run_mailbox_sender(folder, port, mailbox, pipe):
+    import LXMF
+    import RNS
+
+    folder.mkdir()
+    (folder / "config").write_text(
+        "[reticulum]\nshare_instance = No\nenable_transport = No\n"
+        "[interfaces]\n[[Mailbox client]]\ntype = TCPClientInterface\nenabled = Yes\n"
+        f"target_host = 127.0.0.1\ntarget_port = {port}\n"
+    )
+    RNS.Reticulum(configdir=str(folder), loglevel=2)
+    approved_identity, other_identity = RNS.Identity(), RNS.Identity()
+    router = LXMF.LXMRouter(identity=approved_identity, storagepath=str(folder), autopeer=False)
+    approved = router.register_delivery_identity(approved_identity, stamp_cost=0)
+    other = RNS.Destination(other_identity, RNS.Destination.IN, RNS.Destination.SINGLE, "lxmf", "delivery")
+    pipe.send((approved.hash.hex(), approved_identity.get_public_key().hex()))
+    recipient_key = pipe.recv()
+    recipient = RNS.Identity(create_keys=False)
+    recipient.load_public_key(recipient_key)
+    destination = RNS.Destination(recipient, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
+
+    mailbox_hash = bytes.fromhex(mailbox)
+    router.set_outbound_propagation_node(mailbox_hash)
+    RNS.Transport.request_path(mailbox_hash)
+    deadline = time.monotonic() + 20
+    while not RNS.Transport.has_path(mailbox_hash):
+        assert time.monotonic() < deadline
+        time.sleep(0.2)
+
+    messages = [
+        LXMF.LXMessage(destination, approved, "Approved while offline", desired_method=LXMF.LXMessage.PROPAGATED),
+        LXMF.LXMessage(destination, other, "Unapproved while offline", desired_method=LXMF.LXMessage.PROPAGATED),
+    ]
+    for message in messages:
+        router.handle_outbound(message)
+    deadline = time.monotonic() + 50
+    while any(message.state != LXMF.LXMessage.SENT for message in messages):
+        assert time.monotonic() < deadline, [message.state for message in messages]
+        time.sleep(0.2)
+    pipe.send(True)
+    pipe.recv()
+
+
+def test_mailbox_recovers_only_approved_messages_after_restart(tmp_path, monkeypatch):
+    import RNS
+
+    # The relay and sender use the same packaged LXMF as the Family client.
+    root = Path(__file__).resolve().parents[1]
+    source = os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME") or str(root / "app/src/main/python")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, (source, os.environ.get("PYTHONPATH")))))
+    monkeypatch.syspath_prepend(source)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    with ExitStack() as stack:
+        relay = start_process(stack, run_mailbox, tmp_path / "relay", port)
+        assert relay.poll(10)
+        mailbox = relay.recv()
+        sender = start_process(stack, run_mailbox_sender, tmp_path / "sender", port, mailbox)
+        assert sender.poll(10)
+        approved, public_key = sender.recv()
+        folder = tmp_path / "family"
+        with ExitStack() as running_recipient:
+            client = start_process(running_recipient, run_family, folder)
+            password = "local test guardian password"
+            request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+            token = request(client, "unlock", password=password)["token"]
+            request(client, "mailbox_config", succeeds=False, address=mailbox)
+            request(client, "mailbox_config", succeeds=False, token=token, address="invalid")
+            request(client, "mailbox_config", token=token, address=mailbox)
+            request(client, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            wait_status(client, lambda s: s["ready"] and s["tcpOnline"])
+            request(client, "contacts", token=token, contacts=[{
+                "id": 1, "name": "Approved sender", "addresses": {"lxmf": approved}, "identityPublicKey": public_key
+            }])
+            recipient_identity = RNS.Identity.from_file(str(folder / "identity"))
+        sender.send(recipient_identity.get_public_key())
+        assert sender.poll(55) and sender.recv()
+
+        client = start_process(stack, run_family, folder)
+        state = wait_status(client, lambda s: s["ready"] and s["tcpOnline"])
+        assert state["mailbox"]["address"] == mailbox
+        assert state["messages"]["1"] == []
+        request(client, "mailbox_sync")
+        state = wait_status(client, lambda s: s["mailbox"]["status"] == "complete")
+        assert [row["text"] for row in state["messages"]["1"]] == ["Approved while offline"]
+        request(client, "mailbox_sync")
+        state = wait_status(client, lambda s: s["mailbox"]["status"] == "complete")
+        assert len(state["messages"]["1"]) == 1

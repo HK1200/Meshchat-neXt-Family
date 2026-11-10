@@ -1,3 +1,4 @@
+import BackgroundTasks
 import SwiftUI
 import UIKit
 
@@ -15,15 +16,21 @@ struct FamilyLiveApp: App {
                     family.notifications = notifications
                     if scenePhase == .active {
                         await family.refreshNotificationPermission()
+                        family.checkMailboxOnNextRefresh()
                     } else {
                         await family.lock()
+                        if scenePhase == .background { family.scheduleMailboxRefresh() }
                     }
                     while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
                         await family.refresh()
+                        if scenePhase == .active { await family.checkMailboxIfDue() }
                         do { try await Task.sleep(for: .seconds(1)) }
                         catch { break }
                     }
                 }
+        }
+        .backgroundTask(.appRefresh(FamilyModel.mailboxRefreshID)) {
+            await family.refreshMailboxInBackground(notifications: notifications)
         }
     }
 }
@@ -41,6 +48,8 @@ final class FamilyModel: ObservableObject {
     private var sendTask: UIBackgroundTaskIdentifier = .invalid
     private var sendsStarting = 0
     private var guardianEpoch = 0
+    private var nextMailboxCheck = ContinuousClock.now
+    static let mailboxRefreshID = "org.meshchat.family.ios.live.mailbox"
     var finishingSend: Bool { sendTask != .invalid }
 
     private let client = FamilyClient()
@@ -75,6 +84,67 @@ final class FamilyModel: ObservableObject {
             notificationsAllowed = try await notifications?.authorize(existingMessages: messages) ?? false
             error = notificationsAllowed ? "" : "Allow neXt Family notifications in iOS Settings."
         } catch { self.error = error.localizedDescription }
+    }
+
+    func saveMailbox(_ address: String) async -> Bool {
+        let saved = await perform("mailbox_config", [
+            "token": token, "address": address.trimmingCharacters(in: .whitespacesAndNewlines)
+        ])
+        if saved {
+            nextMailboxCheck = .now
+            scheduleMailboxRefresh()
+        }
+        return saved
+    }
+
+    func checkMailboxOnNextRefresh() {
+        nextMailboxCheck = .now
+    }
+
+    func checkMailboxIfDue() async {
+        guard mailboxEnabled, state?.tcpOnline == true, ContinuousClock.now >= nextMailboxCheck else { return }
+        nextMailboxCheck = .now + .seconds(60)
+        _ = try? await request("mailbox_sync")
+    }
+
+    private var mailboxEnabled: Bool {
+        !(state?.mailbox?.address.isEmpty ?? true)
+    }
+
+    func scheduleMailboxRefresh() {
+        let scheduler = BGTaskScheduler.shared
+        if mailboxEnabled {
+            let request = BGAppRefreshTaskRequest(identifier: Self.mailboxRefreshID)
+            request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+            do { try scheduler.submit(request) }
+            catch { NSLog("Family mailbox background refresh unavailable: %@", error.localizedDescription) }
+        } else {
+            scheduler.cancel(taskRequestWithIdentifier: Self.mailboxRefreshID)
+        }
+    }
+
+    func refreshMailboxInBackground(notifications: FamilyNotifications) async {
+        self.notifications = notifications
+        await lock()
+        await refreshNotificationPermission()
+        let deadline = ContinuousClock.now + .seconds(22)
+        var requested = false
+        defer { if state != nil { scheduleMailboxRefresh() } }
+        while !Task.isCancelled && ContinuousClock.now < deadline {
+            await refresh()
+            guard mailboxEnabled else { return }
+            if requested {
+                let status = state?.mailbox?.status
+                if status == "complete" || status == "failed" { return }
+            } else if state?.tcpOnline == true {
+                if let status = try? await request("mailbox_sync").mailbox?.status {
+                    requested = status == "syncing"
+                    if status == "complete" || status == "failed" { return }
+                }
+            }
+            do { try await Task.sleep(for: .seconds(1)) }
+            catch { return }
+        }
     }
 
     func send(contactID: Int, text: String) async -> Bool {
@@ -154,7 +224,11 @@ final class FamilyModel: ObservableObject {
 
     func addContact(name: String, address: String) async -> Bool {
         let current = state?.contacts ?? []
-        let existing = current.map { ["id": $0.id, "name": $0.name, "addresses": $0.addresses] as [String: Any] }
+        let existing = current.map { contact in
+            var value: [String: Any] = ["id": contact.id, "name": contact.name, "addresses": contact.addresses]
+            value["identityPublicKey"] = contact.identityPublicKey
+            return value
+        }
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard lxmf.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else {
             error = "Enter the contact’s 32-character LXMF address."
@@ -209,6 +283,14 @@ struct FamilyHome: View {
                 } else if let state = family.state {
                     Section("Connection") {
                         Text(state.tcpOnline == true ? "Reticulum TCP connected" : "Reticulum TCP offline")
+                        if let mailbox = state.mailbox, !mailbox.address.isEmpty {
+                            switch mailbox.status {
+                            case "syncing": Text("Checking offline mailbox")
+                            case "failed": Text("Couldn’t check offline mailbox")
+                            case "complete": Text("Offline mailbox checked")
+                            default: Text("Offline mailbox enabled")
+                            }
+                        }
                         if let address = state.address, !address.isEmpty {
                             Text(address).font(.caption.monospaced()).textSelection(.enabled)
                         }
@@ -244,6 +326,8 @@ struct FamilyGuardian: View {
     @State private var name = ""
     @State private var address = ""
     @State private var contactSaved = false
+    @State private var mailboxAddress = ""
+    @State private var mailboxSaved = false
 
     var body: some View {
         NavigationStack {
@@ -266,6 +350,15 @@ struct FamilyGuardian: View {
                         }
                         if contactSaved { Text("Contact saved") }
                     }
+                    Section("Offline message mailbox") {
+                        TextField("LXMF propagation node address", text: $mailboxAddress)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        Button("Save mailbox") { Task { mailboxSaved = await family.saveMailbox(mailboxAddress) } }
+                        if mailboxSaved { Text("Mailbox setting saved") }
+                        Text("Leave blank to disable. Senders must use this mailbox for offline delivery.")
+                            .font(.caption)
+                    }
+                    .onAppear { mailboxAddress = family.state?.mailbox?.address ?? "" }
                 } else {
                     SecureField("Guardian password", text: $password)
                         .accessibilityIdentifier("unlock-password")

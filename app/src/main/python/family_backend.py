@@ -14,6 +14,7 @@ ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
     'device_name','preferences','qr_parse','discover_client','conversation_read','send',
+    'mailbox_config','mailbox_sync',
 })
 _tcp_only=False
 _lock=threading.RLock()
@@ -49,6 +50,7 @@ _announce_failures={}
 _last_announce_primary={}
 _path_request_lock=threading.Lock()
 _path_request_last={}
+_mailbox_lock=threading.Lock()
 
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
@@ -276,6 +278,8 @@ def _receive(message):
             if LXMF.FIELD_TELEMETRY in fields:_locations.receive(peer,fields[LXMF.FIELD_TELEMETRY])
         if not message.content_as_string().strip():return
         if any(m.get('hash')==message.hash.hex() for m in _state['messages']):return
+        if _tcp_only and not contact.get('identityPublicKey'):
+            contact['identityPublicKey']=message.source.identity.get_public_key().hex()
         _state['messages'].append({'id':uuid.uuid4().hex,'hash':message.hash.hex(),'peer':peer,'text':message.content_as_string()[:4096],'status':'Received · signature verified','incoming':True,'timestamp':time.time()})
         _state['messages']=_state['messages'][-500:];_save()
 
@@ -491,6 +495,45 @@ def _conversation_messages(contact):
     owner=(_state.get('meshcore') or {}).get('publicKey','')
     return [dict(m,pending=False) for m in _state['messages'] if (m.get('service','reticulum')=='reticulum' and m['peer']==peer) or (m.get('service')=='meshcore' and m['peer']==mesh_peer and m.get('owner')==owner)]
 
+
+def _mailbox_snapshot():
+    address=_state.get('mailbox','')
+    if not address:return {'address':'','status':'disabled'}
+    if not _router:return {'address':address,'status':'waiting'}
+    phase=_router.propagation_transfer_state
+    if phase==_router.PR_COMPLETE:status='complete'
+    elif _router.PR_IDLE<phase<_router.PR_COMPLETE:status='syncing'
+    elif phase>_router.PR_COMPLETE:status='failed'
+    else:status='waiting'
+    return {'address':address,'status':status}
+
+def _configure_mailbox(payload):
+    _authorized(payload)
+    address=payload.get('address','')
+    if not isinstance(address,str) or (address and not re.fullmatch('[0-9a-fA-F]{32}',address)):
+        raise ValueError('Enter a 32-character LXMF propagation node address.')
+    address=address.lower()
+    with _mailbox_lock:
+        if address==_state.get('mailbox',''):return
+        if _router:_router.cancel_propagation_node_requests()
+        with _lock:
+            previous=_state.get('mailbox','')
+            _state['mailbox']=address
+            try:_save()
+            except OSError:
+                _state['mailbox']=previous
+                raise
+
+def _sync_mailbox():
+    with _mailbox_lock:
+        address=_state.get('mailbox','')
+        if not address or not _router or not _destination or not _online():return _mailbox_snapshot()
+        phase=_router.propagation_transfer_state
+        if _router.PR_IDLE<phase<_router.PR_COMPLETE:return _mailbox_snapshot()
+        _router.set_outbound_propagation_node(bytes.fromhex(address))
+        _router.request_messages_from_propagation_node(_destination.identity,max_messages=50)
+        return _mailbox_snapshot()
+
 def _snapshot():
     import RNS
     _announce_available_routes()
@@ -510,6 +553,7 @@ def _snapshot():
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
         result['tcpOnline']=bool(_peer and _peer.online)
+        if _tcp_only:result['mailbox']=_mailbox_snapshot()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
@@ -565,6 +609,11 @@ def request(raw):
                     timer=getattr(hub,'_reconnect_timer',None)
                     hubs.append({'hubHash':hub.hub_hash.hex(),'status':hub.status,'autoReconnect':hub.auto_reconnect,'manualDisconnect':hub._manual_disconnect,'connectEpoch':getattr(hub,'_connect_epoch',0),'reconnectAttempts':hub._reconnect_attempts,'reconnectScheduled':bool(timer and timer.is_alive())})
             return json.dumps({'ok':True,'threads':threads,'hubs':hubs})
+        if action in ['mailbox_config','mailbox_sync']:
+            if not _tcp_only:raise ValueError('Mailbox sync is only available in the TCP build')
+            if action=='mailbox_sync':return json.dumps({'ok':True,'mailbox':_sync_mailbox()})
+            _configure_mailbox(p)
+            return json.dumps({'ok':True,**_snapshot()})
         if action=='unlock':
             if not _state.get('setup_complete'):raise ValueError('Finish guardian setup first.')
             now=time.time();_auth_failures[:]=[t for t in _auth_failures if now-t<60]
@@ -707,6 +756,13 @@ def request(raw):
                     validate_public_key(address,c['identityPublicKey'])
                 if not isinstance(c.get('name'),str) or not c['name'].strip() or len(c['name'])>32:raise ValueError('Invalid contact name')
             with _lock:
+                if _tcp_only:
+                    known_keys={c['addresses'].get('lxmf','').lower():c['identityPublicKey']
+                                for c in _state['contacts'] if c.get('identityPublicKey')}
+                    for contact in contacts:
+                        address=contact['addresses'].get('lxmf','').lower()
+                        if address in known_keys and not contact.get('identityPublicKey'):
+                            contact['identityPublicKey']=known_keys[address]
                 _state['contacts']=contacts
                 if _locations:_locations.reconcile()
                 if _voice:_voice.reconcile()

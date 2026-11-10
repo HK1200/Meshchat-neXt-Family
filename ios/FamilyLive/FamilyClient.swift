@@ -4,6 +4,7 @@ struct FamilyContact: Codable, Identifiable, Sendable {
     let id: Int
     let name: String
     let addresses: [String: String]
+    var identityPublicKey: String?
 }
 
 struct FamilyMessage: Decodable, Identifiable, Sendable {
@@ -14,6 +15,11 @@ struct FamilyMessage: Decodable, Identifiable, Sendable {
     var read: Bool?
 }
 
+struct FamilyMailbox: Decodable, Sendable {
+    let address: String
+    let status: String
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -21,6 +27,7 @@ struct FamilyReply: Decodable, Sendable {
     var setupComplete: Bool?
     var tcpOnline: Bool?
     var address: String?
+    var mailbox: FamilyMailbox?
     var contacts: [FamilyContact]?
     var messages: [String: [FamilyMessage]]?
 }

@@ -38,7 +38,7 @@ jobs:
         if: matrix.suite == 'live'
         run: bash ios/test-live.sh "${{ matrix.device }}"
       - name: Run public Reticulum messaging test
-        if: matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test'))
+        if: ${{ !cancelled() && matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test')) }}
         run: bash ios/test-live.sh "${{ matrix.device }}" rmap
       - name: Run preview smoke test
         if: matrix.suite == 'preview'

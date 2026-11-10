@@ -5,6 +5,13 @@ targets:
   FamilyLive:
     type: application
     platform: iOS
+    info:
+      path: RuntimeBuild/FamilyLive-Info.plist
+      properties:
+        BGTaskSchedulerPermittedIdentifiers:
+          - org.meshchat.family.ios.live.mailbox
+        UIBackgroundModes:
+          - fetch
     sources:
       - FamilyLive
       - LiveRuntime
