@@ -1,3 +1,14 @@
+# neXt Family v0.6.19
+
+- Keep the Android message field visible above the docked keyboard and preserve the draft during live conversation updates.
+- Send files and photos in approved Reticulum conversations. Select multiple attachments, preview photos, and save received attachments.
+- Choose Low, Medium, High, or Original photo quality. Family previews incoming Reticulum photos inline.
+- Guardian settings offer a 10 MB default direct receive limit, presets up to 1 GB, and a custom limit. Android sends up to 9.95 MB of attachments per direct message and asks for confirmation above 900 KB.
+
+Use **Install now** in Family or install the ARM64 APK over the existing public version to retain your settings.
+
+---
+
 # neXt Family v0.6.18
 
 - Restore the Reticulum microphone speech filters and automatic level control that the Android capture bridge previously bypassed.
