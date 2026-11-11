@@ -52,7 +52,7 @@ Open **Guardian settings → Wi-Fi RNode** and enter the radio’s hostname or I
 
 In Guardian settings, open **Find messaging client** to search Reticulum announces by name or LXMF address. You can also scan a contact QR on supported devices or import a QR image. Review the populated name and address before saving the contact.
 
-Open **Guardian settings → Location sharing** to choose which approved contacts can exchange private location updates, set the sharing duration, and decide whether children can start or stop timed sharing. The Family map displays approved locations and their last update time. iOS samples GPS and sends updates while Family is open. The live map defaults to Apple Maps. Under **Guardian settings → Offline maps**, choose the bundled Pacific Northwest and southern BC layer or import a raster MBTiles pack from Files. Imported maps stay on the device and can be removed from the same menu.
+Open **Guardian settings → Location sharing** to choose which approved contacts can exchange private location updates, set the sharing duration, and decide whether children can start or stop timed sharing. The Family map displays approved locations and their last update time. iOS samples GPS and sends updates while Family is open. The live map defaults to Apple Maps. Under **Guardian settings → Offline maps**, choose the bundled Pacific Northwest and southern BC layer with detailed Whatcom County streets or import a raster MBTiles pack from Files. Imported maps stay on the device and can be removed from the same menu.
 
 ## Reticulum Relay Chat
 

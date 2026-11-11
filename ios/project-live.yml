@@ -18,6 +18,11 @@ targets:
       - path: ../app/src/main/assets/pnw-tiles
         type: folder
         buildPhase: resources
+      - path: ../app/src/main/assets/whatcom-tiles
+        type: folder
+        buildPhase: resources
+      - path: ../app/src/main/assets/notices/whatcom-maps.txt
+        buildPhase: resources
       - path: RuntimeBuild/staged
         type: folder
         buildPhase: resources

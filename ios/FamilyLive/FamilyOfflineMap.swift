@@ -83,6 +83,10 @@ struct FamilyOfflineMap: UIViewRepresentable {
         let pack = family.state?.mapPacks?.first { $0.id == layer }
         let overlay = OfflineTileOverlay(family: family, layer: layer, pack: pack)
         map.addOverlay(overlay, level: .aboveLabels)
+        if layer == "pnw" {
+            let streets = OfflineTileOverlay(family: family, layer: "whatcom", pack: nil)
+            map.addOverlay(streets, level: .aboveLabels)
+        }
         let first = (family.state?.contacts ?? []).compactMap { family.state?.location?.locations[String($0.id)] }.first
         let center = CLLocationCoordinate2D(latitude: pack?.center?.lat ?? first?.latitude ?? 47.5,
                                             longitude: pack?.center?.lon ?? first?.longitude ?? -122)
@@ -153,14 +157,14 @@ private final class OfflineTileOverlay: MKTileOverlay {
         self.family = family
         self.layer = layer
         super.init(urlTemplate: nil)
-        minimumZ = pack?.minZoom ?? 0
-        maximumZ = pack?.maxZoom ?? 9
-        canReplaceMapContent = true
+        minimumZ = pack?.minZoom ?? (layer == "whatcom" ? 13 : 5)
+        maximumZ = pack?.maxZoom ?? (layer == "whatcom" ? 15 : 9)
+        canReplaceMapContent = layer != "whatcom"
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, Error?) -> Void) {
-        if layer == "pnw" {
-            let url = Bundle.main.resourceURL?.appendingPathComponent("pnw-tiles/\(path.z)/\(path.x)/\(path.y).png")
+        if layer == "pnw" || layer == "whatcom" {
+            let url = Bundle.main.resourceURL?.appendingPathComponent("\(layer)-tiles/\(path.z)/\(path.x)/\(path.y).png")
             result(url.flatMap { try? Data(contentsOf: $0) }, nil)
             return
         }
