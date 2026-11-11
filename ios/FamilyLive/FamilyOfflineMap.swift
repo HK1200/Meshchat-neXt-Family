@@ -63,6 +63,8 @@ struct FamilyOfflineMapSettings: View {
             }
         }
         .disabled(importing)
+        .accessibilityIdentifier("offline-map-layer-\(id)")
+        .accessibilityValue(family.state?.activeMap == id ? "Selected" : "")
     }
 }
 

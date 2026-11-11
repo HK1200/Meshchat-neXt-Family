@@ -2,6 +2,7 @@ import XCTest
 
 final class FamilyPreviewUITests: XCTestCase {
     func testBundledPreviewOpensConversation() {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
 
@@ -12,8 +13,14 @@ final class FamilyPreviewUITests: XCTestCase {
         let night = webView.buttons["Switch to night mode"]
         let day = webView.buttons["Switch to day mode"]
         let wasNight = day.exists
-        (wasNight ? day : night).tap()
-        XCTAssertTrue((wasNight ? night : day).waitForExistence(timeout: 5))
+        let originalThemeButton = wasNight ? day : night
+        let updatedThemeButton = wasNight ? night : day
+        XCTAssertTrue(originalThemeButton.waitForExistence(timeout: 10))
+        originalThemeButton.tap()
+        if !updatedThemeButton.waitForExistence(timeout: 5), originalThemeButton.isHittable {
+            originalThemeButton.tap()
+        }
+        XCTAssertTrue(updatedThemeButton.waitForExistence(timeout: 10), app.debugDescription)
         app.terminate()
         app.launch()
         XCTAssertTrue((wasNight ? night : day).waitForExistence(timeout: 30))

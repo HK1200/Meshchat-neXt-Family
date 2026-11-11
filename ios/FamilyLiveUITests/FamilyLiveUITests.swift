@@ -155,6 +155,15 @@ final class FamilyLiveUITests: XCTestCase {
             voice.tap()
             XCTAssertTrue(app.staticTexts["reticulum-voice-ready"].waitForExistence(timeout: 35), app.debugDescription)
             app.buttons["Disable Reticulum calling"].tap()
+            let offlineMaps = app.buttons["Offline maps"]
+            for _ in 0..<4 where !offlineMaps.isHittable { app.swipeUp() }
+            XCTAssertTrue(offlineMaps.isHittable, app.debugDescription)
+            offlineMaps.tap()
+            let pnw = app.buttons["offline-map-layer-pnw"]
+            XCTAssertTrue(pnw.waitForExistence(timeout: 10), app.debugDescription)
+            pnw.tap()
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: pnw)
+            XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed, app.debugDescription)
         }
     }
 
