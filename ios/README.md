@@ -52,7 +52,7 @@ Open **Guardian settings → Location sharing** to choose which approved contact
 
 ## Reticulum Relay Chat
 
-Open **Guardian settings → Approved rooms** to add a Relay Chat hub and channel. You can enter the hub address or choose a discovered hub and list its channels. Family saves the room password and rejoins approved rooms after reconnecting. Set a room to read only to disable posting. The home screen lists approved rooms separately from private conversations.
+Open **Guardian settings → Approved rooms** to add a Relay Chat hub and channel. You can enter the hub address, import a room QR code, or choose a discovered hub and list its channels. Family saves the room password and rejoins approved rooms after reconnecting. Set a room to read only to disable posting. The home screen lists approved rooms separately from private conversations.
 
 ## Notifications and background delivery
 

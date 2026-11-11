@@ -60,6 +60,13 @@ struct FamilyLocationState: Decodable, Sendable {
     let locations: [String: FamilyLocationFix]
 }
 
+struct FamilyRoomCard: Decodable, Sendable {
+    let name: String
+    let service: String
+    let channel: String
+    let key: String
+}
+
 struct FamilyRoom: Decodable, Identifiable, Sendable {
     let id: Int
     let name: String
@@ -123,6 +130,7 @@ struct FamilyReply: Decodable, Sendable {
     var announces: [FamilyDiscoveredClient]?
     var clientLookup: FamilyClientLookup?
     var card: FamilyContactCard?
+    var roomCard: FamilyRoomCard?
     var messages: [String: [FamilyMessage]]?
 }
 

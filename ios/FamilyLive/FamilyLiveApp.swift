@@ -1,7 +1,6 @@
 import VisionKit
 import CoreLocation
 import PhotosUI
-import Vision
 import BackgroundTasks
 import Network
 import SwiftUI
@@ -260,6 +259,23 @@ final class FamilyModel: ObservableObject {
 
     func saveDeviceName(_ name: String) async -> Bool {
         await perform("device_name", ["token": token, "name": name])
+    }
+
+    func readRoomCard(_ text: String) async -> FamilyRoomCard? {
+        let epoch = guardianEpoch
+        do {
+            let result = try await request("qr_parse", ["token": token, "text": text, "target": "room"])
+            guard epoch == guardianEpoch, unlocked else { return nil }
+            guard let card = result.roomCard, card.service == "reticulum" else {
+                error = "Choose a Reticulum Relay Chat room code."
+                return nil
+            }
+            error = ""
+            return card
+        } catch {
+            if epoch == guardianEpoch { self.error = error.localizedDescription }
+            return nil
+        }
     }
 
     func saveRoom(id: Int?, name: String, hub: String, channel: String,
@@ -631,24 +647,11 @@ struct FamilyGuardian: View {
             readingQR = false
         }
         do {
-            guard let data = try await photo.loadTransferable(type: Data.self) else {
-                family.error = "Couldn’t open the selected image."
-                return
-            }
-            let payloads = try await Task.detached(priority: .userInitiated) {
-                let request = VNDetectBarcodesRequest()
-                request.symbologies = [.qr]
-                try VNImageRequestHandler(data: data).perform([request])
-                return Set((request.results ?? []).compactMap(\.payloadStringValue))
-            }.value
+            let payload = try await FamilyQRImage.read(photo)
             guard family.unlocked else { return }
-            guard payloads.count == 1, let payload = payloads.first else {
-                family.error = payloads.isEmpty ? "No QR code found in the image." : "Choose an image with one QR code."
-                return
-            }
             await importQRPayload(payload)
         } catch {
-            if family.unlocked { family.error = "Couldn’t read the QR image." }
+            if family.unlocked { family.error = error.localizedDescription }
         }
     }
 }

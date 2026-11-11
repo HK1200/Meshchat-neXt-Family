@@ -15,8 +15,7 @@ if __name__ == "__main__":
         raise ValueError("Build one simulator architecture at a time for the native Python extensions")
     for entry in manifest[f"{sdk}-{arches[0]}"]:
         wheel = root / "RuntimeBuild/room-wheels" / entry["file"]
-        with wheel.open("rb") as stream:
-            if hashlib.file_digest(stream, "sha256").hexdigest() != entry["sha256"]:
-                raise ValueError(f"Checksum mismatch for {wheel.name}")
+        if hashlib.sha256(wheel.read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError(f"Checksum mismatch for {wheel.name}")
         with ZipFile(wheel) as archive:
             archive.extractall(target)

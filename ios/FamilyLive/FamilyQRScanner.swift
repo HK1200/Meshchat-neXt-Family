@@ -1,3 +1,5 @@
+import PhotosUI
+import Vision
 import SwiftUI
 import VisionKit
 
@@ -57,5 +59,34 @@ struct FamilyQRScanner: UIViewControllerRepresentable {
             completed = true
             onError()
         }
+    }
+}
+
+
+enum FamilyQRImage {
+    private enum ReadError: LocalizedError {
+        case unreadable, missing, ambiguous
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadable: "Couldn’t open the selected image."
+            case .missing: "No QR code found in the image."
+            case .ambiguous: "Choose an image with one QR code."
+            }
+        }
+    }
+
+    static func read(_ photo: PhotosPickerItem) async throws -> String {
+        guard let data = try await photo.loadTransferable(type: Data.self) else { throw ReadError.unreadable }
+        return try await Task.detached(priority: .userInitiated) {
+            let request = VNDetectBarcodesRequest()
+            request.symbologies = [.qr]
+            do { try VNImageRequestHandler(data: data).perform([request]) }
+            catch { throw ReadError.unreadable }
+            let payloads = Set((request.results ?? []).compactMap(\.payloadStringValue))
+            guard !payloads.isEmpty else { throw ReadError.missing }
+            guard payloads.count == 1, let payload = payloads.first else { throw ReadError.ambiguous }
+            return payload
+        }.value
     }
 }

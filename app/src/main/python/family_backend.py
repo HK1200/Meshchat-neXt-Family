@@ -718,7 +718,9 @@ def request(raw):
         elif action=='qr_parse':
             _authorized(p)
             from family_cards import parse
-            return json.dumps({'ok':True,'card':parse(p.get('text'),p.get('target','contact'))})
+            target=p.get('target','contact')
+            card=parse(p.get('text'),target)
+            return json.dumps({'ok':True,'roomCard' if _tcp_only and target=='room' else 'card':card})
         elif action=='device_name':
             name=p.get('name')
             with _announce_lock,_lock:

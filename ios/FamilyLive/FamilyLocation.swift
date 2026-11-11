@@ -3,7 +3,7 @@ import MapKit
 import SwiftUI
 
 @MainActor
-final class FamilyLocationSampler: NSObject, CLLocationManagerDelegate {
+final class FamilyLocationSampler: NSObject, @preconcurrency CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var nextSample = ContinuousClock.now
     private var pending: (([String: Double]) async -> Void)?

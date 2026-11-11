@@ -1,3 +1,5 @@
+import PhotosUI
+import VisionKit
 import SwiftUI
 
 struct FamilyRoomChat: View {
@@ -80,6 +82,8 @@ struct FamilyRoomEditor: View {
     @State private var clearPassword = false
     @State private var busy = false
     @State private var confirmRemoval = false
+    @State private var qrPhoto: PhotosPickerItem?
+    @State private var showingScanner = false
 
     private var listing: FamilyRoomListing? {
         family.state?.roomDiscovery?.first { $0.hubHash == hub.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -89,6 +93,24 @@ struct FamilyRoomEditor: View {
         Form {
             if family.unlocked {
                 Section {
+                    if room == nil {
+                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                            Button("Scan room QR code", systemImage: "camera") { showingScanner = true }.disabled(busy)
+                        }
+                        PhotosPicker(selection: $qrPhoto, matching: .images) {
+                            Label("Import room QR image", systemImage: "qrcode")
+                        }
+                        .disabled(busy)
+                        .onChange(of: qrPhoto) {
+                            guard let photo = qrPhoto else { return }
+                            busy = true
+                            Task {
+                                defer { qrPhoto = nil; busy = false }
+                                do { await importCard(try await FamilyQRImage.read(photo)) }
+                                catch { if family.unlocked { family.error = error.localizedDescription } }
+                            }
+                        }
+                    }
                     TextField("Room display name", text: $name)
                     TextField("Relay Chat hub address", text: $hub).textInputAutocapitalization(.never).autocorrectionDisabled()
                     if let hubs = family.state?.rrcHubs, !hubs.isEmpty {
@@ -137,6 +159,28 @@ struct FamilyRoomEditor: View {
             }
         }
         .navigationTitle(room == nil ? "Approve room" : "Edit room")
+        .sheet(isPresented: $showingScanner) {
+            NavigationStack {
+                FamilyQRScanner { payload in
+                    showingScanner = false
+                    busy = true
+                    Task {
+                        await importCard(payload)
+                        busy = false
+                    }
+                } onError: {
+                    showingScanner = false
+                    family.error = "The camera couldn’t start. You can import a QR image instead."
+                }
+                .navigationTitle("Scan room QR code")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingScanner = false }
+                    }
+                }
+            }
+        }
         .onAppear {
             if let room {
                 name = room.name
@@ -155,5 +199,13 @@ struct FamilyRoomEditor: View {
                 }
             }
         }
+    }
+
+    private func importCard(_ text: String) async {
+        guard let card = await family.readRoomCard(text) else { return }
+        name = card.name.isEmpty ? card.channel : card.name
+        hub = card.key
+        channel = card.channel
+        password = ""
     }
 }
