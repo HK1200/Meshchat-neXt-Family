@@ -34,6 +34,9 @@ A MeshCore companion should be used by one phone app at a time. If Family cannot
 
 ## 3. Approve people
 
+To add someone who uses Family, ask them to unlock **Guardian settings → Contacts** and open **My contact QR**. On your device, choose **Add contact by QR**, scan their screen, then review and save the contact. The QR shares the device name and public contact addresses. You can edit the name before approving it.
+
+
 1. Open **Guardian settings → Contacts** and choose **Add contact**. Enter a display name and optionally add a profile picture.
 2. Add only the addresses you want this family member to use. A contact may have one address or several.
 

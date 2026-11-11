@@ -1,3 +1,10 @@
+# neXt Family v0.6.22
+
+- Show **My contact QR** under **Guardian settings → Contacts**. Scan it on another device to review and approve the Family member's public contact details.
+- The one-time guardian transfer remains available in v0.6.21.
+
+---
+
 # neXt Family v0.6.21
 
 - Move your Family profile from the old Android package to the current one with guardian approval. The transfer preserves settings, approved contacts, messages, attachments, offline maps, and the Reticulum identity.

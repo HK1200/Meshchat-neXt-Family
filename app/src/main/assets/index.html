@@ -71,6 +71,7 @@ body,.phone{background:var(--app-background)}header,.intro{display:none}.layout{
 <section class="phone" aria-label="neXt Family"><div class="status"><span>9:41</span><span>▂▄▆ &nbsp; ▰</span></div><div class="appearance"><div id="radio-batteries" class="radio-batteries" aria-label="Connected radio batteries" hidden></div><button id="theme-toggle" type="button">☾ Night mode</button></div><div class="screen" id="screen"></div><div class="foot"><span>♡ &nbsp; Your approved circle</span><button id="guardian">Guardian settings</button></div></section></main>
 <dialog id="gate"><form id="unlock"><h2>For trusted adults</h2><p>Enter the guardian password to manage contacts and device connections.</p><label for="password">Password</label><input id="password" type="password" autocomplete="off" required><button type="button" id="toggle-guardian-password" class="secondary password-visibility" aria-controls="password">Show password</button><div class="error" id="gate-error" role="status"></div><div class="row"><button class="secondary" type="button" id="cancel">Cancel</button><button class="primary">Unlock</button></div><p class="fine">Contact, room and connection changes require the guardian password in the native backend.</p></form></dialog>
 <script src="jsQR.js"></script>
+<script src="family-qr.js"></script>
 <script src="family-map.js"></script>
 <script>
 (()=>{'use strict';
@@ -580,7 +581,7 @@ if(view==='home'){screen.innerHTML=`<div class="topline"><span class="eyebrow">n
 if(liveNative&&view==='voice-settings'){renderVoiceSettings();return;}if(liveNative&&view==='reticulum-call'){renderReticulumCall();return;}if(liveNative&&view==='sip-settings'){renderSipSettings();return;}if(liveNative&&view==='call-live'){renderLiveCall();return;}if(liveNative&&view==='call'){renderLiveDial();return;}if(view==='connection-status'){renderConnectionStatus();return;}
 if(view==='map'){renderMap();return;}
 if(view==='room'){renderRoom();return;}
-if(['admin','contact-edit','interfaces','interface-edit','qr-import','rooms','room-edit','room-discover','room-names','map-settings','security'].includes(view)){renderSettings();return;}
+if(['admin','contact-card','contact-edit','interfaces','interface-edit','qr-import','rooms','room-edit','room-discover','room-names','map-settings','security'].includes(view)){renderSettings();return;}
 const kind=view;screen.innerHTML=`<button class="back" id="back">← Your people</button><h2 class="view-title">${kind==='call'?'Call':'Text'} ${escape(selected.name)}</h2>${routeUI(kind)}${kind==='call'?`<div class="call-view"><div class="avatar">${contactAvatar(selected)}</div><h3>${escape(selected.name)}</h3><p id="call-state">${chosen(kind)?'Ready for a demo call':'Calls aren’t available right now'}</p>${chosen(kind)?'<button class="primary dial-action" id="start-call"><span aria-hidden="true">☎</span><span>Start demo call</span></button>':'<p class="notice">Try a text instead. Radio can carry messages when live voice is unavailable.</p><button class="secondary" id="try-text">Text '+escape(selected.name)+'</button>'}</div>`:`<div class="notice">${liveNative?'Private conversation · approved contact only':'Demo conversation. Messages stay in this preview.'}</div><div class="chat" id="chat"></div><form class="compose" id="send"><input id="message" aria-label="Message" placeholder="Write a message…" maxlength="2000" enterkeyhint="send"><button class="primary">Send</button></form>${liveNative&&selected.addresses?.lxmf?'<div class="attachment-controls"><button class="secondary" id="add-attachment" type="button">Attach files</button><input id="message-attachment" type="file" multiple hidden><label for="photo-quality">Photo quality</label><select id="photo-quality"><option value="low">Low · 320 px</option><option value="medium">Medium · 640 px</option><option value="high" selected>High · 1280 px</option><option value="original">Original</option></select><button class="secondary" id="add-photo" type="button">Add photos</button><input id="message-photo" type="file" accept="image/*" multiple hidden></div><div id="attachment-list"></div>':''}<p class="fine" id="send-state" role="status">${chosen(kind)?'Ready when you are.':'No route available. Messages will stay here until you retry.'}</p>`}`;
 $('back').onclick=()=>{view='home';render();};$('method').onchange=e=>{manual=e.target.value;if(kind!=='text')render();};
 if(kind==='call'){if($('start-call'))$('start-call').onclick=()=>{$('call-state').textContent='Demo call screen · no audio connection';$('start-call').textContent='End demo call';$('start-call').className='end';$('start-call').onclick=()=>{view='home';render();};};if($('try-text'))$('try-text').onclick=()=>{view='text';manual='auto';render();};}
@@ -783,7 +784,50 @@ if(view==='security')content='<h3>Guardian password</h3><p class="sub">Protect c
 if(view==='security'&&liveNative)content=`<fieldset><legend>Device name</legend><form id="device-name-form">${field('device-name','Reticulum display name',liveState?.deviceName||'neXt Family','required maxlength="64" autocomplete="off"')}<p class="fine">Use 1–32 characters. Other Reticulum users can see this name in client announcements.</p><button class="secondary">Save device name</button><p class="fine" id="device-name-status" role="status"></p></form></fieldset>`+content+`<fieldset><legend>Connection startup</legend><form id="boot-recovery-form"><label><input type="checkbox" id="boot-recovery" ${FamilyNative.bootRecoveryEnabled()?'checked':''}> Restore connections after a reboot or app update</label><p class="fine">Off by default. When off, open Family to reconnect after a reboot or update.</p><button class="secondary">Save startup setting</button><p id="boot-recovery-status" role="status"></p></form></fieldset>`+familyUpdateSettings();
 if(view==='map-settings')content=mapSettings();
 if(['rooms','room-edit','room-discover','room-names'].includes(view))content=(serviceEnabled.meshcore||serviceEnabled.reticulum)?roomSettingsContent():'<h3>Rooms</h3><p class="sub">Enable Reticulum or MeshCore under Connections to set up and use room servers.</p>';
-if(view==='admin')content=`${liveNative?'<button class="secondary" id="send-family-apk">Send APK</button><p class="fine" id="send-apk-status" role="status"></p>':''}<h3>Approved contacts</h3><p class="sub">One person, separate approved service addresses.</p>${contacts.map(c=>`<div class="admin-person"><div><b>${escape(c.name)}</b><small>${[c.addresses.lxmf?'Reticulum text':'',c.addresses.lxst?'Reticulum voice':'',c.addresses.meshcore?'MeshCore':'',c.addresses.sip?'SIP':''].filter(Boolean).join(' · ')}</small></div><button data-edit="${c.id}">Edit</button></div>`).join('')}<button class="primary" id="new-contact" style="margin-top:18px">Add approved contact</button><p class="fine">Verify each person and service address before approving access.</p>`;
+if(view==='contact-card'){
+    const reply=nativeRequest('contact_card',{token:liveToken});
+    content=`<button class="back" id="contact-card-back">← Contacts</button><h3>My contact QR</h3>
+        <p class="fine">On the other device, open Guardian settings and scan this code to review the contact.</p>
+        <canvas id="own-contact-qr" role="img" aria-label="My contact QR code" style="width:min(100%,340px);height:auto;image-rendering:pixelated" hidden></canvas>
+        <p class="fine" id="own-contact-addresses" style="overflow-wrap:anywhere"></p>
+        <button class="secondary" id="copy-own-contact" hidden>Copy contact code</button>
+        <p id="own-contact-status" class="fine" role="status">${escape(reply.error||'')}</p>`;
+    if(reply.ok){
+        const card=JSON.parse(reply.contactCardText);
+        const account=sipAccount();
+        if(liveState?.sip?.enabled&&/^[^\s@:]+$/.test(account.extension||'')
+            && /^[a-z0-9.-]+$/i.test(account.host||'') && Number.isInteger(+account.port)
+            && +account.port>=1 && +account.port<=65535){
+            card.addresses.sip=`sip:${account.extension}@${account.host}:${account.port}`;
+        }
+        screen.innerHTML=shell+content;
+        $('done').onclick=()=>{admin=false;lockLive();view='home';render();};
+        $('contact-card-back').onclick=()=>{view='admin';render();};
+        const payload=JSON.stringify(card);
+        const matrix=FamilyQR.create(payload,{errorCorrectionLevel:'M'}).modules;
+        const canvas=$('own-contact-qr'),scale=6,margin=4;
+        canvas.width=canvas.height=(matrix.size+2*margin)*scale;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle='#000';
+        for(let row=0;row<matrix.size;row++)for(let col=0;col<matrix.size;col++){
+            if(matrix.get(row,col))ctx.fillRect((col+margin)*scale,(row+margin)*scale,scale,scale);
+        }
+        canvas.hidden=false;
+        $('own-contact-addresses').textContent=[card.name,...Object.entries(card.addresses).map(([key,address])=>
+            ({lxmf:'Reticulum text',lxst:'Reticulum voice',meshcore:'MeshCore',sip:'SIP'}[key]+': '+address))].join(' · ');
+        const copy=$('copy-own-contact');
+        if(navigator.clipboard?.writeText){
+            copy.hidden=false;
+            copy.onclick=async()=>{
+                try{await navigator.clipboard.writeText(payload);$('own-contact-status').textContent='Contact code copied.';}
+                catch{$('own-contact-status').textContent='Could not copy. Scan the QR code instead.';}
+            };
+        }
+        return;
+    }
+}
+if(view==='admin')content=`${liveNative?'<button class="secondary" id="send-family-apk">Send APK</button><p class="fine" id="send-apk-status" role="status"></p>':''}<h3>Approved contacts</h3>${liveNative?'<button type="button" class="secondary" id="own-contact-card">My contact QR</button>':''}<p class="sub">One person, separate approved service addresses.</p>${contacts.map(c=>`<div class="admin-person"><div><b>${escape(c.name)}</b><small>${[c.addresses.lxmf?'Reticulum text':'',c.addresses.lxst?'Reticulum voice':'',c.addresses.meshcore?'MeshCore':'',c.addresses.sip?'SIP':''].filter(Boolean).join(' · ')}</small></div><button data-edit="${c.id}">Edit</button></div>`).join('')}<button class="primary" id="new-contact" style="margin-top:18px">Add approved contact</button><p class="fine">Verify each person and service address before approving access.</p>`;
 if(view==='contact-edit'){
 const c=contactDraft||contacts.find(c=>c.id===editing)||{name:'',addresses:{}};contactPhoto=c.photo||'';
 const fromQr=!!(contactDraft?.fromQr&&!editing);
@@ -866,6 +910,8 @@ bindFamilyUpdateSettings();bindMapSettings();bindRoomSettings();
 for(const [id,next] of [['contacts-tab','admin'],['rooms-tab','rooms'],['interfaces-tab','interfaces'],['maps-tab','map-settings'],['security-tab','security']]){
     if($(id))$(id).onclick=()=>{view=next;render();};
 }
+if($('own-contact-card'))$('own-contact-card').onclick=()=>{view='contact-card';render();};
+if($('contact-card-back'))$('contact-card-back').onclick=()=>{view='admin';render();};
 if($('send-family-apk'))$('send-family-apk').onclick=()=>{
     const result=nativeRequest('apk_share',{token:liveToken});
     $('send-apk-status').textContent=result.ok?'':result.error;

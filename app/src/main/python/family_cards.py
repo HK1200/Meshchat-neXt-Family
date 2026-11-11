@@ -9,6 +9,25 @@ def validate_public_key(address,key):
     if RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity).hex()!=address.lower():raise ValueError('Public key does not match this LXMF address')
     return key.lower()
 
+def export_contact(name, identity, voice_enabled=False, meshcore_key=""):
+    addresses = {}
+    public_key = ""
+    if identity is not None:
+        import RNS
+        addresses["lxmf"] = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity).hex()
+        if voice_enabled:
+            addresses["lxst"] = RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity).hex()
+        public_key = identity.get_public_key().hex()
+    if re.fullmatch(r"[a-fA-F0-9]{64}", meshcore_key):
+        addresses["meshcore"] = meshcore_key.lower()
+    if not addresses:
+        raise ValueError("Wait for Reticulum to start or connect a MeshCore companion.")
+    card = {"format": "next-family-contact", "version": 1, "name": name, "addresses": addresses}
+    if public_key:
+        card["identityPublicKey"] = public_key
+    return json.dumps(card, ensure_ascii=True, separators=(",", ":"))
+
+
 def parse(raw,target='contact'):
     if not isinstance(raw,str) or not 0<len(raw.strip())<=8192:raise ValueError('Use a code of up to 8 KB')
     text=raw.strip()

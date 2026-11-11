@@ -782,6 +782,17 @@ def request(raw):
             return json.dumps({'ok': True})
         elif action in ['authorize_camera','authorize_boot_config']:
             _authorized(p)
+        elif action=='contact_card':
+            from family_cards import export_contact
+            with _lock:
+                _authorized(p)
+                identity = _destination.identity if _destination else None
+                meshcore = _state.get('meshcore') or {}
+                card = export_contact(
+                    _state['device_name'], identity, _state.get('voiceEnabled', False),
+                    (meshcore.get('publicKey') or '') if meshcore.get('enabled') else '',
+                )
+            return json.dumps({'ok': True, 'contactCardText': card})
         elif action=='qr_parse':
             _authorized(p)
             from family_cards import parse
