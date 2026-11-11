@@ -267,7 +267,7 @@ final class FamilyModel: ObservableObject {
         }
     }
 
-    func send(contactID: Int, text: String) async -> Bool {
+    func send(contactID: Int, text: String, files: [FamilyDraftAttachment] = []) async -> Bool {
         sendsStarting += 1
         if !finishingSend {
             sendTask = UIApplication.shared.beginBackgroundTask(withName: "Finish Family message") { [weak self] in
@@ -278,7 +278,25 @@ final class FamilyModel: ObservableObject {
             sendsStarting -= 1
             finishSendIfIdle()
         }
-        return await perform("send", ["contactId": contactID, "text": text, "method": "auto"])
+        var payload: [String: Any] = ["contactId": contactID, "text": text, "method": "auto"]
+        if !files.isEmpty {
+            payload["attachments"] = files.map { file -> [String: String] in
+                var item = ["name": file.name, "data": file.data.base64EncodedString()]
+                item["image"] = file.image
+                return item
+            }
+        }
+        return await perform("send", payload)
+    }
+
+    func attachmentURL(contactID: Int, messageID: String, index: Int) async throws -> URL {
+        let reply = try await request("attachment_read", ["contactId": contactID, "messageId": messageID, "index": index])
+        guard let path = reply.attachmentPath else { throw CocoaError(.fileNoSuchFile) }
+        return URL(fileURLWithPath: path)
+    }
+
+    func setIncomingDeliveryLimit(_ bytes: Int) async -> Bool {
+        await perform("incoming_delivery_limit", ["token": token, "bytes": bytes])
     }
 
     private func finishSendIfIdle() {
@@ -738,6 +756,7 @@ struct FamilyGuardian: View {
                     Section {
                         NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
+                        NavigationLink("Incoming message size") { FamilyIncomingLimitSettings(family: family) }
                         NavigationLink("Offline maps") { FamilyOfflineMapSettings(family: family) }
                         NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
                     }
@@ -868,6 +887,8 @@ struct FamilyChat: View {
     let contact: FamilyContact
     @State private var draft = ""
     @State private var submitting = false
+    @State private var attachments: [FamilyDraftAttachment] = []
+    @State private var confirmLargeSend = false
 
     private var currentContact: FamilyContact? {
         family.state?.contacts?.first { $0.id == contact.id }
@@ -877,28 +898,54 @@ struct FamilyChat: View {
         currentContact?.addresses["lxmf"] == contact.addresses["lxmf"] && currentContact?.addresses["lxmf"]?.isEmpty == false
     }
 
+    private func send() {
+        let text = draft
+        let photos = attachments.filter { $0.image != nil }
+        let first = attachments.filter { $0.image == nil } + Array(photos.prefix(1))
+        guard first.reduce(0, { $0 + $1.data.count }) <= FamilyDraftAttachment.limit else {
+            family.error = "Send some attachments separately. Each Reticulum message allows up to 9.95 MB."
+            return
+        }
+        let batches = [first] + photos.dropFirst().map { [$0] }
+        submitting = true
+        Task {
+            defer { submitting = false }
+            for (index, batch) in batches.enumerated() {
+                guard await family.send(contactID: contact.id, text: index == 0 ? text : "", files: batch) else { return }
+                if index == 0, draft == text { draft = "" }
+                let sent = Set(batch.map(\.id))
+                attachments.removeAll { sent.contains($0.id) }
+            }
+        }
+    }
+
     var body: some View {
         Form {
             Section("Messages") {
                 ForEach(family.state?.messages?[String(contact.id)] ?? []) { message in
                     VStack(alignment: .leading) {
-                        Text(message.text)
+                        if !message.text.isEmpty { Text(message.text) }
+                        ForEach(Array(message.files.enumerated()), id: \.offset) { index, item in
+                            FamilyReceivedAttachment(family: family, contactID: contact.id, messageID: message.id,
+                                                     index: index, item: item)
+                        }
+                        if let error = message.attachmentError { Text(error).font(.caption) }
                         Text(message.status).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             Section {
                 TextField("Message", text: $draft).accessibilityIdentifier("message-draft")
+                FamilyAttachmentComposer(attachments: $attachments)
+                    .disabled(!canSend || submitting)
                 Button("Send") {
-                    let text = draft
-                    submitting = true
-                    Task {
-                        if await family.send(contactID: contact.id, text: text),
-                           draft == text { draft = "" }
-                        submitting = false
-                    }
+                    if attachments.reduce(0, { $0 + $1.data.count }) > 900_000 { confirmLargeSend = true }
+                    else { send() }
                 }
-                .disabled(!canSend || submitting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSend || submitting || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty))
+                .confirmationDialog("This attachment may exceed the recipient’s limit", isPresented: $confirmLargeSend) {
+                    Button("Send anyway") { send() }
+                }
                 if currentContact?.addresses["lxmf"] == nil { Text("This contact has no approved messaging address.") }
                 else if !canSend { Text("Contact approval changed. Reopen this conversation.") }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }

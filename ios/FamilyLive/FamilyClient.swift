@@ -7,12 +7,23 @@ struct FamilyContact: Codable, Identifiable, Sendable {
     var identityPublicKey: String?
 }
 
+struct FamilyMessageAttachment: Decodable, Sendable {
+    let name: String
+    let size: Int
+    let image: String?
+}
+
 struct FamilyMessage: Decodable, Identifiable, Sendable {
     let id: String
     let text: String
     let status: String
     let incoming: Bool
     var read: Bool?
+    let attachments: [FamilyMessageAttachment]?
+    let attachment: FamilyMessageAttachment?
+    let attachmentError: String?
+
+    var files: [FamilyMessageAttachment] { attachments ?? attachment.map { [$0] } ?? [] }
 }
 
 struct FamilyMailbox: Decodable, Sendable {
@@ -175,6 +186,8 @@ struct FamilyReply: Decodable, Sendable {
     var mapPacks: [FamilyMapPack]?
     var mapImportPath: String?
     var tile: Data?
+    var attachmentPath: String?
+    var incomingDeliveryLimit: Int?
     var contacts: [FamilyContact]?
     var rooms: [FamilyRoom]?
     var roomRuntime: [String: FamilyRoomState]?

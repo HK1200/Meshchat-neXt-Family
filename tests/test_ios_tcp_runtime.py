@@ -1,5 +1,5 @@
 """Exercise the first iOS runtime mode on an isolated local Reticulum network."""
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from contextlib import ExitStack, closing, suppress
 import ctypes.util
 import importlib.util
@@ -234,6 +234,19 @@ def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path, public_
             assert restarted["address"] == addresses[0]
             send(0, "After network change")
             wait_incoming(1, "After network change")
+            data = b"Family attachment test" * 60_000
+            request(families[0], "send", contactId=1, text="", attachments=[
+                {"name": "example.txt", "data": b64encode(data).decode()},
+            ])
+            received = wait_status(families[1], lambda s: any(
+                row["incoming"] and row.get("attachments") for row in s["messages"]["1"]
+            ), timeout=45)
+            row = next(row for row in received["messages"]["1"] if row.get("attachments"))
+            assert row["attachments"][0]["name"] == "example.txt"
+            path = request(families[1], "attachment_read", contactId=1, messageId=row["id"], index=0)["attachmentPath"]
+            assert Path(path).read_bytes() == data
+            request(families[1], "attachment_read", contactId=2, messageId=row["id"], index=0, succeeds=False)
+
 
 
 def run_simulator_peer(folder, public_peer, _pipe):

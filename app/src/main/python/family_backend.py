@@ -1,5 +1,5 @@
 """First live Reticulum TCP/LXMF test backend; standalone app identity and state."""
-import base64,hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
+import base64,binascii,hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
 _original_signal=signal.signal
 def _android_signal(sig,handler):
     try:return _original_signal(sig,handler)
@@ -19,6 +19,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
+    'incoming_delivery_limit','attachment_read',
 })
 _tcp_only=False
 _ios_voice=False
@@ -173,7 +174,7 @@ def _start():
         identity_path=_root/'identity'
         identity=RNS.Identity.from_file(str(identity_path)) if identity_path.exists() else RNS.Identity()
         if not identity_path.exists():identity.to_file(str(identity_path));os.chmod(identity_path,0o600)
-        _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False)
+        _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False,delivery_limit=_incoming_limit()/1000)
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive)
@@ -257,6 +258,129 @@ def _online():
 def _contact(peer):
     return next((c for c in _state['contacts'] if c.get('addresses',{}).get('lxmf','').lower()==peer),None)
 
+DEFAULT_DELIVERY_LIMIT = 10_000_000
+MAX_DELIVERY_LIMIT = 1_000_000_000
+# Outbound attachments cross the native app bridge as base64.
+OUTBOUND_ATTACHMENT_LIMIT = 9_950_000
+INLINE_IMAGES = {'png', 'jpeg', 'jpg', 'webp', 'gif', 'bmp', 'avif'}
+MAX_ATTACHMENTS = 32
+
+
+def _incoming_limit():
+    return _state.get('incoming_delivery_limit', DEFAULT_DELIVERY_LIMIT)
+
+
+def _attachment_name(value):
+    value = str(value).replace('\\', '/').rsplit('/', 1)[-1]
+    value = ''.join(char for char in value if char.isprintable()).strip('. ')
+    return value[:120] or 'attachment'
+
+
+def _attachments(row):
+    return row.get('attachments') or ([row['attachment']] if row.get('attachment') else [])
+
+
+def _attachment_file(mid, index, row):
+    key = f'{mid}-{index}' if row.get('attachments') else mid
+    return _root / 'attachments' / (key + '.bin')
+
+
+def _save_attachments(mid, items):
+    folder = _root / 'attachments'
+    folder.mkdir(exist_ok=True, mode=0o700)
+    active = {_attachment_file(row['id'], i, row) for row in _state['messages']
+              for i in range(len(_attachments(row)))}
+    used = 0
+    for path in folder.glob('*.bin'):
+        if path in active:
+            used += path.stat().st_size
+        else:
+            path.unlink(missing_ok=True)
+    if used + sum(len(data) for _, data, _ in items) > max(64_000_000, _incoming_limit()):
+        raise ValueError('Attachment storage is full')
+    saved = []
+    paths = []
+    try:
+        for index, (name, data, image) in enumerate(items):
+            path = folder / f'{mid}-{index}.bin'
+            with path.open('xb') as stream:
+                paths.append(path)
+                stream.write(data)
+            saved.append({'name': _attachment_name(name), 'size': len(data), 'image': image})
+    except OSError:
+        for path in paths:
+            path.unlink(missing_ok=True)
+        raise
+    return saved
+
+
+def attachment_path(contact_id, mid, index=0, image_only=False):
+    if not isinstance(mid, str) or not re.fullmatch('[0-9a-f]{32}', mid):
+        raise ValueError('Invalid attachment')
+    with _lock:
+        contact = next((c for c in _state['contacts'] if c['id'] == contact_id), None)
+        row = next((m for m in _conversation_messages(contact) if m['id'] == mid), None) if contact else None
+        items = _attachments(row) if row else []
+        if type(index) is not int or not 0 <= index < len(items):
+            raise ValueError('Attachment is unavailable')
+        image = items[index].get('image')
+        if image_only and image not in INLINE_IMAGES:
+            raise ValueError('Photo preview is unavailable')
+        path = str(_attachment_file(mid, index, row))
+        return [path, 'image/' + ('jpeg' if image == 'jpg' else image)] if image_only else path
+
+
+def read_attachment(contact_id, mid, index=0):
+    return Path(attachment_path(contact_id, mid, index)).read_bytes()
+
+
+def _received_attachments(fields):
+    import LXMF
+    items = []
+    image = fields.get(LXMF.FIELD_IMAGE)
+    if isinstance(image, (list, tuple)) and len(image) >= 2:
+        kind, data = image[:2]
+        if isinstance(kind, bytes):
+            kind = kind.decode('ascii', errors='ignore')
+        if isinstance(kind, str) and re.fullmatch('[a-zA-Z0-9.+-]{1,32}', kind) and isinstance(data, bytes) and data:
+            items.append(('photo.' + kind.lower(), data, kind.lower()))
+    files = fields.get(LXMF.FIELD_FILE_ATTACHMENTS)
+    if isinstance(files, (list, tuple)):
+        for file in files[:MAX_ATTACHMENTS-len(items)]:
+            if isinstance(file, (list, tuple)) and len(file) >= 2:
+                name, data = file[:2]
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8', errors='replace')
+                if isinstance(name, str) and isinstance(data, bytes) and data:
+                    items.append((name, data, None))
+    return items
+
+
+def _decode_outbound_attachments(raw):
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_ATTACHMENTS:
+        raise ValueError('Choose up to 32 files or photos')
+    items = []
+    remaining = OUTBOUND_ATTACHMENT_LIMIT
+    for item in raw:
+        encoded = item.get('data') if isinstance(item, dict) else None
+        if not isinstance(encoded, str) or len(encoded) > 4 * ((remaining + 2) // 3):
+            raise ValueError('Attachments exceed the 9.95 MB send limit')
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError('Could not read the attachment') from None
+        if not data or len(data) > remaining:
+            raise ValueError('Attachments exceed the 9.95 MB send limit or contain an empty file')
+        image = item.get('image')
+        if image is not None and (not isinstance(image, str) or not re.fullmatch('[a-z0-9.+-]{1,32}', image)):
+            raise ValueError('Invalid photo format')
+        if image and any(existing[2] for existing in items):
+            raise ValueError('Send each photo in its own Reticulum message')
+        items.append((item.get('name', 'attachment'), data, image))
+        remaining -= len(data)
+    return items
+
+
 def _receive(message):
     peer=message.source_hash.hex()
     with _lock:
@@ -288,15 +412,27 @@ def _receive(message):
     with _lock:
         contact=_contact(peer)
         if not contact:return
-        if _locations:
-            import LXMF
-            fields=getattr(message,'fields',{}) or {}
-            if LXMF.FIELD_TELEMETRY in fields:_locations.receive(peer,fields[LXMF.FIELD_TELEMETRY])
-        if not message.content_as_string().strip():return
+        import LXMF
+        fields=getattr(message,'fields',{}) or {}
+        if _locations and LXMF.FIELD_TELEMETRY in fields:
+            _locations.receive(peer,fields[LXMF.FIELD_TELEMETRY])
+        text=message.content_as_string()
+        items=_received_attachments(fields)
+        has_attachment=any(field in fields for field in (LXMF.FIELD_FILE_ATTACHMENTS,LXMF.FIELD_IMAGE))
+        if not text.strip() and not has_attachment:return
         if any(m.get('hash')==message.hash.hex() for m in _state['messages']):return
         if _tcp_only and not contact.get('identityPublicKey'):
             contact['identityPublicKey']=message.source.identity.get_public_key().hex()
-        _state['messages'].append({'id':uuid.uuid4().hex,'hash':message.hash.hex(),'peer':peer,'text':message.content_as_string()[:4096],'status':'Received · signature verified','incoming':True,'timestamp':time.time()})
+        mid=uuid.uuid4().hex
+        row={'id':mid,'hash':message.hash.hex(),'peer':peer,'text':text[:4096],'status':'Received · signature verified','incoming':True,'timestamp':time.time()}
+        if items and sum(len(data) for _,data,_ in items)<=_incoming_limit():
+            try:
+                row['attachments']=_save_attachments(mid,items)
+            except (OSError, ValueError):
+                row['attachmentError']='Attachment could not be saved'
+        elif has_attachment:
+            row['attachmentError']='Attachment is too large or unsupported'
+        _state['messages'].append(row)
         _state['messages']=_state['messages'][-500:];_save()
 
 def _update(mid,status):
@@ -406,6 +542,10 @@ def _retry_message(mid,contact_id,service,peer,alternate,alternate_peer,status):
 def _send(mid,peer,text,on_failure=None):
     send_started=False
     message=None
+    def release(m):
+        with _lock:
+            if _outbound.get(mid) is m:
+                _outbound.pop(mid, None)
     def fail(status):
         if send_started:status='Not confirmed · Reticulum'
         if on_failure is None or not on_failure(status):
@@ -426,11 +566,31 @@ def _send(mid,peer,text,on_failure=None):
                 send_started=True
                 return super().send()
         # On an RNode, short messages can avoid a multi-packet link handshake.
-        message=TrackedMessage(dest,_destination,text,desired_method=_delivery_method(bytes.fromhex(peer)),include_ticket=True)
-        message.register_delivery_callback(lambda m:_update(mid,'Delivered'))
+        with _lock:
+            contact=_contact(peer)
+            row=next((m for m in _state['messages'] if m['id']==mid),None)
+            if not contact or row is None:return
+            attachments=_attachments(row)
+            fields={}
+            files=[]
+            for index, attachment in enumerate(attachments):
+                data=read_attachment(contact['id'],mid,index)
+                if attachment.get('image'):
+                    fields[LXMF.FIELD_IMAGE]=[attachment['image'],data]
+                else:
+                    files.append([attachment['name'],data])
+            if files:
+                fields[LXMF.FIELD_FILE_ATTACHMENTS]=files
+        method=LXMF.LXMessage.DIRECT if attachments else _delivery_method(bytes.fromhex(peer))
+        message=TrackedMessage(dest,_destination,text,fields=fields,desired_method=method,include_ticket=True)
+        def delivered(m):
+            release(m)
+            _update(mid,'Delivered')
         def failed(m):
+            release(m)
             if m.state!=LXMF.LXMessage.CANCELLED:
                 fail('Failed · Reticulum could not send')
+        message.register_delivery_callback(delivered)
         message.register_failed_callback(failed)
         # Recheck approval immediately before handing the packet to LXMF.
         with _lock:
@@ -445,6 +605,8 @@ def _send(mid,peer,text,on_failure=None):
                 _save()
     except Exception as e:
         # The router can report failure synchronously before raising.
+        if message is not None:
+            release(message)
         if message is None or message.state not in (LXMF.LXMessage.FAILED,LXMF.LXMessage.REJECTED,LXMF.LXMessage.CANCELLED):
             fail('Failed · '+str(e))
 
@@ -590,6 +752,7 @@ def _snapshot():
         result['location']=_locations.snapshot() if _locations else {}
         if _meshcore:result['location']['meshcoreStatus']=_meshcore.location_status
         result['preferences']=dict(_state.get('preferences',{}))
+        result['incomingDeliveryLimit']=_incoming_limit()
         result['deviceName']=_state.get('device_name',DEFAULT_DEVICE_NAME)
         result['clientLookup']=dict(_client_lookup)
         if _meshcore:
@@ -606,7 +769,7 @@ def background(lock_guardian=True):
 def request(raw):
     global _client_lookup,_ios_voice_foreground
     try:
-        if len(raw)>1500000:raise ValueError('Request is too large')
+        if len(raw)>14_000_000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
         if _tcp_only and action not in TCP_ONLY_ACTIONS:
             raise ValueError('This build supports Reticulum TCP messaging only.')
@@ -851,6 +1014,18 @@ def request(raw):
             if _tcp_only and config and config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
             with _lock:_state['rnode']=config;_save()
             if _radio:_radio.configure(config)
+        elif action=='incoming_delivery_limit':
+            _authorized(p)
+            limit=p.get('bytes')
+            if type(limit) is not int or not 1_000<=limit<=MAX_DELIVERY_LIMIT:
+                raise ValueError('Choose a limit from 1 KB to 1 GB')
+            with _lock:
+                _state['incoming_delivery_limit']=limit
+                _save()
+                if _router:_router.delivery_per_transfer_limit=limit/1000
+        elif _tcp_only and action=='attachment_read':
+            path=attachment_path(p.get('contactId'),p.get('messageId'),p.get('index'))
+            return json.dumps({'ok':True,'attachmentPath':path})
         elif action=='peer':
             _authorized(p);host=str(p.get('host','')).strip();port=int(p.get('port',0))
             if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
@@ -897,26 +1072,35 @@ def request(raw):
                 if not c:raise ValueError('Contact is not approved')
                 method=p.get('method','auto')
                 automatic=method=='auto'
+                attachment=p.get('attachments')
+                if attachment is None and p.get('attachment') is not None:
+                    attachment=[p['attachment']]
                 if method not in ['auto','reticulum','meshcore']:raise ValueError('Unsupported message method')
                 reticulum=bool(c['addresses'].get('lxmf') and _online())
                 meshcore=bool(c['addresses'].get('meshcore') and _meshcore and _meshcore.connected)
-                if automatic:
+                if attachment is not None:
+                    if method=='meshcore' or not reticulum:raise ValueError('Files and photos require a Reticulum connection to this contact')
+                    method='reticulum'
+                elif automatic:
                     options=_message_routes(c,str(p.get('text','')).strip())
                     method=options[0]['service'] if options else 'auto'
                 if method=='reticulum' and not reticulum:raise ValueError('Reticulum is not connected or not approved for this contact')
                 if method=='meshcore' and not meshcore:raise ValueError('MeshCore is not connected or not approved for this contact')
                 if method=='auto':raise ValueError('Messaging is not connected for this contact')
                 text=str(p.get('text','')).strip()
-                if not text or len(text)>4096:raise ValueError('Message must contain 1–4096 characters')
+                if (not text and attachment is None) or len(text)>4096:raise ValueError('Message must contain 1–4096 characters or an attachment')
                 if method=='meshcore' and len(text.encode())>160:raise ValueError('MeshCore messages support at most 160 UTF-8 bytes')
                 mid=uuid.uuid4().hex;peer=c['addresses']['lxmf' if method=='reticulum' else 'meshcore'].lower()
                 owner=(_state.get('meshcore') or {}).get('publicKey','') if method=='meshcore' else ''
                 _state['messages']=_state['messages'][-499:]
-                _state['messages'].append({'id':mid,'peer':peer,'owner':owner,'service':method,'text':text,'incoming':False,'status':'Finding path' if method=='reticulum' else 'Sending to MeshCore companion','timestamp':time.time()});_save()
+                row={'id':mid,'peer':peer,'owner':owner,'service':method,'text':text,'incoming':False,'status':'Finding path' if method=='reticulum' else 'Sending to MeshCore companion','timestamp':time.time()}
+                if attachment is not None:
+                    row['attachments']=_save_attachments(mid,_decode_outbound_attachments(attachment))
+                _state['messages'].append(row);_save()
                 alternate,alternate_key=('meshcore','meshcore') if method=='reticulum' else ('reticulum','lxmf')
                 alternate_peer=c['addresses'].get(alternate_key,'').lower()
                 on_failure=None
-                if automatic and alternate_peer and (alternate!='meshcore' or len(text.encode())<=160):
+                if automatic and attachment is None and alternate_peer and (alternate!='meshcore' or len(text.encode())<=160):
                     def on_failure(status):
                         return _retry_message(mid,c['id'],method,peer,alternate,alternate_peer,status)
             _dispatch_message(mid,method,peer,text,on_failure)
