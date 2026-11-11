@@ -31,6 +31,11 @@ python3 -c 'import json; print("\n".join(" ".join((w["url"], w["sha256"], w["fil
 while read -r url digest filename; do
     fetch "$url" "$digest" "RuntimeBuild/room-wheels/$filename"
 done
+mkdir -p RuntimeBuild/voice-wheels
+python3 -c 'import json; print("\n".join(" ".join((w["url"], w["sha256"], w["file"])) for ws in json.load(open("voice-wheels.json")).values() for w in ws))' | \
+while read -r url digest filename; do
+    fetch "$url" "$digest" "RuntimeBuild/voice-wheels/$filename"
+done
 stage="$(mktemp -d "$PWD/RuntimeBuild/staging.XXXXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
 python3 stage-runtime.py "$wheel" "$stage/staged" --cbor-wheel "$cbor"

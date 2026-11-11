@@ -31,6 +31,8 @@ targets:
           set -e
           export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
           python3 "$PROJECT_DIR/install-room-wheels.py" "$PLATFORM_NAME" "$ARCHS" "$CODESIGNING_FOLDER_PATH/staged"
+          bash "$PROJECT_DIR/build-voice-codecs.sh" --slice "$PLATFORM_NAME" "$ARCHS"
+          python3 "$PROJECT_DIR/install-voice-runtime.py" "$PLATFORM_NAME" "$ARCHS" "$CODESIGNING_FOLDER_PATH" "$EXPANDED_CODE_SIGN_IDENTITY"
           source "$PROJECT_DIR/RuntimeBuild/Python.xcframework/build/utils.sh"
           install_python RuntimeBuild/Python.xcframework staged
     settings:
@@ -41,6 +43,7 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Use your microphone during approved Reticulum voice calls."
         INFOPLIST_KEY_NSCameraUsageDescription: "Scan contact QR codes in Guardian settings."
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Share your location with the contacts your guardian approved while Family is open."
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Connect to Reticulum peers on your local network."

@@ -3,12 +3,14 @@ from contextlib import ExitStack
 import ctypes.util
 import importlib.util
 import json
+import math
 import multiprocessing
 import os
 import platform
 import runpy
 from pathlib import Path
 import socket
+import struct
 import sys
 import threading
 import time
@@ -63,15 +65,15 @@ def run_family(folder, pipe):
     staged = os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME")
     source = staged or Path(__file__).resolve().parents[1] / "app/src/main/python"
     sys.path.insert(0, str(source))
-    room_crypto = os.getenv("FAMILY_IOS_TEST_ROOM_CRYPTO") == "1"
-    if staged and room_crypto:
+    native_crypto = os.getenv("FAMILY_IOS_TEST_NATIVE_CRYPTO") == "1"
+    if staged and native_crypto:
         class WithoutCBORX:
             def find_spec(self, fullname, path=None, target=None):
                 if fullname == "cborx":
                     raise ModuleNotFoundError("Use the iOS CBOR implementation", name=fullname)
 
         sys.meta_path.insert(0, WithoutCBORX())
-    if staged and not room_crypto:
+    if staged and not native_crypto:
         class WithoutNativeModules:
             def find_spec(self, fullname, path=None, target=None):
                 if fullname.partition(".")[0] in {"cryptography", "java", "serial"} or fullname == "multiprocessing.connection":
@@ -82,7 +84,7 @@ def run_family(folder, pipe):
         platform.uname()
         sys.platform = "ios"
     import family_backend
-    if staged and not room_crypto:
+    if staged and not native_crypto:
         import RNS
         from LXMF import LXStamper
 
@@ -93,11 +95,17 @@ def run_family(folder, pipe):
         from RNS.Interfaces.RNodeInterface import TCPConnection
 
         TCPConnection.TARGET_PORT = int(radio_port)
-    family_backend.initialize(folder, tcp_only=True)
+    voice_enabled = os.getenv("FAMILY_IOS_TEST_VOICE") == "1"
+    family_backend.initialize(folder, tcp_only=True, ios_voice=voice_enabled)
     try:
         while True:
             action, payload = pipe.recv()
-            pipe.send(json.loads(family_backend.request(json.dumps({"action": action, "payload": payload}))))
+            if voice_enabled and action == "test_voice_pcm":
+                call_id = payload["callId"]
+                family_backend.voice_push(call_id, bytes.fromhex(payload["pcm"]))
+                pipe.send({"ok": True, "output": family_backend.voice_pull(call_id).hex()})
+            else:
+                pipe.send(json.loads(family_backend.request(json.dumps({"action": action, "payload": payload}))))
     except EOFError:
         pass
 
@@ -385,7 +393,7 @@ def test_mailbox_recovers_only_approved_messages_after_restart(tmp_path, monkeyp
 def test_tcp_runtime_rejoins_saved_password_room(tmp_path, monkeypatch):
     if importlib.util.find_spec("cryptography") is None or importlib.util.find_spec("cborx") is None:
         pytest.skip("Requires Relay Chat host dependencies")
-    monkeypatch.setenv("FAMILY_IOS_TEST_ROOM_CRYPTO", "1")
+    monkeypatch.setenv("FAMILY_IOS_TEST_NATIVE_CRYPTO", "1")
     password = "local test guardian password"
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -466,3 +474,65 @@ def test_wifi_rnode_negotiates_configuration_and_battery(tmp_path, monkeypatch):
         request(client, "rnode", token=token, config=None)
         assert not request(client, "status")["rnodeRuntime"]["online"]
     server.join(timeout=5)
+
+
+def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):
+    if importlib.util.find_spec("LXST") is None:
+        pytest.skip("Requires LXST and the host voice dependencies")
+    monkeypatch.setenv("FAMILY_IOS_TEST_VOICE", "1")
+    monkeypatch.setenv("FAMILY_IOS_TEST_NATIVE_CRYPTO", "1")
+    password = "local test guardian password"
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    with ExitStack() as stack:
+        hub = start_process(stack, run_hub, tmp_path / "voice-hub", port)
+        assert hub.poll(8) and hub.recv()
+        clients = [start_process(stack, run_family, tmp_path / name) for name in ("caller", "receiver")]
+        tokens, addresses = [], []
+        for client in clients:
+            request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+            token = request(client, "unlock", password=password)["token"]
+            request(client, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            wait_status(client, lambda state: state["tcpOnline"])
+            request(client, "voice_config", succeeds=False, enabled=True)
+            request(client, "voice_config", token=token, enabled=True)
+            request(client, "voice_presence", foreground=True)
+            voice = wait_status(client, lambda state: state["voice"]["ready"])["voice"]
+            tokens.append(token)
+            addresses.append(voice["address"])
+        request(clients[0], "voice_call", succeeds=False, contactId=1)
+        for index, client in enumerate(clients):
+            contact = {"id": 1, "name": "Approved voice peer", "addresses": {"lxst": addresses[1-index]}}
+            request(client, "contacts", token=tokens[index], contacts=[contact])
+        request(clients[0], "voice_call", contactId=1)
+        deadline = time.monotonic() + 35
+        history = set()
+        while time.monotonic() < deadline:
+            caller = request(clients[0], "status")["voice"]
+            incoming = request(clients[1], "status")["voice"]
+            history.add((caller["call_state"], incoming["call_state"], caller["error"], incoming["error"]))
+            if incoming["call_state"] == "incoming":
+                break
+            time.sleep(.2)
+        assert incoming["call_state"] == "incoming", history
+        assert incoming["caller_name"] == "Approved voice peer"
+        request(clients[1], "voice_answer", callId=incoming["call_id"])
+        connected = [wait_status(client, lambda state: state["voice"]["call_state"] == "connected")["voice"]
+                     for client in clients]
+        outputs = [False, False]
+        for sequence in range(75):
+            frame = struct.pack("<960h", *(int(5000 * math.sin((sequence * 960 + sample) * .0576))
+                                           for sample in range(960))).hex()
+            for index, client in enumerate(clients):
+                result = request(client, "test_voice_pcm", callId=connected[index]["call_id"], pcm=frame)
+                outputs[index] |= any(bytes.fromhex(result["output"]))
+            if all(outputs):
+                break
+            time.sleep(.02)
+        assert all(outputs), "Both approved peers must receive non-silent PCM"
+        request(clients[1], "voice_presence", foreground=False)
+        for client in clients:
+            wait_status(client, lambda state: state["voice"]["call_state"] == "idle")
+        request(clients[1], "voice_hangup", callId=incoming["call_id"])
+        assert request(clients[1], "status")["voice"]["call_state"] == "idle"

@@ -81,6 +81,16 @@ build_slice() {
     done
 }
 
+if [[ "${1:-}" == --slice ]]; then
+    [[ "$#" == 3 ]]
+    case "$2-$3" in
+        iphoneos-arm64|iphonesimulator-arm64|iphonesimulator-x86_64) ;;
+        *) printf 'Unsupported iOS voice target: %s %s\n' "$2" "$3" >&2; exit 2 ;;
+    esac
+    build_slice "$2" "$3"
+    exit 0
+fi
+
 build_slice iphoneos arm64
 build_slice iphonesimulator arm64
 build_slice iphonesimulator x86_64

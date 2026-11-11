@@ -15,6 +15,8 @@
 #include <string.h>
 
 static PyObject *request_handler;
+static PyObject *voice_push;
+static PyObject *voice_pull;
 
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS
 #define STRINGIFY_VALUE(value) #value
@@ -71,13 +73,21 @@ bool family_runtime_start(const char *python_home, const char *modules, const ch
         PyObject *state_path = PyUnicode_DecodeFSDefault(state);
         if (state_path) args = PyTuple_Pack(1, state_path);
         Py_XDECREF(state_path);
-        if (args) options = Py_BuildValue("{s:O}", "tcp_only", Py_True);
+        if (args) {
+#if defined(TARGET_OS_IOS) && TARGET_OS_IOS
+            options = Py_BuildValue("{s:O,s:O}", "tcp_only", Py_True, "ios_voice", Py_True);
+#else
+            options = Py_BuildValue("{s:O}", "tcp_only", Py_True);
+#endif
+        }
         if (options) result = PyObject_Call(initialize, args, options);
     }
     if (result) {
         PyObject *handler = PyObject_GetAttrString(backend, "request");
         if (handler && PyCallable_Check(handler)) {
             request_handler = handler;
+            voice_push = PyObject_GetAttrString(backend, "voice_push");
+            voice_pull = PyObject_GetAttrString(backend, "voice_pull");
         } else {
             Py_XDECREF(handler);
         }
@@ -115,4 +125,33 @@ char *family_runtime_request(const char *json) {
     PyErr_Clear();
     PyGILState_Release(gil);
     return copy;
+}
+
+size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
+                                     size_t input_size, uint8_t *output, size_t capacity) {
+    if (!call_id || !voice_push || !voice_pull || !output || input_size > 11520) return 0;
+    PyGILState_STATE gil = PyGILState_Ensure();
+    PyObject *id = PyUnicode_FromString(call_id);
+    size_t count = 0;
+    if (id && input && input_size) {
+        PyObject *bytes = PyBytes_FromStringAndSize((const char *)input, (Py_ssize_t)input_size);
+        PyObject *pushed = bytes ? PyObject_CallFunctionObjArgs(voice_push, id, bytes, NULL) : NULL;
+        Py_XDECREF(pushed);
+        Py_XDECREF(bytes);
+        PyErr_Clear();
+    }
+    PyObject *received = id ? PyObject_CallOneArg(voice_pull, id) : NULL;
+    if (received && PyBytes_Check(received)) {
+        char *bytes;
+        Py_ssize_t size;
+        if (PyBytes_AsStringAndSize(received, &bytes, &size) == 0 && size >= 0 && (size_t)size <= capacity) {
+            memcpy(output, bytes, (size_t)size);
+            count = (size_t)size;
+        }
+    }
+    Py_XDECREF(received);
+    Py_XDECREF(id);
+    PyErr_Clear();
+    PyGILState_Release(gil);
+    return count;
 }

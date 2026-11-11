@@ -2,6 +2,8 @@
 #define FAMILY_RUNTIME_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,6 +14,10 @@ bool family_runtime_start(const char *python_home, const char *modules, const ch
 
 /* Returns owned UTF-8 JSON, or NULL on a bridge failure. Free with free(). */
 char *family_runtime_request(const char *json);
+
+/* Push and pull bounded 48 kHz signed 16-bit mono PCM for the current call. */
+size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
+                                     size_t input_size, uint8_t *output, size_t capacity);
 
 #ifdef __cplusplus
 }

@@ -7,6 +7,7 @@ struct FamilyContactApproval: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var address = ""
+    @State private var voiceAddress = ""
     @State private var contactSaved = false
     @State private var importedCard: FamilyContactCard?
     @State private var qrPhoto: PhotosPickerItem?
@@ -21,11 +22,14 @@ struct FamilyContactApproval: View {
                         .accessibilityIdentifier("contact-name")
                     TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("contact-address")
+                    TextField("Reticulum voice address", text: $voiceAddress)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
                     NavigationLink("Find messaging client") {
                         FamilyClientDiscovery(family: family) { client in
                             importedCard = nil
                             name = String(client.name.prefix(32))
                             address = client.address
+                            voiceAddress = ""
                             contactSaved = false
                         }
                     }
@@ -48,12 +52,13 @@ struct FamilyContactApproval: View {
                         let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
                             ? importedCard?.identityPublicKey : nil
                         Task {
-                            contactSaved = await family.saveContact(name: name, address: address, identityPublicKey: key)
+                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key)
                         }
                     }
                     .disabled(readingQR)
                     .onChange(of: name) { contactSaved = false }
                     .onChange(of: address) { contactSaved = false }
+                    .onChange(of: voiceAddress) { contactSaved = false }
                 }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
@@ -85,10 +90,11 @@ struct FamilyContactApproval: View {
     }
 
     private func importQRPayload(_ payload: String) async {
-        guard let card = await family.readContactCard(payload), let lxmf = card.addresses["lxmf"] else { return }
+        guard let card = await family.readContactCard(payload) else { return }
         importedCard = card
         name = card.name ?? ""
-        address = lxmf
+        address = card.addresses["lxmf"] ?? ""
+        voiceAddress = card.addresses["lxst"] ?? ""
         contactSaved = false
     }
 

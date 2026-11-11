@@ -44,12 +44,10 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Unlock"].tap()
         let savePeer = app.buttons["Save peer"]
         XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
-        let enablePeer = app.switches["peer-enabled"]
+        let enablePeer = app.buttons["peer-enabled"]
         XCTAssertTrue(enablePeer.exists)
-        if (enablePeer.value as? String) == "0" {
-            enablePeer.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
-        }
-        XCTAssertEqual(enablePeer.value as? String, "1")
+        if enablePeer.label == "Enable Reticulum TCP peer" { enablePeer.tap() }
+        XCTAssertEqual(enablePeer.label, "Disable Reticulum TCP peer")
         savePeer.tap()
         XCTAssertTrue(app.staticTexts["guardian-peer-connected"].waitForExistence(timeout: 25), app.debugDescription)
         let deviceName = "Family simulator device"
@@ -148,6 +146,16 @@ final class FamilyLiveUITests: XCTestCase {
         let locked = app.secureTextFields["unlock-password"]
         if !locked.waitForExistence(timeout: 5), guardian.isHittable { guardian.tap() }
         XCTAssertTrue(locked.waitForExistence(timeout: 10), app.debugDescription)
+        if localTest {
+            fill(locked, password)
+            app.buttons["Unlock"].tap()
+            let voice = app.buttons["Enable Reticulum calling"]
+            for _ in 0..<4 where !voice.isHittable { app.swipeUp() }
+            XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
+            voice.tap()
+            XCTAssertTrue(app.staticTexts["reticulum-voice-ready"].waitForExistence(timeout: 35), app.debugDescription)
+            app.buttons["Disable Reticulum calling"].tap()
+        }
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

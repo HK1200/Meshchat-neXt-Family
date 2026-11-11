@@ -129,6 +129,20 @@ struct FamilyRNodeRuntime: Decodable, Sendable {
     let error: String
 }
 
+struct FamilyVoiceState: Decodable, Sendable {
+    let enabled: Bool
+    let ready: Bool
+    let call_state: String
+    let call_id: String?
+    let caller_name: String?
+    let address: String?
+    let error: String?
+    let muted: Bool?
+    let profile: String?
+
+    var active: Bool { call_state != "idle" && call_id?.isEmpty == false }
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -141,6 +155,8 @@ struct FamilyReply: Decodable, Sendable {
     var peer: FamilyPeer?
     var rnode: FamilyRNode?
     var rnodeRuntime: FamilyRNodeRuntime?
+    var voiceSupported: Bool?
+    var voice: FamilyVoiceState?
     var mailbox: FamilyMailbox?
     var location: FamilyLocationState?
     var contacts: [FamilyContact]?

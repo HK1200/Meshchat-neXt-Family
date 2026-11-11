@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreLocation
 import BackgroundTasks
 import Network
@@ -20,9 +21,11 @@ struct FamilyLiveApp: App {
                         family?.openNotification(contactID: contactID, messageID: messageID)
                     }
                     if scenePhase == .active {
+                        await family.setVoicePresence(true)
                         await family.refreshNotificationPermission()
                         family.checkMailboxOnNextRefresh()
                     } else if scenePhase == .background {
+                        await family.setVoicePresence(false)
                         await family.suspendLocation()
                         await family.lock()
                         family.scheduleMailboxRefresh()
@@ -51,6 +54,7 @@ final class FamilyModel: ObservableObject {
     @Published var error = ""
     @Published private(set) var notificationsAllowed = false
     @Published var notificationContactID: Int?
+    @Published private(set) var speakerOn = false
     #if DEBUG
     @Published private(set) var testNotificationDelivered = false
 
@@ -70,6 +74,7 @@ final class FamilyModel: ObservableObject {
     var finishingSend: Bool { sendTask != .invalid }
 
     private let client = FamilyClient()
+    private let voiceAudio = FamilyVoiceAudio()
     private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?
@@ -96,6 +101,7 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
+            reconcileVoiceAudio(updated.voice)
             resolveNotification()
             if notificationsAllowed {
                 await notifications?.publish(updated.messages ?? [:])
@@ -108,6 +114,67 @@ final class FamilyModel: ObservableObject {
             }
             finishSendIfIdle()
         } catch { self.error = error.localizedDescription }
+    }
+
+    func setVoicePresence(_ active: Bool) async {
+        if !active {
+            voiceAudio.stop()
+            speakerOn = false
+        }
+        _ = try? await request("voice_presence", ["foreground": active])
+    }
+
+    func configureVoice(_ enabled: Bool) async {
+        _ = await perform("voice_config", ["token": token, "enabled": enabled])
+    }
+
+    func call(_ contact: FamilyContact) async {
+        guard await microphoneAllowed() else { return }
+        _ = await perform("voice_call", ["contactId": contact.id])
+    }
+
+    func answerCall() async {
+        guard let voice = state?.voice, voice.call_state == "incoming", let id = voice.call_id,
+              await microphoneAllowed() else { return }
+        _ = await perform("voice_answer", ["callId": id])
+    }
+
+    func endCall() async {
+        voiceAudio.stop()
+        speakerOn = false
+        guard let voice = state?.voice, voice.active, let id = voice.call_id else { return }
+        _ = await perform("voice_hangup", ["callId": id])
+    }
+
+    func toggleSpeaker() {
+        do {
+            try voiceAudio.setSpeaker(!speakerOn)
+            speakerOn.toggle()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func microphoneAllowed() async -> Bool {
+        let allowed = await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+        }
+        if !allowed { error = "Allow microphone access in iOS Settings to make or answer calls." }
+        return allowed
+    }
+
+    private func reconcileVoiceAudio(_ voice: FamilyVoiceState?) {
+        guard UIApplication.shared.applicationState == .active,
+              let voice, voice.call_state == "connected", let id = voice.call_id, !id.isEmpty else {
+            if voiceAudio.callID != nil {
+                voiceAudio.stop()
+                speakerOn = false
+            }
+            return
+        }
+        do { try voiceAudio.start(callID: id) }
+        catch {
+            self.error = error.localizedDescription
+            Task { _ = try? await request("voice_hangup", ["callId": id]) }
+        }
     }
 
     func openNotification(contactID: Int, messageID: String) {
@@ -231,7 +298,10 @@ final class FamilyModel: ObservableObject {
     func perform(_ action: String, _ payload: [String: Any] = [:]) async -> Bool {
         do {
             let reply = try await request(action, payload)
-            if reply.setupComplete != nil { state = reply }
+            if reply.setupComplete != nil {
+                state = reply
+                reconcileVoiceAudio(reply.voice)
+            }
             self.error = ""
             return true
         } catch {
@@ -357,8 +427,9 @@ final class FamilyModel: ObservableObject {
         do {
             let result = try await request("qr_parse", ["token": token, "text": text, "target": "contact"])
             guard epoch == guardianEpoch, unlocked else { return nil }
-            guard let card = result.card, card.addresses["lxmf"]?.isEmpty == false else {
-                error = "Choose a contact code with an LXMF address."
+            guard let card = result.card,
+                  card.addresses["lxmf"]?.isEmpty == false || card.addresses["lxst"]?.isEmpty == false else {
+                error = "Choose a contact code with a Reticulum messaging or calling address."
                 return nil
             }
             error = ""
@@ -369,11 +440,26 @@ final class FamilyModel: ObservableObject {
         }
     }
 
-    func saveContact(id: Int? = nil, name: String, address: String, identityPublicKey: String? = nil) async -> Bool {
+    func resolveVoiceAddress(_ id: Int) async -> String? {
+        do {
+            return try await request("voice_resolve", ["token": token, "contactId": id]).address
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    func saveContact(id: Int? = nil, name: String, address: String, voiceAddress: String,
+                     identityPublicKey: String? = nil) async -> Bool {
         let current = state?.contacts ?? []
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard lxmf.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else {
-            error = "Enter the contact’s 32-character LXMF address."
+        let lxst = voiceAddress.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lxmf.isEmpty || !lxst.isEmpty else {
+            error = "Enter at least one approved Reticulum address."
+            return false
+        }
+        guard [lxmf, lxst].allSatisfy({ $0.isEmpty || $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil }) else {
+            error = "Reticulum addresses must contain 32 hexadecimal characters."
             return false
         }
         let previous = id.flatMap { id in current.first { $0.id == id } }
@@ -383,7 +469,8 @@ final class FamilyModel: ObservableObject {
         }
         var addresses = previous?.addresses ?? [:]
         let previousKey = addresses["lxmf"]?.lowercased() == lxmf ? previous?.identityPublicKey : nil
-        addresses["lxmf"] = lxmf
+        addresses["lxmf"] = lxmf.isEmpty ? nil : lxmf
+        addresses["lxst"] = lxst.isEmpty ? nil : lxst
         let contact = FamilyContact(
             id: id ?? (current.map(\.id).max() ?? 0) + 1,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines), addresses: addresses,
@@ -534,6 +621,12 @@ struct FamilyHome: View {
                 notificationContact = contact
                 showNotificationChat = true
             }
+            .fullScreenCover(isPresented: Binding(
+                get: { family.state?.voice?.active == true }, set: { _ in }
+            )) {
+                FamilyVoiceCall(family: family)
+                    .interactiveDismissDisabled()
+            }
             .sheet(isPresented: $showGuardian, onDismiss: { Task { await family.lock() } }) {
                 FamilyGuardian(family: family)
             }
@@ -576,14 +669,10 @@ struct FamilyGuardian: View {
                         if deviceNameSaved { Text("Device name saved") }
                     }
                     Section("Reticulum TCP peer") {
-                        HStack {
-                            Text("Enable Reticulum TCP peer")
-                                .accessibilityHidden(true)
-                            Spacer()
-                            Toggle("Enable Reticulum TCP peer", isOn: $peerEnabled)
-                                .labelsHidden()
-                                .accessibilityIdentifier("peer-enabled")
+                        Button(peerEnabled ? "Disable Reticulum TCP peer" : "Enable Reticulum TCP peer") {
+                            peerEnabled.toggle()
                         }
+                        .accessibilityIdentifier("peer-enabled")
                         TextField("Host", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
                         TextField("Port", text: $port).keyboardType(.numberPad)
@@ -593,6 +682,20 @@ struct FamilyGuardian: View {
                             Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
                         }
 
+                    }
+                    if family.state?.voiceSupported == true {
+                        Section("Reticulum calling") {
+                            Button(family.state?.voice?.enabled == true ? "Disable Reticulum calling" : "Enable Reticulum calling") {
+                                Task { await family.configureVoice(family.state?.voice?.enabled != true) }
+                            }
+                            if family.state?.voice?.ready == true {
+                                Text("Reticulum calling ready").accessibilityIdentifier("reticulum-voice-ready")
+                            }
+                            if let address = family.state?.voice?.address, !address.isEmpty {
+                                Text(address).font(.caption.monospaced()).textSelection(.enabled)
+                            }
+                            if let error = family.state?.voice?.error, !error.isEmpty { Text(error).foregroundStyle(.red) }
+                        }
                     }
                     Section {
                         NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
@@ -732,7 +835,7 @@ struct FamilyChat: View {
     }
 
     private var canSend: Bool {
-        currentContact?.addresses["lxmf"] == contact.addresses["lxmf"] && currentContact != nil
+        currentContact?.addresses["lxmf"] == contact.addresses["lxmf"] && currentContact?.addresses["lxmf"]?.isEmpty == false
     }
 
     var body: some View {
@@ -757,7 +860,8 @@ struct FamilyChat: View {
                     }
                 }
                 .disabled(!canSend || submitting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if !canSend { Text("Contact approval changed. Reopen this conversation.") }
+                if currentContact?.addresses["lxmf"] == nil { Text("This contact has no approved messaging address.") }
+                else if !canSend { Text("Contact approval changed. Reopen this conversation.") }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG
                 if family.testNotificationDelivered { Text("Message notification delivered") }
@@ -766,5 +870,13 @@ struct FamilyChat: View {
             }
         }
         .navigationTitle(currentContact?.name ?? contact.name)
+        .toolbar {
+            if let currentContact, currentContact.addresses["lxst"]?.isEmpty == false,
+               family.state?.voice?.ready == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Call", systemImage: "phone") { Task { await family.call(currentContact) } }
+                }
+            }
+        }
     }
 }

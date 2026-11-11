@@ -17,8 +17,11 @@ TCP_ONLY_ACTIONS=frozenset({
     'mailbox_config','mailbox_sync','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
+    'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence',
 })
 _tcp_only=False
+_ios_voice=False
+_ios_voice_foreground=False
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -60,11 +63,12 @@ _mailbox_tcp_session=None
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
 
-def initialize(folder,*,tcp_only=False):
-    global _root,_state,_locations,_maps,_meshcore,_room_names,_tcp_only
+def initialize(folder,*,tcp_only=False,ios_voice=False):
+    global _root,_state,_locations,_maps,_meshcore,_room_names,_tcp_only,_ios_voice
     with _lock:
         if _root:return
         _tcp_only=tcp_only
+        _ios_voice=ios_voice
         _root=Path(folder);_root.mkdir(parents=True,exist_ok=True)
         p=_root/'state.json'
         existing=p.exists()
@@ -175,6 +179,9 @@ def _start():
             _meshcore.identity=identity
             from family_voice import FamilyVoice
             _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
+        elif _ios_voice:
+            from family_voice import FamilyVoice
+            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,route_context=_voice_route_context)
         try:
             from family_rooms import FamilyRooms
             _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
@@ -573,6 +580,7 @@ def _snapshot():
             result['mailbox']=_mailbox_snapshot()
             result['tcpSession']=_tcp_session()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
+        if _tcp_only:result['voiceSupported']=_ios_voice
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
         result['activeMap']=_state.get('active_map','pnw')
@@ -594,7 +602,7 @@ def background(lock_guardian=True):
     if _meshcore:_meshcore.rooms.close_view()
 
 def request(raw):
-    global _client_lookup
+    global _client_lookup,_ios_voice_foreground
     try:
         if len(raw)>1500000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
@@ -829,6 +837,11 @@ def request(raw):
             if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
             with _lock:_state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True))};_save()
             threading.Thread(target=_connect,daemon=True).start()
+        elif action=='voice_presence' and _ios_voice:
+            if type(p.get('foreground')) is not bool:raise ValueError('Invalid voice availability')
+            _ios_voice_foreground=p['foreground']
+            if not _ios_voice_foreground and _voice and _voice.phase!='idle':_voice.hangup()
+            return json.dumps({'ok':True})
         elif action=='voice_resolve':
             _authorized(p)
             import RNS
