@@ -60,6 +60,47 @@ struct FamilyLocationState: Decodable, Sendable {
     let locations: [String: FamilyLocationFix]
 }
 
+struct FamilyRoom: Decodable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let key: String
+    let channel: String
+    let readOnly: Bool
+    let hasPassword: Bool?
+}
+
+struct FamilyRoomMessage: Decodable, Identifiable, Sendable {
+    let seq: Int
+    let nick: String?
+    let text: String
+    let delivery: String?
+    var id: Int { seq }
+}
+
+struct FamilyRoomState: Decodable, Sendable {
+    let joined: Bool
+    let status: String
+    let error: String?
+    let messages: [FamilyRoomMessage]
+}
+
+struct FamilyRoomHub: Decodable, Identifiable, Sendable {
+    let hubHash: String
+    let name: String
+    var id: String { hubHash }
+}
+
+struct FamilyRoomListing: Decodable, Sendable {
+    struct Channel: Decodable, Identifiable, Sendable {
+        let channel: String
+        let hasPassword: Bool
+        var id: String { channel }
+    }
+    let hubHash: String
+    let status: String
+    let rooms: [Channel]
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -73,6 +114,12 @@ struct FamilyReply: Decodable, Sendable {
     var mailbox: FamilyMailbox?
     var location: FamilyLocationState?
     var contacts: [FamilyContact]?
+    var rooms: [FamilyRoom]?
+    var roomRuntime: [String: FamilyRoomState]?
+    var rrcHubs: [FamilyRoomHub]?
+    var roomDiscovery: [FamilyRoomListing]?
+    var roomError: String?
+    var rrcIdentity: String?
     var announces: [FamilyDiscoveredClient]?
     var clientLookup: FamilyClientLookup?
     var card: FamilyContactCard?

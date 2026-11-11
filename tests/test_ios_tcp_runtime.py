@@ -38,11 +38,39 @@ def run_hub(folder, port, pipe):
     pipe.recv()
 
 
+def run_room_hub(folder, port, pipe):
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME") or str(root / "app/src/main/python"))
+    import RNS
+    from meshchatnext.src.backend.rrc.server import RRCServerManager
+
+    folder.mkdir()
+    (folder / "config").write_text(
+        "[reticulum]\nshare_instance = No\nenable_transport = Yes\n"
+        "[interfaces]\n[[Local Room Hub]]\ntype = TCPServerInterface\nenabled = Yes\n"
+        f"listen_ip = 127.0.0.1\nlisten_port = {port}\n"
+    )
+    RNS.Reticulum(configdir=str(folder), loglevel=1)
+    manager = RRCServerManager(str(folder))
+    hub = manager.create_hub(name="Family test room hub")
+    hub.rooms.register_room("family-test", key="private room test key")
+    pipe.send(hub.dest_hash.hex())
+    pipe.recv()
+
+
 def run_family(folder, pipe):
     staged = os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME")
     source = staged or Path(__file__).resolve().parents[1] / "app/src/main/python"
     sys.path.insert(0, str(source))
-    if staged:
+    room_crypto = os.getenv("FAMILY_IOS_TEST_ROOM_CRYPTO") == "1"
+    if staged and room_crypto:
+        class WithoutCBORX:
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "cborx":
+                    raise ModuleNotFoundError("Use the iOS CBOR implementation", name=fullname)
+
+        sys.meta_path.insert(0, WithoutCBORX())
+    if staged and not room_crypto:
         class WithoutNativeModules:
             def find_spec(self, fullname, path=None, target=None):
                 if fullname.partition(".")[0] in {"cryptography", "java", "serial"} or fullname == "multiprocessing.connection":
@@ -53,7 +81,7 @@ def run_family(folder, pipe):
         platform.uname()
         sys.platform = "ios"
     import family_backend
-    if staged:
+    if staged and not room_crypto:
         import RNS
         from LXMF import LXStamper
 
@@ -346,3 +374,38 @@ def test_mailbox_recovers_only_approved_messages_after_restart(tmp_path, monkeyp
         request(client, "mailbox_sync")
         state = wait_status(client, lambda s: s["mailbox"]["status"] == "complete")
         assert len(state["messages"]["1"]) == 1
+
+
+def test_tcp_runtime_rejoins_saved_password_room(tmp_path, monkeypatch):
+    if importlib.util.find_spec("cryptography") is None or importlib.util.find_spec("cborx") is None:
+        pytest.skip("Requires Relay Chat host dependencies")
+    monkeypatch.setenv("FAMILY_IOS_TEST_ROOM_CRYPTO", "1")
+    password = "local test guardian password"
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    with ExitStack() as stack:
+        server = start_process(stack, run_room_hub, tmp_path / "room-hub", port)
+        assert server.poll(12), "Room hub did not start"
+        hub_hash = server.recv()
+        clients = [start_process(stack, run_family, tmp_path / name) for name in ("first", "second")]
+        for client in clients:
+            request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+            token = request(client, "unlock", password=password)["token"]
+            request(client, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            ready = wait_status(client, lambda state: state["tcpOnline"])
+            assert not ready["roomError"], ready["roomError"]
+            approval = {"name": "Test room", "key": hub_hash, "channel": "family-test", "service": "reticulum"}
+            request(client, "room_save", succeeds=False, room=approval, approved=True)
+            request(client, "room_save", token=token, room=approval, approved=True, password="private room test key")
+            joined = wait_status(client, lambda state: state["roomRuntime"].get("1", {}).get("joined"), timeout=40)
+            assert joined["rooms"][0]["hasPassword"]
+        request(clients[0], "room_close")
+        previous = request(clients[0], "status")["tcpSession"]
+        request(clients[0], "tcp_network_changed")
+        wait_status(clients[0], lambda state: state["tcpSession"] not in (None, previous)
+                    and state["roomRuntime"]["1"]["joined"], timeout=50)
+        request(clients[0], "room_post", roomId=1, text="Hello from the approved room")
+        wait_status(clients[1], lambda state: any(
+            row["text"] == "Hello from the approved room" for row in state["roomRuntime"]["1"]["messages"]
+        ))

@@ -16,6 +16,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'device_name','preferences','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name',
 })
 _tcp_only=False
 _lock=threading.RLock()
@@ -75,9 +76,9 @@ def initialize(folder,*,tcp_only=False):
             _state['password_salt']=secrets.token_hex(16)
             _state['password_hash']='' if not existing else _password(secrets.token_urlsafe(32))
             _save()
+    from family_room_names import RoomNames
+    _room_names=RoomNames(_state,_lock,_save)
     if not _tcp_only:
-        from family_room_names import RoomNames
-        _room_names=RoomNames(_state,_lock,_save)
         from family_meshcore import FamilyMeshCore
         _meshcore=FamilyMeshCore(_state,_lock,_save)
         from family_maps import MapStore
@@ -174,12 +175,12 @@ def _start():
             _meshcore.identity=identity
             from family_voice import FamilyVoice
             _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
-            try:
-                from family_rooms import FamilyRooms
-                _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
-            except Exception as exc:
-                _room_error=str(exc)
-                import traceback;traceback.print_exc()
+        try:
+            from family_rooms import FamilyRooms
+            _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
+        except Exception as exc:
+            _room_error=str(exc)
+            import traceback;traceback.print_exc()
         class Clients:
             aspect_filter='lxmf.delivery'
             receive_path_responses=True

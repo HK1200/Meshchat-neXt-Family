@@ -30,6 +30,7 @@ targets:
         script: |
           set -e
           export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
+          python3 "$PROJECT_DIR/install-room-wheels.py" "$PLATFORM_NAME" "$ARCHS" "$CODESIGNING_FOLDER_PATH/staged"
           source "$PROJECT_DIR/RuntimeBuild/Python.xcframework/build/utils.sh"
           install_python RuntimeBuild/Python.xcframework staged
     settings:

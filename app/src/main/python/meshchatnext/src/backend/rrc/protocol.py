@@ -14,7 +14,12 @@ import os
 import re
 import time
 
-import cborx
+try:
+    import cborx as cbor
+except ModuleNotFoundError as error:
+    if error.name != "cborx":
+        raise
+    import cbor2 as cbor
 
 RRC_VERSION = 1
 
@@ -97,22 +102,28 @@ HELLO_CLIENT_NAME = "meshchatnext"
 HELLO_CLIENT_VERSION = "1"
 
 
-_STREAM_DECODER = cborx.CBORDecoder()
+_STREAM_DECODER = cbor.CBORDecoder() if hasattr(cbor.CBORDecoder, "decode_item") else None
 
 
 def encode(obj):
     """Encode an object into canonical CBOR bytes for the wire."""
-    return cborx.dumps(obj, canonical=True)
+    return cbor.dumps(obj, canonical=True)
 
 
 def decode(data):
     """Decode CBOR bytes into a Python object."""
-    return cborx.loads(data)
+    return cbor.loads(data)
 
 
 def decode_item(data, pos=0):
     """Decode one CBOR item at pos, returning (value, next offset)."""
-    return _STREAM_DECODER.decode_item(data, pos)
+    if _STREAM_DECODER is not None:
+        return _STREAM_DECODER.decode_item(data, pos)
+    from io import BytesIO
+
+    stream = BytesIO(data)
+    stream.seek(pos)
+    return cbor.CBORDecoder(stream).decode(), stream.tell()
 
 
 def now_ms():

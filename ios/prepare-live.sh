@@ -23,8 +23,16 @@ mkdir -p RuntimeBuild/public
 wheel=RuntimeBuild/public/rns-1.5.7-py3-none-any.whl
 fetch https://files.pythonhosted.org/packages/6a/5a/ee933b9f465040039286ffa76c5e509f334b61014061cdc1b0e46bcb3753/rns-1.5.7-py3-none-any.whl \
     0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf "$wheel"
+cbor=RuntimeBuild/public/cbor2-5.6.5-py3-none-any.whl
+fetch https://files.pythonhosted.org/packages/9b/ef/1c4698cac96d792005ef0611832f38eaee477c275ab4b02cbfc4daba7ad3/cbor2-5.6.5-py3-none-any.whl \
+    3038523b8fc7de312bb9cdcbbbd599987e64307c4db357cd2030c472a6c7d468 "$cbor"
+mkdir -p RuntimeBuild/room-wheels
+python3 -c 'import json; print("\n".join(" ".join((w["url"], w["sha256"], w["file"])) for ws in json.load(open("room-wheels.json")).values() for w in ws))' | \
+while read -r url digest filename; do
+    fetch "$url" "$digest" "RuntimeBuild/room-wheels/$filename"
+done
 stage="$(mktemp -d "$PWD/RuntimeBuild/staging.XXXXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
-python3 stage-runtime.py "$wheel" "$stage/staged"
+python3 stage-runtime.py "$wheel" "$stage/staged" --cbor-wheel "$cbor"
 if [[ -d RuntimeBuild/staged ]]; then rm -rf RuntimeBuild/staged; fi
 mv -- "$stage/staged" RuntimeBuild/staged

@@ -81,6 +81,7 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.staticTexts["relay-chat-ready"].waitForExistence(timeout: 15))
         if localTest {
             let enableNotifications = app.buttons["Enable message notifications"]
             if enableNotifications.exists {
@@ -128,8 +129,12 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
         XCTAssertTrue(app.navigationBars[deviceName].exists)
         XCTAssertTrue(app.buttons[changedAppearance].exists)
-        app.buttons["Guardian settings"].tap()
-        XCTAssertTrue(app.secureTextFields["unlock-password"].waitForExistence(timeout: 10))
+        XCTAssertTrue(guardian.waitForExistence(timeout: 10))
+        if !guardian.isHittable { app.swipeUp() }
+        guardian.tap()
+        let locked = app.secureTextFields["unlock-password"]
+        if !locked.waitForExistence(timeout: 5), guardian.isHittable { guardian.tap() }
+        XCTAssertTrue(locked.waitForExistence(timeout: 10), app.debugDescription)
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

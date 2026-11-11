@@ -262,6 +262,23 @@ final class FamilyModel: ObservableObject {
         await perform("device_name", ["token": token, "name": name])
     }
 
+    func saveRoom(id: Int?, name: String, hub: String, channel: String,
+                  readOnly: Bool, password: String, clearPassword: Bool) async -> Bool {
+        var room: [String: Any] = ["name": name, "key": hub, "channel": channel,
+                                    "service": "reticulum", "readOnly": readOnly]
+        room["id"] = id
+        return await perform("room_save", ["token": token, "room": room, "approved": true,
+                                           "password": password, "clearPassword": clearPassword])
+    }
+
+    func discoverRooms(_ hub: String) async -> Bool {
+        await perform("room_discover", ["token": token, "hubHash": hub, "service": "reticulum"])
+    }
+
+    func removeRoom(_ id: Int) async -> Bool {
+        await perform("room_remove", ["token": token, "roomId": id])
+    }
+
     func saveLocationPolicy(mapEnabled: Bool, userControls: Bool, contactIDs: Set<Int>) async -> Bool {
         await perform("location_policy", [
             "token": token, "mapEnabled": mapEnabled, "userControls": userControls,
@@ -380,6 +397,11 @@ struct FamilyHome: View {
                 } else if let state = family.state {
                     Section("Connection") {
                         Text(state.tcpOnline == true ? "Reticulum TCP connected" : "Reticulum TCP offline")
+                        #if DEBUG
+                        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), state.rrcIdentity != nil {
+                            Text("Relay Chat ready").accessibilityIdentifier("relay-chat-ready")
+                        }
+                        #endif
                         if let mailbox = state.mailbox, !mailbox.address.isEmpty {
                             switch mailbox.status {
                             case "syncing": Text("Checking offline mailbox")
@@ -397,6 +419,13 @@ struct FamilyHome: View {
                             NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
                         }
                         Button("Guardian settings") { showGuardian = true }
+                    }
+                    if let rooms = state.rooms, !rooms.isEmpty {
+                        Section("Approved rooms") {
+                            ForEach(rooms) { room in
+                                NavigationLink(room.name) { FamilyRoomChat(family: family, room: room) }
+                            }
+                        }
                     }
                     if state.location?.mapEnabled == true {
                         Section {
@@ -520,6 +549,7 @@ struct FamilyGuardian: View {
                     }
                     Section {
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
+                        NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
                     }
                     Section("Offline message mailbox") {
                         TextField("LXMF propagation node address", text: $mailboxAddress)

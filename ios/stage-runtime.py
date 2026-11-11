@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
 FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
-FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py", "family_tcp.py", "family_location.py")
+FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py", "family_tcp.py", "family_location.py", "family_rooms.py", "family_room_names.py")
 
 
 def standalone_rns(source):
@@ -31,7 +31,7 @@ def standalone_rns(source):
     return source
 
 
-def stage(wheel, destination):
+def stage(wheel, destination, cbor_wheel=None):
     with wheel.open("rb") as stream:
         if file_digest(stream, "sha256").hexdigest() != RNS_SHA256:
             raise ValueError("Expected the pinned rns-1.5.7 wheel")
@@ -53,6 +53,19 @@ def stage(wheel, destination):
     telemetry = Path("meshchatnext/src/backend/telemetry_utils.py")
     (destination / telemetry.parent).mkdir(parents=True)
     shutil.copyfile(FAMILY_SOURCE / telemetry, destination / telemetry)
+    for module in ("src/path_utils.py", "src/backend/constants.py", "src/backend/path_utils.py", "src/backend/traffic_stats.py"):
+        path = Path("meshchatnext") / module
+        shutil.copyfile(FAMILY_SOURCE / path, destination / path)
+    rrc = Path("meshchatnext/src/backend/rrc")
+    shutil.copytree(FAMILY_SOURCE / rrc, destination / rrc, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(FAMILY_SOURCE / "pycparser", destination / "pycparser", ignore=shutil.ignore_patterns("__pycache__"))
+    if cbor_wheel is not None:
+        with cbor_wheel.open("rb") as stream:
+            if file_digest(stream, "sha256").hexdigest() != "3038523b8fc7de312bb9cdcbbbd599987e64307c4db357cd2030c472a6c7d468":
+                raise ValueError("Expected the pinned pure-Python cbor2 wheel")
+        with ZipFile(cbor_wheel) as archive:
+            archive.extractall(destination)
+
 
 
 
@@ -60,5 +73,6 @@ if __name__ == "__main__":
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("rns_wheel", type=Path)
     parser.add_argument("destination", type=Path, help="New directory for staged modules")
+    parser.add_argument("--cbor-wheel", type=Path)
     args = parser.parse_args()
-    stage(args.rns_wheel, args.destination)
+    stage(args.rns_wheel, args.destination, args.cbor_wheel)

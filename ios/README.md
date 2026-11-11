@@ -50,6 +50,10 @@ In Guardian settings, open **Find messaging client** to search Reticulum announc
 
 Open **Guardian settings → Location sharing** to choose which approved contacts can exchange private location updates, set the sharing duration, and decide whether children can start or stop timed sharing. The Family map displays approved locations and their last update time. iOS samples GPS and sends updates while Family is open. The live map uses Apple Maps; the preview’s bundled tiles are separate.
 
+## Reticulum Relay Chat
+
+Open **Guardian settings → Approved rooms** to add a Relay Chat hub and channel. You can enter the hub address or choose a discovered hub and list its channels. Family saves the room password and rejoins approved rooms after reconnecting. Set a room to read only to disable posting. The home screen lists approved rooms separately from private conversations.
+
 ## Notifications and background delivery
 
 Tap **Enable message notifications** on the home screen. Incoming messages from approved contacts can trigger a local alert while the app is running. The alert leaves out the sender and message text. Family keeps a record of posted alerts to avoid repeating them on refresh.
@@ -58,6 +62,6 @@ If Family is sending a message when iOS moves it to the background, it requests 
 
 To receive messages sent while Family is offline, open **Guardian settings → Offline message mailbox** and enter a trusted LXMF propagation node's 32-character address. The sender needs to use the same mailbox in propagated delivery mode. Exchange a direct message from each contact first so Family can keep the contact's verified public key. Family checks the mailbox on return to the app and requests periodic iOS Background App Refresh. iOS controls whether and when those background checks run. Leave the mailbox field blank and save to disable it.
 
-Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Reticulum voice, Bluetooth radio transport, Relay Chat, SIP, offline maps, and distribution are separate iOS milestones. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
+Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Reticulum voice, Bluetooth radio transport, SIP, offline maps, and distribution are separate iOS milestones. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)
