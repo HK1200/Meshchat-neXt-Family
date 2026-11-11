@@ -21,5 +21,7 @@ jobs:
           persist-credentials: false
       - name: Locate CMake
         run: command -v cmake || brew install cmake
+      - name: Prepare the embedded Python framework
+        run: bash ios/prepare-live.sh
       - name: Build and verify Apple codec libraries
         run: bash ios/build-voice-codecs.sh

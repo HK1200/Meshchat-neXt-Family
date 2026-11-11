@@ -20,6 +20,14 @@ fetch_source "https://codeload.github.com/drowe67/codec2/tar.gz/$codec2_commit" 
 fetch_source https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz \
     6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1 "$build/opus.tar.gz"
 
+fetch_source https://files.pythonhosted.org/packages/a6/28/956b52132ca2f3569f1784a2f1a0354489f74ef6b930b04586798ec54985/lxst-0.5.4-py3-none-any.whl \
+    feadeb244d12378c27c35dbe48a251ff4db03faf3c8f55b769f9d7656d0adeb7 "$build/lxst.whl"
+fetch_source https://files.pythonhosted.org/packages/38/53/946db57842a50b2da2e0c1e34bd37f36f5aadba1a929a3971c5d7841dbca/audioop_lts-0.2.2.tar.gz \
+    64d0c62d88e67b98a1a5e71987b7aa7b5bcffc7dcee65b635823dbdd0a8dbbd0 "$build/audioop.tar.gz"
+
+unzip -p "$build/lxst.whl" LXST/Filters.c > "$build/Filters.c"
+unzip -p "$build/lxst.whl" LXST/Filters.h > "$build/Filters.h"
+tar -xzf "$build/audioop.tar.gz" -C "$build"
 tar -xzf "$build/codec2.tar.gz" -C "$build"
 tar -xzf "$build/opus.tar.gz" -C "$build"
 
@@ -47,6 +55,25 @@ build_slice() {
     cmake --build "$output/codec2" --target codec2 --parallel 2
     xcrun libtool -static -o "$output/libFamilyVoiceCodecs.a" \
         "$output/opus/libopus.a" "$output/codec2/src/libcodec2.a"
+    local target="$arch-apple-ios17.0" python_variant=ios-arm64
+    if [[ "$sdk" == iphonesimulator ]]; then
+        target+=-simulator
+        python_variant=ios-arm64_x86_64-simulator
+    fi
+    local python_dir="$PWD/RuntimeBuild/Python.xcframework/$python_variant"
+    xcrun --sdk "$sdk" clang -target "$target" -isysroot "$sdk_path" -O2 -dynamiclib \
+        -Wl,-force_load,"$output/libFamilyVoiceCodecs.a" "$build/Filters.c" \
+        -Wl,-install_name,@rpath/FamilyVoiceCodecs.framework/FamilyVoiceCodecs \
+        -o "$output/FamilyVoiceCodecs"
+    xcrun --sdk "$sdk" clang -target "$target" -isysroot "$sdk_path" -O2 -dynamiclib \
+        -DPy_LIMITED_API=0x030D0000 -I "$python_dir/Python.framework/Headers" \
+        -F "$python_dir" -framework Python "$build/audioop_lts-0.2.2/audioop/_audioop.c" \
+        -Wl,-install_name,@rpath/audioop._audioop.framework/audioop._audioop \
+        -o "$output/_audioop.abi3.so"
+    xcrun lipo "$output/FamilyVoiceCodecs" -verify_arch "$arch"
+    xcrun lipo "$output/_audioop.abi3.so" -verify_arch "$arch"
+    xcrun nm -gU "$output/_audioop.abi3.so" > "$output/audioop-symbols.txt"
+    grep -Eq ' [Tt] _PyInit__audioop$' "$output/audioop-symbols.txt"
     xcrun lipo "$output/libFamilyVoiceCodecs.a" -verify_arch "$arch"
     xcrun nm -gU "$output/libFamilyVoiceCodecs.a" > "$output/symbols.txt"
     for symbol in opus_encode opus_decode codec2_encode codec2_decode; do
