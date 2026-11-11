@@ -128,14 +128,15 @@ char *family_runtime_request(const char *json) {
 }
 
 size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
-                                     size_t input_size, uint8_t *output, size_t capacity) {
+                                     size_t input_size, bool native_processing, uint8_t *output, size_t capacity) {
     if (!call_id || !voice_push || !voice_pull || !output || input_size > 11520) return 0;
     PyGILState_STATE gil = PyGILState_Ensure();
     PyObject *id = PyUnicode_FromString(call_id);
     size_t count = 0;
     if (id && input && input_size) {
         PyObject *bytes = PyBytes_FromStringAndSize((const char *)input, (Py_ssize_t)input_size);
-        PyObject *pushed = bytes ? PyObject_CallFunctionObjArgs(voice_push, id, bytes, NULL) : NULL;
+        PyObject *processed = native_processing ? Py_True : Py_False;
+        PyObject *pushed = bytes ? PyObject_CallFunctionObjArgs(voice_push, id, bytes, processed, NULL) : NULL;
         Py_XDECREF(pushed);
         Py_XDECREF(bytes);
         PyErr_Clear();

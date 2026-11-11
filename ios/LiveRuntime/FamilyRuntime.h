@@ -17,7 +17,7 @@ char *family_runtime_request(const char *json);
 
 /* Exchange bounded 48 kHz signed 16-bit mono PCM. Pass zero capacity to push only. */
 size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
-                                     size_t input_size, uint8_t *output, size_t capacity);
+                                     size_t input_size, bool native_processing, uint8_t *output, size_t capacity);
 
 #ifdef __cplusplus
 }

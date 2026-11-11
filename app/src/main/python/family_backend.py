@@ -1139,8 +1139,8 @@ def request(raw):
 
 # Native audio bridge only: these are never exposed as Javascript request actions.
 def voice_state():return json.dumps(_voice.snapshot() if _voice else {'enabled':bool((_state or {}).get('voiceEnabled',False)),'ready':False,'call_state':'idle'})
-def voice_push(call_id,data):
-    if _voice:_voice.push(call_id,data)
+def voice_push(call_id,data,native_processing=False):
+    if _voice:_voice.push(call_id,data,native_processing=native_processing)
 def voice_pull(call_id):return _voice.pull(call_id) if _voice else b''
 def voice_audio_error(detail):
     if _voice:_voice.error=str(detail)[:160];_voice.hangup()

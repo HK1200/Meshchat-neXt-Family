@@ -150,7 +150,7 @@ class FamilyVoice:
     with manager.lock:self.should_run=False;self.pending.clear()
    def can_receive(self,from_source=None):return True
    def handle_frame(self,frame,source=None):pass
-   def push(self,data):
+   def push(self,data,native_processing=False):
     if not self.should_run or not self.sink:return 0
     self.pending.extend(data)
     sent=0
@@ -159,7 +159,8 @@ class FamilyVoice:
      del self.pending[:self.frame_bytes]
      if self.sink.can_receive(from_source=self):
       samples=(np.frombuffer(frame,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
-      for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
+      if not native_processing:
+       for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
       self.sink.handle_frame(self.codec.encode(samples),self)
       sent+=1
     return sent
@@ -269,12 +270,12 @@ class FamilyVoice:
  def reconcile(self):
   with self.lock:
    if (self.peer and not self.allowed(bytes.fromhex(self.peer))) or (self.target and not any(c.get('addresses',{}).get('lxst','')==self.target for c in self.state['contacts'])):self.hangup()
- def push(self,call_id,data):
+ def push(self,call_id,data,native_processing=False):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.allowed(bytes.fromhex(self.peer)) or self.muted or not self.input:return
    data=bytes(data)
    if not data or len(data)>11520 or len(data)%2:return
-   try:self.sent+=self.input.push(data)
+   try:self.sent+=self.input.push(data,native_processing=native_processing)
    except Exception as exc:
     self.error=f'Reticulum microphone audio failed: {exc}'[:200]
     self.hangup(call_id)

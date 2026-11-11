@@ -122,6 +122,12 @@ def test_capture_splits_or_joins_chunks_at_negotiated_profile(monkeypatch):
     voice.set_muted(True)
     assert not source.pending
 
+    frames.clear()
+    source.filters = [types.SimpleNamespace(handle_frame=lambda samples, rate: np.zeros_like(samples))]
+    source.push(pcm)
+    source.push(pcm, native_processing=True)
+    assert frames == [bytes(len(pcm)), pcm]
+
 
 def test_late_hangup_is_harmless_and_cannot_end_a_new_call():
     voice = FamilyVoice(None, {}, threading.RLock(), lambda: None, autostart=False)

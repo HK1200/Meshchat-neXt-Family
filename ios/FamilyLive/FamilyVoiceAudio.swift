@@ -20,6 +20,14 @@ final class FamilyVoiceAudio {
     func start(callID: String) throws {
         guard self.callID != callID else { return }
         stop()
+        do {
+            try start(callID: callID, useVoiceProcessing: true)
+        } catch {
+            try start(callID: callID, useVoiceProcessing: false)
+        }
+    }
+
+    private func start(callID: String, useVoiceProcessing: Bool) throws {
         let session = AVAudioSession.sharedInstance()
         do {
             var options: AVAudioSession.CategoryOptions = [.allowBluetooth]
@@ -33,13 +41,17 @@ final class FamilyVoiceAudio {
             sessionActive = true
 
             let input = engine.inputNode
+            if input.isVoiceProcessingEnabled != useVoiceProcessing {
+                try input.setVoiceProcessingEnabled(useVoiceProcessing)
+            }
             let hardware = input.outputFormat(forBus: 0)
             guard hardware.sampleRate > 0, hardware.channelCount > 0,
                   let playback = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1) else {
                 throw AudioError.unavailable
             }
             engine.connect(player, to: engine.mainMixerNode, format: playback)
-            let pump = VoicePCMPump(callID: callID, player: player, format: playback)
+            let pump = VoicePCMPump(callID: callID, player: player, format: playback,
+                                    nativeProcessing: input.isVoiceProcessingEnabled)
             let capture = try VoiceMicrophoneCapture(input: hardware, output: playback, pump: pump)
             self.pump = pump
             input.installTap(onBus: 0, bufferSize: 960, format: hardware) { buffer, _ in
@@ -155,16 +167,18 @@ private final class VoicePCMPump: @unchecked Sendable {
     private let callID: String
     private let player: AVAudioPlayerNode
     private let format: AVAudioFormat
+    private let nativeProcessing: Bool
     private var captured = Data()
     private var tapDelivered = false
     private var pcmQueued = false
     private var timer: DispatchSourceTimer?
     private var scheduled = 0
 
-    init(callID: String, player: AVAudioPlayerNode, format: AVAudioFormat) {
+    init(callID: String, player: AVAudioPlayerNode, format: AVAudioFormat, nativeProcessing: Bool) {
         self.callID = callID
         self.player = player
         self.format = format
+        self.nativeProcessing = nativeProcessing
     }
 
     func noteTap() {
@@ -216,7 +230,8 @@ private final class VoicePCMPump: @unchecked Sendable {
             input.withUnsafeBytes { pcm in
                 output.withUnsafeMutableBufferPointer { received in
                     family_runtime_voice_exchange(id, pcm.bindMemory(to: UInt8.self).baseAddress,
-                                                  pcm.count, received.baseAddress, canQueuePlayback ? received.count : 0)
+                                                  pcm.count, nativeProcessing, received.baseAddress,
+                                                  canQueuePlayback ? received.count : 0)
                 }
             }
         }
