@@ -6,14 +6,14 @@ android {
     namespace 'org.meshchat.family.preview'
     compileSdk 35
     defaultConfig {
-        applicationId 'org.meshchat.family'
-        manifestPlaceholders = [familyAppLabel: 'neXt Family']
+        applicationId project.hasProperty('legacyMigration') ? 'org.meshchat.family.preview' : 'org.meshchat.family'
+        manifestPlaceholders = [familyAppLabel: project.hasProperty('legacyMigration') ? 'neXt Family (Transfer)' : 'neXt Family']
         minSdk 26
         testInstrumentationRunner 'org.meshchat.family.preview.FamilyTestInstrumentation'
         ndk { abiFilters "arm64-v8a" }
         targetSdk 35
-        versionCode 29
-        versionName '0.6.20'
+        versionCode 30
+        versionName '0.6.21'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {

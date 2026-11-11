@@ -1,3 +1,11 @@
+# neXt Family v0.6.21
+
+- Move your Family profile from the old Android package to the current one with guardian approval. The transfer preserves settings, approved contacts, messages, attachments, offline maps, and the Reticulum identity.
+- Install the Transfer APK over v0.6.19 or earlier and install the regular v0.6.21 APK alongside it. Start the transfer in the old app under **Guardian settings → Security** before setting up the new app. See the [transfer instructions](INITIAL_SETUP.md#transfer-from-family-v0619-or-earlier).
+- This is the one-time migration release. Current package users can install the regular APK as an in-place update.
+
+---
+
 # neXt Family v0.6.20
 
 - The public Android package ID is now `org.meshchat.family`. Android installs it as a separate app alongside v0.6.19 and earlier. Complete guardian setup in the new app. Keep the previous app to retain access to its settings, contacts, messages, and Reticulum identity.

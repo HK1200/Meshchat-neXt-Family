@@ -208,6 +208,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void saveMessageAttachment(int contact, String message, int index, String name) {
             activity.runOnUiThread(() -> activity.chooseAttachmentDestination(contact, message, index, name));
         }
+        @JavascriptInterface public boolean canTransferFamilyProfile() {
+            return FamilyMigration.isLegacy(activity);
+        }
+        @JavascriptInterface public void transferFamilyProfile(String token) {
+            activity.runOnUiThread(() -> FamilyMigration.send(activity, backend, token));
+        }
         @JavascriptInterface public boolean bootRecoveryEnabled() {
             return FamilyBootReceiver.enabled(activity);
         }

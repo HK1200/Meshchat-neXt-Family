@@ -8,7 +8,15 @@
 4. If you want to try Reticulum over the internet, select **Connect Reticulum through rmap.world:4242**. Otherwise leave it unchecked. Choose **Create guardian access**.
 5. Allow notifications when prompted if you want incoming message alerts and call controls. Grant microphone access when you make or answer your first call. Android may request additional permissions for Bluetooth, camera scanning, or location when you use those features.
 
-[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.20)
+[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.21)
+
+## Transfer from Family v0.6.19 or earlier
+
+1. Keep the old app installed. Install the **Transfer APK** from the v0.6.21 release over that app. It appears as **neXt Family (Transfer)**. The old app's updater can also install this APK.
+2. Install the regular **Family v0.6.21 Android APK**. If the new app is already installed, update it to v0.6.21. Leave its welcome screen at first setup. Transfer requires a fresh destination and will refuse to overwrite a configured profile.
+3. In **neXt Family (Transfer)**, unlock **Guardian settings**, open **Security**, and tap **Transfer Family profile**. Review the prompt in the new app and tap **Transfer**.
+4. Verify your settings, contacts, messages, and Reticulum identity in the new app. Re-enter your SIP account password if you use SIP and grant Android permissions as needed. If desired, restart location sharing from the new app.
+5. The old app closes after a successful transfer and retains its data. You can uninstall it once you've verified the new app. This transfer is available in v0.6.21 only.
 
 ## 2. Enable the connections you want
 
