@@ -1,6 +1,6 @@
 # Build Family for Android
 
-The app ID is `org.meshchat.family.preview`. Keeping it stable lets production-signed updates preserve data. The current Android build targets ARM64, compiles with Android SDK 35, and uses Java 17 and Python 3.11 for Chaquopy.
+The production Android app ID is `org.meshchat.family`. Updates signed with the production certificate can install over versions with that same ID. The current Android build targets ARM64, compiles with Android SDK 35, and uses Java 17 and Python 3.11 for Chaquopy.
 
 1. Install JDK 17, Android SDK Platform 35 and the Android build tools. Configure `ANDROID_HOME` or create a local `local.properties` pointing to the SDK.
 2. Use the pinned ARM64 Android wheels listed in `app/build.gradle`. Set `FAMILY_ANDROID_VENDOR_DIR` to the directory holding them. An adjoining Meshchat neXt checkout’s prepared `android/vendor` directory is the default. See neXt’s Android build instructions for its wheel preparation. [neXt Android build instructions](https://github.com/HK1200/Meshchat-neXt/blob/v0.1.8/android/README.md)
@@ -14,3 +14,9 @@ For Codec2, verify the Android wheel’s `pycodec2/pycodec2.so` exports `PyInit_
 The reproducible repair tool accepts the pinned wheel, matching NumPy wheel, the per-ABI Chaquopy Python target ZIP, and the Android NDK LLVM toolchain. Run it for each needed ABI, preserve its provenance file, then build with the repaired private vendor directory.
 
 [Codec2 repair tool](https://github.com/HK1200/Meshchat-neXt/blob/v0.1.11/scripts/android/rebuild-pycodec2-wheel.py)
+
+## Transition from the original Android package
+
+Family v0.6.19 and earlier used `org.meshchat.family.preview`. Android treats `org.meshchat.family` as a separate app and assigns it separate private storage. Installing the new package starts guardian setup. Keep the original app installed if you need its settings, messages, or Reticulum identity. An in-app transfer between the two packages requires a migration feature.
+
+Publish the production APK to a versioned release and upload its `family-update.json` to the `family-stable` release. The manifest must declare `org.meshchat.family` and the versioned tag that hosts the APK. Keep the original package's last compatible manifest at the GitHub Latest download URL during the transition. The installer verifies that a downloaded APK matches the installed app ID, version, and signing certificate.

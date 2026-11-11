@@ -18,7 +18,7 @@ final class FamilyUpdateSource {
     }
 
     static URI manifest(String repo) {
-        return URI.create("https://github.com/" + repo + "/releases/latest/download/family-update.json");
+        return URI.create("https://github.com/" + repo + "/releases/download/family-stable/family-update.json");
     }
 
     static URI apk(String repo, String tag, String asset) {

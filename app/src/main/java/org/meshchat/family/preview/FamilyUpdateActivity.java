@@ -23,7 +23,7 @@ import org.json.JSONObject;
 
 /** Private activity for an explicitly requested, Android-confirmed update. */
 public final class FamilyUpdateActivity extends Activity {
-    private static final String RESULT = "org.meshchat.family.preview.UPDATE_RESULT";
+    private static final String RESULT = "org.meshchat.family.UPDATE_RESULT";
     private static final int INSTALL_PERMISSION = 1901;
     private static final AtomicBoolean ACTIVE = new AtomicBoolean();
 

@@ -6,7 +6,7 @@ android {
     namespace 'org.meshchat.family.preview'
     compileSdk 35
     defaultConfig {
-        applicationId 'org.meshchat.family.preview'
+        applicationId 'org.meshchat.family'
         manifestPlaceholders = [familyAppLabel: 'neXt Family']
         minSdk 26
         testInstrumentationRunner 'org.meshchat.family.preview.FamilyTestInstrumentation'

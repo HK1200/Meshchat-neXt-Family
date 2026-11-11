@@ -14,7 +14,11 @@ import java.net.URI;
 public class SourceTest {
     public static void main(String[] args) {
         String repo = FamilyUpdateSource.repository(" family-owner/family-app ");
-        check(FamilyUpdateSource.manifest(repo), repo, true);
+        URI feed = FamilyUpdateSource.manifest(repo);
+        if (!feed.toString().endsWith("/releases/download/family-stable/family-update.json")) {
+            throw new AssertionError(feed);
+        }
+        check(feed, repo, true);
         check(FamilyUpdateSource.apk(repo, "v0.6.5", "family.apk"), repo, true);
         check(URI.create("https://release-assets.githubusercontent.com/asset?sig=token"), repo, true);
         check(URI.create("https://github.com/other/family-app/releases/download/v1/app.apk"), repo, false);
