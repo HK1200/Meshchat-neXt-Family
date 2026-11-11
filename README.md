@@ -12,7 +12,7 @@ You can enable any combination. Family keeps these services separate and uses an
 
 ## Install and set up
 
-Use an ARM64 phone or tablet running Android 8.0 or later. Family v0.6.20 uses the new Android package ID and starts with guardian setup. If you still need your v0.6.19 settings or messages, keep that app installed. GitHub’s Latest link serves the previous package’s updater. Use the download above for the current production package. [v0.6.20 release notes](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.20) · [Initial setup](docs/INITIAL_SETUP.md)
+Use an ARM64 phone or tablet running Android 8.0 or later. Family v0.6.20 uses the new Android package ID and starts with guardian setup. If you still need your v0.6.19 settings or messages, keep that app installed. The download above is the current production APK. [v0.6.20 release notes](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.20) · [Initial setup](docs/INITIAL_SETUP.md)
 
 Family can show updates on its home screen. **Install now** downloads the APK from this repository, verifies it, and opens Android’s installer. Android handles the installation approval.
 
