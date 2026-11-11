@@ -483,7 +483,6 @@ struct FamilyHome: View {
                         ForEach(state.contacts ?? []) { contact in
                             NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
                         }
-                        Button("Guardian settings") { showGuardian = true }
                     }
                     if let rooms = state.rooms, !rooms.isEmpty {
                         Section("Approved rooms") {
@@ -508,6 +507,13 @@ struct FamilyHome: View {
             .navigationTitle(family.state?.deviceName ?? "neXt Family")
             .preferredColorScheme(appearance.isEmpty ? nil : appearance == "night" ? .dark : .light)
             .toolbar {
+                if family.state?.setupComplete == true {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Guardian settings", systemImage: "lock.shield") { showGuardian = true }
+                            .labelStyle(.iconOnly)
+                            .accessibilityIdentifier("guardian-settings")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(night ? "Day mode" : "Night mode", systemImage: night ? "sun.max" : "moon") {
                         appearance = night ? "day" : "night"
@@ -570,8 +576,14 @@ struct FamilyGuardian: View {
                         if deviceNameSaved { Text("Device name saved") }
                     }
                     Section("Reticulum TCP peer") {
-                        Toggle("Enable Reticulum TCP peer", isOn: $peerEnabled)
-                            .accessibilityIdentifier("peer-enabled")
+                        HStack {
+                            Text("Enable Reticulum TCP peer")
+                                .accessibilityHidden(true)
+                            Spacer()
+                            Toggle("Enable Reticulum TCP peer", isOn: $peerEnabled)
+                                .labelsHidden()
+                                .accessibilityIdentifier("peer-enabled")
+                        }
                         TextField("Host", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
                         TextField("Port", text: $port).keyboardType(.numberPad)

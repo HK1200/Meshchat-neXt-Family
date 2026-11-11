@@ -10,6 +10,7 @@ final class FamilyLiveUITests: XCTestCase {
     }
 
     func testGuardianApprovedMessageRoundTrip() throws {
+        continueAfterFailure = false
         let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "test-peer", withExtension: "json"))
         let peer = try JSONDecoder().decode(Peer.self, from: Data(contentsOf: file))
         let app = XCUIApplication()
@@ -36,7 +37,7 @@ final class FamilyLiveUITests: XCTestCase {
         fill(app.secureTextFields["setup-confirmation"], password)
         app.buttons["Create guardian access"].tap()
 
-        let guardian = app.buttons["Guardian settings"]
+        let guardian = app.buttons["guardian-settings"]
         XCTAssertTrue(guardian.waitForExistence(timeout: 20))
         guardian.tap()
         fill(app.secureTextFields["unlock-password"], password)
@@ -45,7 +46,9 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
         let enablePeer = app.switches["peer-enabled"]
         XCTAssertTrue(enablePeer.exists)
-        if (enablePeer.value as? String) == "0" { enablePeer.tap() }
+        if (enablePeer.value as? String) == "0" {
+            enablePeer.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        }
         XCTAssertEqual(enablePeer.value as? String, "1")
         savePeer.tap()
         XCTAssertTrue(app.staticTexts["guardian-peer-connected"].waitForExistence(timeout: 25), app.debugDescription)
