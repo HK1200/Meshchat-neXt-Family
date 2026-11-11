@@ -3,7 +3,7 @@ import sys,threading,time,uuid
 
 PCM_BYTES_PER_MS = 96
 PLAYBACK_CHUNK = 20 * PCM_BYTES_PER_MS
-IOS_SPEECH_GAIN = 10 ** (3 / 20)
+IOS_SPEECH_GAIN = 10 ** (5 / 20)
 PLAYBACK_ECHO_HOLD = 0.7
 
 

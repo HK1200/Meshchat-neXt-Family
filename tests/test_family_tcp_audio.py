@@ -196,4 +196,4 @@ def test_ios_extra_speech_gain_waits_for_the_speaker_echo_to_decay():
 
     assert ios_transmit_gain(2.0, 2.0) == 1
     assert ios_transmit_gain(2.6, 2.0) == 1
-    assert ios_transmit_gain(2.8, 2.0) == pytest.approx(10 ** (3 / 20))
+    assert ios_transmit_gain(2.8, 2.0) == pytest.approx(10 ** (5 / 20))
