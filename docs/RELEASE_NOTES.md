@@ -1,3 +1,11 @@
+# neXt Family v0.6.20
+
+- The public Android package ID is now `org.meshchat.family`. Android installs it as a separate app alongside v0.6.19 and earlier. Complete guardian setup in the new app. Keep the previous app to retain access to its settings, contacts, messages, and Reticulum identity.
+- Automatic connection recovery after a reboot or update defaults to off. Guardians can enable it under **Guardian settings → Security**.
+- Future versions of the new package use the dedicated Family update feed.
+
+---
+
 # neXt Family v0.6.19
 
 - Keep the Android message field visible above the docked keyboard and preserve the draft during live conversation updates.
