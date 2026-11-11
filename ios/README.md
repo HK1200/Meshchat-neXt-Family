@@ -79,3 +79,39 @@ To receive messages sent while Family is offline, open **Guardian settings → O
 Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Bluetooth radio transport, SIP, and distribution are separate iOS milestones. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)
+
+## Internal TestFlight on a stock iPad
+
+The live app supports iPadOS 17 and later. Its bundle ID is
+`org.meshchat.family.ios.live`. The **Family iOS simulator** workflow can
+build a Release archive on the current device SDK with the
+`device_archive` input. That check runs without Apple signing credentials.
+
+To install through internal TestFlight, use an active Apple Developer Program
+team. Register the explicit bundle ID and create its app record in App Store
+Connect. Create an Apple Distribution certificate with an exportable private
+key and an App Store provisioning profile for the same bundle and certificate.
+Create a team App Store Connect API key authorized to upload builds. The
+account holder should complete Apple's encryption export-compliance answers
+for Family's Reticulum and TLS features in App Store Connect.
+
+Configure a GitHub environment named `ios-beta` restricted to the reviewed
+`feature/family-ios` branch. Add these environment secrets through GitHub's
+settings or CLI.
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE_BASE64` | Base64-encoded Apple Distribution P12 export |
+| `APPLE_CERTIFICATE_PASSWORD` | P12 export password |
+| `APPLE_PROFILE_BASE64` | Base64-encoded App Store provisioning profile |
+| `APPLE_CONNECT_KEY_BASE64` | Base64-encoded App Store Connect team API key P8 |
+| `APPLE_CONNECT_KEY_ID` | App Store Connect API key ID |
+| `APPLE_CONNECT_ISSUER_ID` | App Store Connect issuer ID |
+
+Run the workflow on `feature/family-ios` with `testflight` selected. It
+validates the provisioning profile, signs the app and embedded frameworks,
+and uploads an internal-testing-only build to App Store Connect. After
+processing, assign it to an internal tester group and accept the invitation
+in TestFlight on the iPad. Internal TestFlight does not require the iPad's UDID.
+
+[Apple TestFlight guide](https://developer.apple.com/testflight/)

@@ -43,6 +43,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.live
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: neXt Family
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
