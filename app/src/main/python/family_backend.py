@@ -751,11 +751,12 @@ def request(raw):
                     if service!='reticulum':raise ValueError('Only Relay Chat messages support this retry')
                     adapter.retry(p.get('roomId'),p.get('seq'))
                 else:raise ValueError('Unsupported room action')
-        elif action in ['meshcore_config','meshcore_scan','meshcore_contacts']:
+        elif action in ['meshcore_config','meshcore_scan','meshcore_contacts','meshcore_advert']:
             _authorized(p)
             if not _meshcore:raise ValueError('MeshCore is starting')
             if action=='meshcore_config':_meshcore.configure(p.get('config'))
             elif action=='meshcore_scan':_meshcore.scan()
+            elif action=='meshcore_advert':_meshcore.send_advert(p.get('flood'))
             else:_meshcore.refresh_contacts()
         elif action=='authorize_map_import':
             _authorized(p)

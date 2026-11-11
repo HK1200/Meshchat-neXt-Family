@@ -19,6 +19,9 @@ class FamilyMeshCore:
     def __init__(self,state,lock,save,session_factory=None,context=None):
         self.state=state;self.lock=lock;self.save=save;self.context=context;self.session_factory=session_factory
         state.setdefault('meshcore',None);self.session=None;self.connected=False;self.error='';self.name='';self.model='';self.owner='';self.contacts={};self.devices=[];self.scanning=False;self.announces={};self.receive_count=0;self.receive_status='No private messages received';self.revision=0;self._acks={};self._pending={};self._subscriptions=[]
+        self._advert_pending = False
+        self._advert_status = ''
+        self._advert_write = None
         self._battery = None
         self._battery_attempt = None
         self._battery_pending = False
@@ -149,6 +152,45 @@ class FamilyMeshCore:
                 if revision == self.revision and session is self.session and self.connected:
                     self._battery = (time.monotonic(), voltage) if voltage is not None else None
 
+    def send_advert(self, flood):
+        if type(flood) is not bool:
+            raise ValueError('Choose a local or flood advert')
+        with self.lock:
+            session = self.session
+            config = self.state['meshcore'] or {}
+            if not (self.connected and session and session.is_connected and self.owner
+                    and config.get('enabled') and config.get('publicKey') == self.owner):
+                raise ValueError('Connect an approved MeshCore companion first')
+            if self._advert_pending:
+                raise ValueError('A MeshCore advert is already in progress')
+            self._advert_pending = True
+            self._advert_status = 'Submitting advert to the companion…'
+            revision = self.revision
+        self._submit(self._send_advert(session, revision, flood))
+
+    async def _send_advert(self, session, revision, flood):
+        scope = 'Flood' if flood else 'Local'
+        payload = bytes((7, 1)) if flood else bytes((7,))
+        status = f'{scope} advert was not confirmed by the companion.'
+        try:
+            async with session._lock:
+                with self.lock:
+                    if revision != self.revision or session is not self.session or not self.connected:
+                        return
+                    self._advert_write = (revision, payload)
+                try:
+                    session._payload(await session._client.commands.send_advert(flood=flood))
+                    status = f'{scope} advert accepted by the companion.'
+                finally:
+                    with self.lock:
+                        self._advert_write = None
+        except Exception:
+            pass
+        finally:
+            with self.lock:
+                self._advert_status = status
+                self._advert_pending = False
+
     def _guard_send(self,revision,payload,write):
         with self.lock:
             config=self.state['meshcore'] or {}
@@ -158,6 +200,11 @@ class FamilyMeshCore:
             if payload == b'\x14':  # Local battery query, no RF.
                 if not self.connected or not self.owner or config.get('publicKey') != self.owner:
                     raise ValueError('Companion identity is not approved')
+                return write()
+            if command == 7:
+                if (not self.connected or not self.owner or config.get('publicKey') != self.owner
+                        or self._advert_write != (revision, payload)):
+                    raise ValueError('MeshCore advert is not authorized')
                 return write()
             if command==10:
                 if not self.connected or not config.get('receive'):raise ValueError('Receiving is disabled')
@@ -378,6 +425,6 @@ class FamilyMeshCore:
                 read_at, voltage = self._battery
                 if time.monotonic() - read_at < 75:
                     battery = {'voltage_mv': voltage}
-            return {'battery':battery,'enabled':bool(config and config['enabled']),'config':dict(config) if config else None,'locationStatus':self.location_status,'receiveCount':self.receive_count,'receiveStatus':self.receive_status,'connected':self.connected,'name':self.name,'model':self.model,'publicKey':self.owner or (config or {}).get('publicKey',''),'error':self.error,'scanning':self.scanning,'devices':list(self.devices),
+            return {'advertPending':self._advert_pending,'advertStatus':self._advert_status,'battery':battery,'enabled':bool(config and config['enabled']),'config':dict(config) if config else None,'locationStatus':self.location_status,'receiveCount':self.receive_count,'receiveStatus':self.receive_status,'connected':self.connected,'name':self.name,'model':self.model,'publicKey':self.owner or (config or {}).get('publicKey',''),'error':self.error,'scanning':self.scanning,'devices':list(self.devices),
                     'clientAnnounces':[{'name':str(c.get('adv_name','Messaging client'))[:64],'service':'meshcore','address':peer,'seen':c.get('last_advert',0)} for peer,c in candidates.items() if c.get('type')==1],
                     'roomAnnounces':[{'name':str(c.get('adv_name','Room server'))[:64],'service':'meshcore','key':peer,'kind':3} for peer,c in candidates.items() if c.get('type')==3]}

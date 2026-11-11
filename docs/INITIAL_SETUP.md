@@ -34,6 +34,8 @@ A MeshCore companion should be used by one phone app at a time. If Family cannot
 
 ## 3. Approve people
 
+To announce a connected MeshCore companion, open **Guardian settings → Connections → MeshCore companion**. Choose **Send local advert** for nearby radios or **Send flood advert** to allow repeaters to forward it.
+
 To add someone who uses Family, ask them to unlock **Guardian settings → Contacts** and open **My contact QR**. On your device, choose **Add contact by QR**, scan their screen, then review and save the contact. The QR shares the device name and public contact addresses. You can edit the name before approving it.
 
 
