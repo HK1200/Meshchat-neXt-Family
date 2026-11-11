@@ -106,6 +106,15 @@ class FamilyVoice:
      def incoming_link(link):
       with self.lock:self.last_incoming='Call connection reached this iPad; waiting for caller identification.'
       handle_link(link)
+      identify=link.callbacks.remote_identified
+      if identify is None:return
+      def identified(source,identity):
+       try:identify(source,identity)
+       except Exception as exc:
+        with self.lock:self.last_incoming=f'Incoming call setup failed: {exc}'[:200]
+        if phone.active_call is source:self.hangup()
+        else:source.teardown()
+      link.set_remote_identified_callback(identified)
      phone.destination.set_link_established_callback(incoming_link)
     phone.destination.set_default_app_data(lambda: umsgpack.packb([self.state.get('device_name','neXt Family'),None,None]))
     # LXST 0.5.4's worker reads ANNOUNCE_INTERVAL directly. Family schedules
@@ -174,7 +183,12 @@ class FamilyVoice:
  def _ring(self,identity):
   with self.lock:
    contact=self._contact(identity.hash)
-   if not self.allowed(identity.hash) or not self._gate(True):threading.Thread(target=self.hangup,daemon=True).start();return
+   if not contact or not self.allowed(identity.hash):
+    if self.gate is not None:self.last_incoming='Incoming call approval changed.'
+    threading.Thread(target=self.hangup,daemon=True).start();return
+   if not self._gate(True):
+    if self.gate is not None:self.last_incoming='Approved call arrived while Family was unavailable.'
+    threading.Thread(target=self.hangup,daemon=True).start();return
    if self.gate is not None:self.last_incoming='Incoming call rang.'
    self.outgoing=False;self.connected_at=0.;self.last_rtt=None
    self.generation+=1;self.call_id=uuid.uuid4().hex;self.phase='incoming';self.peer=identity.hash.hex();self.target=contact['addresses']['lxst'];self.name=contact['name'];self.error='';self.sent=0;self.received=0
