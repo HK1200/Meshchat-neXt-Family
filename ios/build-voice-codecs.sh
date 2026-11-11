@@ -23,6 +23,10 @@ fetch_source https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz \
 tar -xzf "$build/codec2.tar.gz" -C "$build"
 tar -xzf "$build/opus.tar.gz" -C "$build"
 
+# Codec2's native codebook generator uses a nested CMake build. Apply the
+# compatibility policy to both that host build and the iOS target build.
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+
 build_slice() {
     local sdk="$1" arch="$2" output="$build/$1-$2" sdk_path
     sdk_path="$(xcrun --sdk "$sdk" --show-sdk-path)"
