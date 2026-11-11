@@ -1,5 +1,6 @@
 """Exercise the first iOS runtime mode on an isolated local Reticulum network."""
-from contextlib import ExitStack, suppress
+from base64 import b64decode
+from contextlib import ExitStack, closing, suppress
 import ctypes.util
 import importlib.util
 import json
@@ -10,6 +11,7 @@ import platform
 import runpy
 from pathlib import Path
 import socket
+import sqlite3
 import struct
 import sys
 import threading
@@ -474,6 +476,44 @@ def test_wifi_rnode_negotiates_configuration_and_battery(tmp_path, monkeypatch):
         request(client, "rnode", token=token, config=None)
         assert not request(client, "status")["rnodeRuntime"]["online"]
     server.join(timeout=5)
+
+
+def test_ios_guardian_imports_selects_and_removes_offline_map(tmp_path):
+    tile_path = Path(__file__).resolve().parents[1] / "app/src/main/assets/pnw-tiles/5/5/11.png"
+    tile = tile_path.read_bytes()
+    folder = tmp_path / "map-client"
+    with ExitStack() as stack:
+        client = start_process(stack, run_family, folder)
+        password = "local test guardian password"
+        request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+        token = request(client, "unlock", password=password)["token"]
+        assert wait_status(client, lambda state: state["ready"])["activeMap"] == "apple"
+        request(client, "map_import_prepare", succeeds=False)
+        source = Path(request(client, "map_import_prepare", token=token)["mapImportPath"])
+        assert source.parent == folder / "maps"
+        with closing(sqlite3.connect(source)) as db, db:
+            db.execute("CREATE TABLE metadata (name TEXT, value TEXT)")
+            db.executemany("INSERT INTO metadata VALUES (?, ?)", [
+                ("name", "Test region"), ("format", "png"), ("center", "-122,47.5"),
+            ])
+            db.execute("CREATE TABLE tiles (zoom_level, tile_column, tile_row, tile_data)")
+            db.execute("INSERT INTO tiles VALUES (?, ?, ?, ?)", (5, 5, 20, tile))
+
+        request(client, "map_import", token=token, path=str(source))
+        pack, = request(client, "status")["mapPacks"]
+        assert pack["name"] == "Test region"
+        assert pack["center"] == {"lat": 47.5, "lon": -122}
+        map_id = pack["id"]
+        request(client, "map_select", mapId=map_id, succeeds=False)
+        request(client, "map_tile", mapId=map_id, z=5, x=5, y=11, succeeds=False)
+        request(client, "map_select", token=token, mapId=map_id)
+        result = request(client, "map_tile", mapId=map_id, z=5, x=5, y=11)
+        assert b64decode(result["tile"]) == tile
+        request(client, "map_remove", mapId=map_id, succeeds=False)
+        request(client, "map_remove", token=token, mapId=map_id)
+        state = request(client, "status")
+        assert state["mapPacks"] == [] and state["activeMap"] == "pnw"
+        assert not (source.parent / (map_id + ".mbtiles")).exists()
 
 
 def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):

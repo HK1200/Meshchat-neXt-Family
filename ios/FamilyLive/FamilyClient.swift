@@ -143,6 +143,18 @@ struct FamilyVoiceState: Decodable, Sendable {
     var active: Bool { call_state != "idle" && call_id?.isEmpty == false }
 }
 
+struct FamilyMapPack: Decodable, Identifiable, Sendable {
+    struct Center: Decodable, Sendable {
+        let lat: Double
+        let lon: Double
+    }
+    let id: String
+    let name: String
+    let minZoom: Int
+    let maxZoom: Int
+    let center: Center?
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -159,6 +171,10 @@ struct FamilyReply: Decodable, Sendable {
     var voice: FamilyVoiceState?
     var mailbox: FamilyMailbox?
     var location: FamilyLocationState?
+    var activeMap: String?
+    var mapPacks: [FamilyMapPack]?
+    var mapImportPath: String?
+    var tile: Data?
     var contacts: [FamilyContact]?
     var rooms: [FamilyRoom]?
     var roomRuntime: [String: FamilyRoomState]?

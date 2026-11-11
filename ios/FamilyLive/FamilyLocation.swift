@@ -60,7 +60,13 @@ struct FamilyLocationMap: View {
 
     var body: some View {
         VStack {
-            if contacts.isEmpty {
+            if let layer = family.state?.activeMap, layer != "apple" {
+                FamilyOfflineMap(family: family, layer: layer, selection: $selected).id(layer)
+                if layer == "pnw" {
+                    Text("© OpenStreetMap contributors · Natural Earth · Protomaps (ODbL)")
+                        .font(.caption2)
+                }
+            } else if contacts.isEmpty {
                 ContentUnavailableView("No approved locations yet", systemImage: "map")
             } else {
                 Map(selection: $selected) {
@@ -73,15 +79,15 @@ struct FamilyLocationMap: View {
                         }
                     }
                 }
-                if let selected,
-                   let contact = contacts.first(where: { $0.id == selected }),
-                   let fix = family.state?.location?.locations[String(selected)] {
-                    VStack {
-                        Text(contact.name).font(.headline)
-                        Text("Last updated \(Date(timeIntervalSince1970: fix.last_update), style: .relative) ago")
-                    }
-                    .padding(.bottom)
+            }
+            if let selected,
+               let contact = contacts.first(where: { $0.id == selected }),
+               let fix = family.state?.location?.locations[String(selected)] {
+                VStack {
+                    Text(contact.name).font(.headline)
+                    Text("Last updated \(Date(timeIntervalSince1970: fix.last_update), style: .relative) ago")
                 }
+                .padding(.bottom)
             }
             if let location = family.state?.location, location.userControls {
                 FamilyLocationControls(family: family, guardian: false)

@@ -387,6 +387,44 @@ final class FamilyModel: ObservableObject {
         await perform("room_remove", ["token": token, "roomId": id])
     }
 
+    func selectMap(_ id: String) async -> Bool {
+        await perform("map_select", ["token": token, "mapId": id])
+    }
+
+    func removeMap(_ id: String) async -> Bool {
+        await perform("map_remove", ["token": token, "mapId": id])
+    }
+
+    func mapTile(id: String, x: Int, y: Int, z: Int) async throws -> Data? {
+        try await request("map_tile", ["mapId": id, "x": x, "y": y, "z": z]).tile
+    }
+
+    func importMap(_ source: URL) async -> Bool {
+        let epoch = guardianEpoch
+        do {
+            let permit = try await request("map_import_prepare", ["token": token])
+            guard let path = permit.mapImportPath else { return false }
+            let destination = URL(fileURLWithPath: path)
+            defer { try? FileManager.default.removeItem(at: destination) }
+            try await Task.detached(priority: .utility) {
+                let scoped = source.startAccessingSecurityScopedResource()
+                defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+                let attributes = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+                guard attributes.isRegularFile == true,
+                      let size = attributes.fileSize, (1...2_147_483_648).contains(size) else {
+                    throw CocoaError(.fileReadTooLarge)
+                }
+                try FileManager.default.copyItem(at: source, to: destination)
+            }.value
+            guard epoch == guardianEpoch, unlocked else { return false }
+            return await perform("map_import", ["token": token, "path": path,
+                                                "name": source.deletingPathExtension().lastPathComponent])
+        } catch {
+            if epoch == guardianEpoch { self.error = error.localizedDescription }
+            return false
+        }
+    }
+
     func saveLocationPolicy(mapEnabled: Bool, userControls: Bool, contactIDs: Set<Int>) async -> Bool {
         await perform("location_policy", [
             "token": token, "mapEnabled": mapEnabled, "userControls": userControls,
@@ -700,6 +738,7 @@ struct FamilyGuardian: View {
                     Section {
                         NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
+                        NavigationLink("Offline maps") { FamilyOfflineMapSettings(family: family) }
                         NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
                     }
                     Section("Offline message mailbox") {

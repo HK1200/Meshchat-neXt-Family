@@ -1,5 +1,5 @@
 """First live Reticulum TCP/LXMF test backend; standalone app identity and state."""
-import hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
+import base64,hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
 _original_signal=signal.signal
 def _android_signal(sig,handler):
     try:return _original_signal(sig,handler)
@@ -18,6 +18,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence',
+    'map_import_prepare','map_import','map_select','map_remove','map_tile',
 })
 _tcp_only=False
 _ios_voice=False
@@ -85,8 +86,9 @@ def initialize(folder,*,tcp_only=False,ios_voice=False):
     if not _tcp_only:
         from family_meshcore import FamilyMeshCore
         _meshcore=FamilyMeshCore(_state,_lock,_save)
-        from family_maps import MapStore
-        _maps=MapStore(_root,_state,_lock,_save)
+    from family_maps import MapStore
+    if _tcp_only:_state.setdefault('active_map','apple')
+    _maps=MapStore(_root,_state,_lock,_save)
     from family_location import FamilyLocation
     _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
     if _meshcore:_meshcore.locations=_locations
@@ -692,6 +694,23 @@ def request(raw):
             if action=='meshcore_config':_meshcore.configure(p.get('config'))
             elif action=='meshcore_scan':_meshcore.scan()
             else:_meshcore.refresh_contacts()
+        elif _tcp_only and action in ['map_import_prepare','map_import','map_select','map_tile']:
+            if not _maps:raise ValueError('Map service is starting')
+            if action=='map_tile':
+                with _lock:
+                    if p.get('mapId')!=_state.get('active_map') or not _state['location_policy']['mapEnabled']:
+                        raise ValueError('This map is not active')
+                tile=_maps.tile(p.get('mapId'),p.get('z'),p.get('x'),p.get('y'))
+                return json.dumps({'ok':True,'tile':base64.b64encode(tile['bytes']).decode('ascii') if tile else None})
+            _authorized(p)
+            if action=='map_import_prepare':
+                return json.dumps({'ok':True,'mapImportPath':str(_maps.root/('import-'+uuid.uuid4().hex+'.tmp'))})
+            if action=='map_import':
+                _maps.install(p.get('path'),p.get('name'))
+            elif p.get('mapId')=='apple':
+                with _lock:_state['active_map']='apple';_save()
+            else:
+                _maps.select(p.get('mapId'))
         elif action=='authorize_map_import':
             _authorized(p)
             return json.dumps({'ok':True})

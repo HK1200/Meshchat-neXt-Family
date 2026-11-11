@@ -15,6 +15,9 @@ targets:
     sources:
       - FamilyLive
       - LiveRuntime
+      - path: ../app/src/main/assets/pnw-tiles
+        type: folder
+        buildPhase: resources
       - path: RuntimeBuild/staged
         type: folder
         buildPhase: resources
