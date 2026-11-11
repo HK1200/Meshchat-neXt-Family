@@ -3,12 +3,17 @@
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
+# Codec2 runs a codebook generator built for the macOS host. Xcode's inherited
+# simulator SDK would otherwise turn that executable into an iOS binary.
+unset SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET
+unset CC CXX CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CMAKE_OSX_SYSROOT CMAKE_OSX_ARCHITECTURES
+
 build="$PWD/RuntimeBuild/voice-codecs"
 mkdir -p "$build"
 fetch_source() {
     local url="$1" expected="$2" archive="$3"
     if [[ ! -f "$archive" ]]; then
-        curl --fail --silent --show-error --location --retry 3 --max-time 180 "$url" -o "$archive.part"
+        curl --fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 180 "$url" -o "$archive.part"
         mv -- "$archive.part" "$archive"
     fi
     printf '%s  %s\n' "$expected" "$archive" | shasum -a 256 -c -

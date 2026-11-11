@@ -6,7 +6,7 @@ mkdir -p RuntimeBuild
 fetch() {
     local url="$1" expected="$2" file="$3"
     if [[ ! -f "$file" ]]; then
-        curl --fail --silent --show-error --location --retry 3 --max-time 180 "$url" -o "$file.part"
+        curl --fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 180 "$url" -o "$file.part"
         mv -- "$file.part" "$file"
     fi
     printf '%s  %s\n' "$expected" "$file" | shasum -a 256 -c -

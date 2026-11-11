@@ -1,5 +1,5 @@
 """Exercise the first iOS runtime mode on an isolated local Reticulum network."""
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 import ctypes.util
 import importlib.util
 import json
@@ -440,7 +440,7 @@ def test_wifi_rnode_negotiates_configuration_and_battery(tmp_path, monkeypatch):
         monkeypatch.setenv("FAMILY_IOS_TEST_RNODE_PORT", str(listener.getsockname()[1]))
 
         def serve():
-            with listener.accept()[0] as connection:
+            with listener.accept()[0] as connection, suppress(ConnectionResetError, BrokenPipeError):
                 pending = b""
                 while data := connection.recv(4096):
                     pending += data
