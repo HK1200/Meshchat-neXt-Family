@@ -206,3 +206,43 @@ def test_accepted_meshcore_message_waits_for_receipt_then_falls_back(backend, mo
         assert row["service"] == "reticulum"
         assert row["fallbackFrom"]["status"] == "Not confirmed · MeshCore receipt timed out"
         assert backend._dispatch_message.call_count == 2
+
+
+def test_attachment_only_uses_reticulum_and_is_private_to_approved_chat(backend, tmp_path):
+    import base64
+
+    backend._root = tmp_path
+    data = b"example file bytes"
+    payload = {"contactId": 1, "method": "auto", "text": "",
+               "attachment": {"name": "../example.txt", "data": base64.b64encode(data).decode()}}
+    result = json.loads(backend.request(json.dumps({"action": "send", "payload": payload})))
+    assert result["ok"], result
+    row, = backend._state["messages"]
+    assert row["attachment"] == {"name": "example.txt", "size": len(data)}
+    assert backend._dispatch_message.call_args.args == (row["id"], "reticulum", LXMF_ADDRESS, "", None)
+    assert backend.read_attachment(1, row["id"]) == data
+    with pytest.raises(ValueError, match="unavailable"):
+        backend.read_attachment(2, row["id"])
+    payload["method"] = "meshcore"
+    result = json.loads(backend.request(json.dumps({"action": "send", "payload": payload})))
+    assert not result["ok"] and "Reticulum" in result["error"]
+    assert len(backend._state["messages"]) == 1
+
+
+def test_verified_attachment_only_message_and_photo_appear_in_chat(backend, tmp_path):
+    import LXMF
+
+    backend._root = tmp_path
+    photo = b"sample photo bytes"
+    message = SimpleNamespace(source_hash=bytes.fromhex(LXMF_ADDRESS), signature_validated=True,
+                              hash=b"example-photo", content_as_string=lambda: "",
+                              fields={LXMF.FIELD_IMAGE: ["png", photo]})
+    backend._receive(message)
+    backend._receive(message)
+    row, = backend._state["messages"]
+    assert row["incoming"] and row["attachment"] == {"name": "photo.png", "size": len(photo)}
+    assert backend.read_attachment(1, row["id"]) == photo
+    message.source_hash = b"unapproved-peer!"
+    message.hash = b"different-photo"
+    backend._receive(message)
+    assert len(backend._state["messages"]) == 1

@@ -56,6 +56,12 @@ body,.phone{background:var(--app-background)}header,.intro{display:none}.layout{
 .qr-panel .row{margin:8px 0}
 .qr-panel video{display:block;width:100%;height:min(42dvh,360px);object-fit:contain;background:#121b19;border-radius:12px}
 .password-visibility{margin-top:8px}
+.compose input{color:var(--select-fg);background:var(--select-bg);-webkit-text-fill-color:var(--select-fg);caret-color:var(--select-fg);font-size:16px;min-height:48px;scroll-margin-block:12px}
+.compose input::placeholder{-webkit-text-fill-color:currentColor}
+@media(max-height:560px){.chat{height:clamp(72px,32dvh,180px)}}
+.attachment-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
+.attachment-controls button,.message-attachment{min-height:44px}
+.attachment-name,.message-attachment{overflow-wrap:anywhere}
 </style></head><body>
 <header><div class="brand"><span class="mark">nX</span>neXt<span>Family</span></div><span class="pill">Interactive concept · no live traffic</span></header>
 <main class="layout"><section class="intro"><div class="eyebrow">A little closer. Wherever you are.</div><h1>Your people.<br>One simple place.</h1><p class="tagline">Tap a familiar face. Call or send a message.<br>Let neXt take care of the connection.</p><div class="principles"><div class="principle"><span class="number">01</span><div><b>A familiar circle</b><p>Only contacts approved by a trusted adult appear here. Only approved people and rooms on the home screen.</p></div></div><div class="principle"><span class="number">02</span><div><b>Connection without the guesswork</b><p>Choose automatically for each call or message. See the method, or change it yourself.</p></div></div><div class="principle"><span class="number">03</span><div><b>Simple for everyone</b><p>Clear names, generous buttons, and the same two choices for every person.</p></div></div></div><div class="demo"><label for="scenario">Try a connection scenario</label><select id="scenario"><option value="home">At home · all services reachable</option><option value="outside">Outside · Reticulum and radio</option><option value="reticulum">Reticulum only · no MeshCore</option><option value="radio">Off grid · MeshCore text only</option><option value="offline">No reachable services</option></select><p class="fine">Scenarios simulate contact reachability. Changes reset when this page reloads.</p></div></section>
@@ -130,7 +136,7 @@ if(liveNative)window.familyReceiveStatus=(revision,response)=>{
     if(revision===nativeRequestRevision&&!document.hidden)refreshLive(false,JSON.parse(response));
 };
 function refreshLive(first=false,snapshot=null){if(!liveNative)return;const r=snapshot??nativeRequest('status');if(!r.ok){liveState={...(liveState||{}),error:r.error};$('radio-batteries').hidden=true;return;}const fingerprint=JSON.stringify([r.online,r.ready,r.error,r.messageRoutes,r.callRoutes,r.peer,r.rnode,r.rnodeRuntime,r.tcpOnline,r.sip,r.voice,r.contacts,r.messages,r.meshcore,r.rooms,r.roomRuntime,r.roomDiscovery,r.rrcHubs,r.roomError,r.location,r.mapPacks,r.activeMap,r.announces,r.clientLookup,r.preferences,r.updates]);const sharingChanged=sharingSessionKey(liveState?.location)!==sharingSessionKey(r.location);liveState=r;refreshRadioBatteries(r);announceEnabled=!!r.preferences?.announceEnabled;searchEnabled=!!r.preferences?.searchEnabled;roomAnnounceEnabled=!!r.preferences?.roomAnnounceEnabled;announcements.splice(0,announcements.length,...(r.announces||[]));rooms.splice(0,rooms.length,...(r.rooms||[]));roomAnnouncements.splice(0,roomAnnouncements.length,...(r.rrcHubs||[]).map(h=>({name:h.name,key:h.hubHash,service:'reticulum',kind:3})),...(r.meshcore?.roomAnnounces||[]));nextRoomId=Math.max(0,...rooms.map(room=>room.id))+1;serviceEnabled.meshcore=!!r.meshcore?.enabled;profiles.home.meshcore=r.meshcore?.connected?78:0;serviceEnabled.reticulum=!!(r.peer.enabled||r.rnode?.enabled);profiles.home.reticulum=r.online?88:0;scenario='home';serviceEnabled.sip=!!r.sip?.enabled;profiles.home.sip=r.sip?.registered?92:0;const si=interfaces.findIndex(i=>i.type==='sip');if(si>=0)interfaces.splice(si,1);if(r.sip?.enabled)interfaces.push({id:4,type:'sip',enabled:true});renderIncomingCall(r.sip);renderReticulumIncoming(r.voice);if(view==='sip-settings'&&$('sip-runtime'))$('sip-runtime').textContent=sipStatus(r.sip);if(view==='contact-edit')showMeshCoreMatches();messages=r.messages||{};contacts.splice(0,contacts.length,...r.contacts);if(selected)selected=contacts.find(c=>c.id===selected.id)||selected;if(first){contacts.splice(0,contacts.length,...r.contacts);nextId=Math.max(0,...contacts.map(c=>c.id))+1;interfaces.splice(0,interfaces.length,{id:1,type:'tcp',name:'Reticulum TCP',endpoint:r.peer.host,port:String(r.peer.port),enabled:r.peer.enabled});if(r.rnode)interfaces.push({id:2,type:'rnode',name:'RNode radio',enabled:r.rnode.enabled});if(r.meshcore?.config)interfaces.push({id:3,type:'meshcore',name:r.meshcore.name||'MeshCore companion',enabled:r.meshcore.enabled});nextInterfaceId=4;serviceEnabled.reticulum=!!(r.peer.enabled||r.rnode?.enabled);serviceEnabled.meshcore=!!r.meshcore?.enabled;serviceEnabled.sip=!!r.sip?.enabled;for(const key of Object.keys(locationSamples))delete locationSamples[key];const demo=document.querySelector('.native-demo');if(demo)demo.hidden=true;}
-applyLiveLocations(r);refreshUpdateSettings(r.updates);if(view==='map-settings')refreshGuardianSharing(sharingChanged);if(first||fingerprint!==liveFingerprint){liveFingerprint=fingerprint;if(view==='map'&&mapWidget?.moving()){mapRefreshPending=true;return;}if(first||(liveState?.setupComplete!==false&&['home','text','room','room-discover','connection-status','call-live','reticulum-call','call','map','admin','rooms'].includes(view))){const fields={};for(const id of ['message','room-message','live-hub-hash','live-room-search','live-mc-room-search','contact-search',...(!sharingChanged?['share-duration']:[])])if($(id))fields[id]=$(id).value;const focus=document.activeElement?.id;render();for(const [id,value] of Object.entries(fields))if($(id)){$(id).value=value;if(id==='live-room-search'||id==='live-mc-room-search'||id==='contact-search')$(id).dispatchEvent(new Event('input'));}updateSharingStart('share-duration','start-sharing');if(focus&&$(focus))$(focus).focus();}}}
+applyLiveLocations(r);refreshUpdateSettings(r.updates);if(view==='map-settings')refreshGuardianSharing(sharingChanged);if(first||fingerprint!==liveFingerprint){liveFingerprint=fingerprint;if(view==='text'&&$('chat')&&selected){markConversationRead();drawDirectMessages();return;}if(view==='map'&&mapWidget?.moving()){mapRefreshPending=true;return;}if(first||(liveState?.setupComplete!==false&&['home','text','room','room-discover','connection-status','call-live','reticulum-call','call','map','admin','rooms'].includes(view))){const fields={};for(const id of ['message','room-message','live-hub-hash','live-room-search','live-mc-room-search','contact-search',...(!sharingChanged?['share-duration']:[])])if($(id))fields[id]=$(id).value;const focus=document.activeElement?.id;render();for(const [id,value] of Object.entries(fields))if($(id)){$(id).value=value;if(id==='live-room-search'||id==='live-mc-room-search'||id==='contact-search')$(id).dispatchEvent(new Event('input'));}updateSharingStart('share-duration','start-sharing');if(focus&&$(focus))$(focus).focus();}}}
 
 let theme;
 try{theme=localStorage.getItem('next-family-theme');}catch{}
@@ -570,11 +576,99 @@ if(liveNative&&view==='voice-settings'){renderVoiceSettings();return;}if(liveNat
 if(view==='map'){renderMap();return;}
 if(view==='room'){renderRoom();return;}
 if(['admin','contact-edit','interfaces','interface-edit','qr-import','rooms','room-edit','room-discover','room-names','map-settings','security'].includes(view)){renderSettings();return;}
-const kind=view;screen.innerHTML=`<button class="back" id="back">← Your people</button><h2 class="view-title">${kind==='call'?'Call':'Text'} ${escape(selected.name)}</h2>${routeUI(kind)}${kind==='call'?`<div class="call-view"><div class="avatar">${contactAvatar(selected)}</div><h3>${escape(selected.name)}</h3><p id="call-state">${chosen(kind)?'Ready for a demo call':'Calls aren’t available right now'}</p>${chosen(kind)?'<button class="primary dial-action" id="start-call"><span aria-hidden="true">☎</span><span>Start demo call</span></button>':'<p class="notice">Try a text instead. Radio can carry messages when live voice is unavailable.</p><button class="secondary" id="try-text">Text '+escape(selected.name)+'</button>'}</div>`:`<div class="notice">${liveNative?'Private conversation · approved contact only':'Demo conversation. Messages stay in this preview.'}</div><div class="chat" id="chat"></div><form class="compose" id="send"><input id="message" aria-label="Message" placeholder="Write a message…" maxlength="2000" required><button class="primary">Send</button></form><p class="fine" id="send-state" role="status">${chosen(kind)?'Ready when you are.':'No route available. Messages will stay here until you retry.'}</p>`}`;
-$('back').onclick=()=>{view='home';render();};$('method').onchange=e=>{manual=e.target.value;render();};
+const kind=view;screen.innerHTML=`<button class="back" id="back">← Your people</button><h2 class="view-title">${kind==='call'?'Call':'Text'} ${escape(selected.name)}</h2>${routeUI(kind)}${kind==='call'?`<div class="call-view"><div class="avatar">${contactAvatar(selected)}</div><h3>${escape(selected.name)}</h3><p id="call-state">${chosen(kind)?'Ready for a demo call':'Calls aren’t available right now'}</p>${chosen(kind)?'<button class="primary dial-action" id="start-call"><span aria-hidden="true">☎</span><span>Start demo call</span></button>':'<p class="notice">Try a text instead. Radio can carry messages when live voice is unavailable.</p><button class="secondary" id="try-text">Text '+escape(selected.name)+'</button>'}</div>`:`<div class="notice">${liveNative?'Private conversation · approved contact only':'Demo conversation. Messages stay in this preview.'}</div><div class="chat" id="chat"></div><form class="compose" id="send"><input id="message" aria-label="Message" placeholder="Write a message…" maxlength="2000" enterkeyhint="send"><button class="primary">Send</button></form>${liveNative&&selected.addresses?.lxmf?'<div class="attachment-controls"><button class="secondary" id="add-attachment" type="button">Attach file or photo</button><input id="message-attachment" type="file" hidden><span class="attachment-name" id="attachment-name"></span><button class="secondary" id="remove-attachment" type="button" hidden>Remove attachment</button></div>':''}<p class="fine" id="send-state" role="status">${chosen(kind)?'Ready when you are.':'No route available. Messages will stay here until you retry.'}</p>`}`;
+$('back').onclick=()=>{view='home';render();};$('method').onchange=e=>{manual=e.target.value;if(kind!=='text')render();};
 if(kind==='call'){if($('start-call'))$('start-call').onclick=()=>{$('call-state').textContent='Demo call screen · no audio connection';$('start-call').textContent='End demo call';$('start-call').className='end';$('start-call').onclick=()=>{view='home';render();};};if($('try-text'))$('try-text').onclick=()=>{view='text';manual='auto';render();};}
-else{markConversationRead();const draw=()=>{$('chat').innerHTML=(messages[selected.id]||[]).map(m=>`<div class="bubble ${m.incoming?'incoming':''}">${escape(m.text)}<small>${escape(messageStatus(m))}</small>${m.pending?' <button class="secondary" data-retry="'+m.id+'">Retry</button>':''}</div>`).join('');$('chat').scrollTop=$('chat').scrollHeight;screen.querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>{const route=chosen('text');if(route){const m=messages[selected.id].find(m=>m.id===+b.dataset.retry);m.pending=false;m.status='Simulated send via '+labels[route];draw();}else $('send-state').textContent='Still no compatible connection. Your draft is saved in this preview.';});};draw();$('send').onsubmit=e=>{e.preventDefault();if(liveNative){const text=$('message').value.trim();if(!text)return;const r=nativeRequest('send',{contactId:selected.id,text,method:manual});if(!r.ok){$('send-state').textContent=r.error;return;}messages=r.messages;$('message').value='';draw();return;}const text=$('message').value.trim(),route=chosen('text');if(!text)return;(messages[selected.id]??=[]).push({id:Date.now(),text,pending:!route,status:route?'Simulated send via '+labels[route]:'Not sent · retry when connected'});$('message').value='';draw();};}
+else{markConversationRead();drawDirectMessages();bindDirectComposer();}
 }
+const MESSAGE_ATTACHMENT_LIMIT=950000;
+async function prepareMessageAttachment(file){
+    if(!file.size)throw Error('Choose a file that is not empty.');
+    if(file.size<=MESSAGE_ATTACHMENT_LIMIT)return file;
+    if(!/^image\/(jpeg|png|webp|heic|heif)$/.test(file.type)||file.size>25*1024*1024){
+        throw Error('Choose a file up to 950 KB or a photo up to 25 MB.');
+    }
+    let photo;
+    try{photo=await createImageBitmap(file);}catch{throw Error('Could not resize this photo. Choose a smaller image or export it as JPEG.');}
+    try{
+        const canvas=document.createElement('canvas'), context=canvas.getContext('2d');
+        for(const maxEdge of [1280,960,640]){
+            const scale=Math.min(1,maxEdge/Math.max(photo.width,photo.height));
+            canvas.width=Math.max(1,Math.round(photo.width*scale));
+            canvas.height=Math.max(1,Math.round(photo.height*scale));
+            context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+            context.drawImage(photo,0,0,canvas.width,canvas.height);
+            const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
+            if(blob&&blob.size<=MESSAGE_ATTACHMENT_LIMIT){
+                return new File([blob],file.name.replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
+            }
+        }
+        throw Error('Could not reduce this photo to 950 KB.');
+    }finally{photo.close();}
+}
+function bindDirectComposer(){
+    const form=$('send'), input=$('message'), status=$('send-state'), picker=$('message-attachment');
+    const add=$('add-attachment'), remove=$('remove-attachment'), filename=$('attachment-name');
+    let attachment=null, reading=false, generation=0;
+    function clearAttachment(){
+        generation++;reading=false;attachment=null;
+        if(!picker)return;
+        picker.value='';filename.textContent='';remove.hidden=true;form.querySelector('button').disabled=false;
+    }
+    if(picker){
+        add.onclick=()=>picker.click();
+        remove.onclick=clearAttachment;
+        picker.onchange=async()=>{
+            let file=picker.files[0];
+            if(!file)return;
+            clearAttachment();
+            const current=++generation, reader=new FileReader();
+            reading=true;form.querySelector('button').disabled=true;
+            filename.textContent='Reading '+file.name;remove.hidden=false;
+            const original=file;
+            try{file=await prepareMessageAttachment(file);}catch(error){
+                if(current===generation&&form.isConnected){clearAttachment();status.textContent=error.message;}
+                return;
+            }
+            if(current!==generation||!form.isConnected)return;
+            reader.onload=()=>{
+                if(current!==generation||!form.isConnected)return;
+                attachment={name:file.name,data:String(reader.result).split(',',2)[1]};
+                filename.textContent=file.name;reading=false;form.querySelector('button').disabled=false;
+                status.textContent=file===original?'Attachment will send via Reticulum.':'Photo resized for Reticulum.';
+            };
+            reader.onerror=()=>{
+                if(current!==generation||!form.isConnected)return;
+                clearAttachment();status.textContent='Could not read the attachment.';
+            };
+            reader.readAsDataURL(file);
+        };
+    }
+    input.addEventListener('focus',()=>requestAnimationFrame(revealMessageInput));
+    form.onsubmit=e=>{
+        e.preventDefault();
+        const text=input.value.trim();
+        if(reading||(!text&&!attachment))return;
+        if(liveNative){
+            const r=nativeRequest('send',{contactId:selected.id,text,method:manual,attachment});
+            if(!r.ok){status.textContent=r.error;return;}
+            messages=r.messages;input.value='';clearAttachment();status.textContent='';drawDirectMessages();
+            return;
+        }
+        const route=chosen('text');
+        (messages[selected.id]??=[]).push({id:Date.now(),text,pending:!route,status:route?'Simulated send via '+labels[route]:'Not sent · retry when connected'});
+        input.value='';drawDirectMessages();
+    };
+}
+function revealMessageInput(){
+    const input=$('message'),viewport=window.visualViewport;
+    if(!input||document.activeElement!==input)return;
+    const box=input.getBoundingClientRect(),top=viewport?.offsetTop||0,bottom=top+(viewport?.height||window.innerHeight);
+    if(box.bottom>bottom-8||box.top<top)input.scrollIntoView({block:'nearest'});
+}
+window.visualViewport?.addEventListener('resize',()=>requestAnimationFrame(revealMessageInput));
+window.addEventListener('resize',()=>requestAnimationFrame(revealMessageInput));
+function drawDirectMessages(){$('chat').innerHTML=(messages[selected.id]||[]).map(m=>`<div class="bubble ${m.incoming?'incoming':''}">${escape(m.text)}${m.attachment?`<button type="button" class="secondary message-attachment" data-save-attachment="${escape(m.id)}">Save ${escape(m.attachment.name)} · ${Math.ceil(m.attachment.size/1024)} KB</button>`:''}${m.attachmentError?`<small>${escape(m.attachmentError)}</small>`:''}<small>${escape(messageStatus(m))}</small>${m.pending?' <button class="secondary" data-retry="'+m.id+'">Retry</button>':''}</div>`).join('');$('chat').scrollTop=$('chat').scrollHeight;screen.querySelectorAll('[data-save-attachment]').forEach(button=>button.onclick=()=>{const row=(messages[selected.id]||[]).find(m=>m.id===button.dataset.saveAttachment);if(row?.attachment)FamilyNative.saveMessageAttachment(selected.id,row.id,row.attachment.name);});screen.querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>{const route=chosen('text');if(route){const m=messages[selected.id].find(m=>m.id===+b.dataset.retry);m.pending=false;m.status='Simulated send via '+labels[route];drawDirectMessages();}else $('send-state').textContent='Still no compatible connection. Your draft is saved in this preview.';});}
 function renderMeshCoreSettings(shell){const state=liveState?.meshcore||{},config=state.config||{};screen.innerHTML=shell+`<h3>MeshCore companion</h3><p class="sub">Use a separate MeshCore radio. Reticulum and SIP can be left disabled.</p><button class="secondary" id="meshcore-bluetooth-permission">Allow Bluetooth access</button><button class="secondary" id="meshcore-scan">Find Bluetooth companions</button><p class="fine" id="meshcore-scan-status"></p><div id="meshcore-devices"></div><form id="meshcore-form"><label for="meshcore-transport">Connection</label><select id="meshcore-transport"><option value="ble" ${config.transport!=='usb'?'selected':''}>Bluetooth</option><option value="usb" ${config.transport==='usb'?'selected':''}>USB serial</option></select><label for="meshcore-target">Bluetooth address or USB device path</label><input id="meshcore-target" value="${escape(config.target||'')}" required><label><input id="meshcore-enabled" type="checkbox" ${config.enabled?'checked':''}> Enable MeshCore</label><label><input id="meshcore-receive" type="checkbox" ${config.receive?'checked':''}> Receive messages on this device</label><p class="fine">Receiving reads the companion’s queued messages. Only approved contacts are stored or displayed. Connecting reads its identity and settings; it does not advertise or change its radio profile.</p><p id="meshcore-error" class="error" role="status">${escape(state.error||'')}</p><button class="primary">Save and connect</button></form>${state.name?`<p class="fine">${escape(state.name)} · ${escape(state.model)} · ${state.connected?'Connected':'Disconnected'}</p>`:''}${config?'<button class="secondary" id="meshcore-remove">Remove companion setup</button>':''}`;
 for(const [id,next] of [['contacts-tab','admin'],['rooms-tab','rooms'],['interfaces-tab','interfaces'],['maps-tab','map-settings'],['security-tab','security']])$(id).onclick=()=>{view=next;render();};$('done').onclick=()=>{lockLive();admin=false;view='home';render();};$('meshcore-bluetooth-permission').onclick=()=>FamilyNative.requestBluetooth();
 const devices=()=>{const r=nativeRequest('status');if(!r.ok)return;liveState=r;const status=r.meshcore||{};$('meshcore-scan-status').textContent=status.scanning?'Scanning…':status.error||'Select a device, then save to verify it is a MeshCore companion.';$('meshcore-devices').innerHTML=(status.devices||[]).map(d=>`<button type="button" class="secondary" data-meshcore-device="${escape(d.address)}">${escape(d.name||'UART device')} · ${escape(d.address)}</button>`).join('');screen.querySelectorAll('[data-meshcore-device]').forEach(b=>b.onclick=()=>{$('meshcore-target').value=b.dataset.meshcoreDevice;$('meshcore-transport').value='ble';$('meshcore-enabled').checked=true;});if(status.scanning)setTimeout(()=>{if(view==='interface-edit'&&editingInterface===3)devices();},1000);};

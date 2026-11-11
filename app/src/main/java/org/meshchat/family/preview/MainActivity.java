@@ -30,6 +30,9 @@ public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final int PICK_FILE = 10;
     private static final int MAP_PICK_FILE = 15;
+    private static final int SAVE_MESSAGE_ATTACHMENT = 17;
+    private int attachmentContact;
+    private String attachmentMessage;
     private static final int MAP_LOCATION_PERMISSION = 17;
     private WebView web;
     private String pendingVoiceAnswer;
@@ -70,9 +73,19 @@ public class MainActivity extends Activity {
         if(setupComplete)com.meshchatnext.sip.SipController.get(this);
         web = new WebView(this);
         web.addJavascriptInterface(new NativeBridge(this,backend), "FamilyNative");
-        setContentView(web);
-        // Fit content inside system bars on Android 15+.
-        web.setOnApplyWindowInsetsListener((v,insets)->{
+        android.widget.FrameLayout content = new android.widget.FrameLayout(this);
+        content.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        setContentView(content);
+        // Resize the WebView itself so Chromium lays out the page above the keyboard.
+        if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
+        content.setOnApplyWindowInsetsListener((v,insets)->{
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets visible = insets.getInsets(
+                    android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout()
+                    | android.view.WindowInsets.Type.ime());
+                v.setPadding(visible.left, visible.top, visible.right, visible.bottom);
+                return android.view.WindowInsets.CONSUMED;
+            }
             v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
             return insets.consumeSystemWindowInsets();
         });
@@ -177,6 +190,9 @@ public class MainActivity extends Activity {
         private final PyObject backend;
         private final MainActivity activity;
         NativeBridge(MainActivity owner,PyObject module){activity=owner;backend=module;}
+        @JavascriptInterface public void saveMessageAttachment(int contact, String message, String name) {
+            activity.runOnUiThread(() -> activity.chooseAttachmentDestination(contact, message, name));
+        }
         @JavascriptInterface public void setNightMode(boolean night) {
             activity.runOnUiThread(() -> activity.setNightMode(night));
         }
@@ -377,8 +393,55 @@ public class MainActivity extends Activity {
         }, "Family-map-import").start();
     }
 
+    private void chooseAttachmentDestination(int contact, String message, String name) {
+        if (ownedDocument || message == null || !message.matches("[0-9a-f]{32}")) return;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(name);
+        String type = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                extension.toLowerCase(java.util.Locale.ROOT));
+        intent.setType(type == null ? "application/octet-stream" : type);
+        intent.putExtra(Intent.EXTRA_TITLE, name);
+        attachmentContact = contact;
+        attachmentMessage = message;
+        ownedDocument = true;
+        try {
+            startActivityForResult(intent, SAVE_MESSAGE_ATTACHMENT);
+        } catch (android.content.ActivityNotFoundException e) {
+            ownedDocument = false;
+            attachmentMessage = null;
+            android.widget.Toast.makeText(this, "No file picker available", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void saveAttachment(Uri uri, int contact, String message) {
+        new Thread(() -> {
+            String status = "Attachment saved";
+            try {
+                byte[] bytes = runtime.callAttr("read_attachment", contact, message).toJava(byte[].class);
+                try (java.io.OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
+                    if (output == null) throw new IOException("Could not open the selected file");
+                    output.write(bytes);
+                }
+            } catch (Exception e) {
+                status = "Could not save attachment";
+            }
+            final String result = status;
+            runOnUiThread(() -> android.widget.Toast.makeText(this, result, android.widget.Toast.LENGTH_SHORT).show());
+        }, "Family-attachment-save").start();
+    }
+
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if (requestCode == SAVE_MESSAGE_ATTACHMENT) {
+            ownedDocument = false;
+            String message = attachmentMessage;
+            attachmentMessage = null;
+            if (message != null && resultCode == RESULT_OK && data != null && data.getData() != null) {
+                saveAttachment(data.getData(), attachmentContact, message);
+            }
+            return;
+        }
         if (requestCode == MAP_PICK_FILE) {
             ownedDocument = false;
             String token = mapImportToken;
