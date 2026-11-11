@@ -1,5 +1,5 @@
 """First live Reticulum TCP/LXMF test backend; standalone app identity and state."""
-import hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
+import base64,hashlib,hmac,json,os,re,secrets,threading,time,uuid,signal
 _original_signal=signal.signal
 def _android_signal(sig,handler):
     try:return _original_signal(sig,handler)
@@ -11,6 +11,18 @@ from pathlib import Path
 
 DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
+TCP_ONLY_ACTIONS=frozenset({
+    'setup','status','unlock','lock','password','contacts','peer',
+    'device_name','preferences','qr_parse','discover_client','conversation_read','send',
+    'mailbox_config','mailbox_sync','tcp_network_changed',
+    'location_policy','location_start','location_stop','location_sample','location_suspend',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
+    'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence',
+    'map_import_prepare','map_import','map_select','map_remove','map_tile',
+})
+_tcp_only=False
+_ios_voice=False
+_ios_voice_foreground=False
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -20,6 +32,7 @@ _rooms=None
 _room_error=''
 _destination=None
 _peer=None
+_tcp_generation=0
 _radio=None
 _locations=None
 _maps=None
@@ -45,14 +58,18 @@ _announce_failures={}
 _last_announce_primary={}
 _path_request_lock=threading.Lock()
 _path_request_last={}
+_mailbox_lock=threading.Lock()
+_mailbox_tcp_session=None
 
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
 
-def initialize(folder):
-    global _root,_state,_locations,_maps,_meshcore,_room_names
+def initialize(folder,*,tcp_only=False,ios_voice=False):
+    global _root,_state,_locations,_maps,_meshcore,_room_names,_tcp_only,_ios_voice
     with _lock:
         if _root:return
+        _tcp_only=tcp_only
+        _ios_voice=ios_voice
         _root=Path(folder);_root.mkdir(parents=True,exist_ok=True)
         p=_root/'state.json'
         existing=p.exists()
@@ -66,13 +83,15 @@ def initialize(folder):
             _save()
     from family_room_names import RoomNames
     _room_names=RoomNames(_state,_lock,_save)
-    from family_meshcore import FamilyMeshCore
-    _meshcore=FamilyMeshCore(_state,_lock,_save)
+    if not _tcp_only:
+        from family_meshcore import FamilyMeshCore
+        _meshcore=FamilyMeshCore(_state,_lock,_save)
     from family_maps import MapStore
+    if _tcp_only:_state.setdefault('active_map','apple')
     _maps=MapStore(_root,_state,_lock,_save)
     from family_location import FamilyLocation
     _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
-    _meshcore.locations=_locations
+    if _meshcore:_meshcore.locations=_locations
     threading.Thread(target=_location_loop,daemon=True).start()
     if _state['setup_complete']:threading.Thread(target=_start,daemon=True).start()
 
@@ -158,9 +177,13 @@ def _start():
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive)
-        _meshcore.identity=identity
-        from family_voice import FamilyVoice
-        _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
+        if not _tcp_only:
+            _meshcore.identity=identity
+            from family_voice import FamilyVoice
+            _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
+        elif _ios_voice:
+            from family_voice import FamilyVoice
+            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,route_context=_voice_route_context)
         try:
             from family_rooms import FamilyRooms
             _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
@@ -179,7 +202,8 @@ def _start():
                     m['status']='Interrupted · delivery not confirmed'
             _save()
         from family_radios import Radio
-        _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None);_radio.configure(_state.get('rnode'))
+        _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None,network_only=_tcp_only)
+        _radio.configure(_state.get('rnode'))
         for contact in _state['contacts']:
             if contact.get('identityPublicKey'):RNS.Identity.remember(None,bytes.fromhex(contact['addresses']['lxmf']),bytes.fromhex(contact['identityPublicKey']))
         _error=''
@@ -189,7 +213,7 @@ def _start():
         import traceback;traceback.print_exc()
 
 def _connect():
-    global _peer,_error,_connecting,_connect_pending
+    global _peer,_error,_connecting,_connect_pending,_tcp_generation
     with _lock:
         if _connecting:
             _connect_pending=True;return
@@ -200,14 +224,23 @@ def _connect():
         from family_tcp import FamilyTCPInterface
         if _peer:
             if _rooms:_rooms.retire_interface(_peer)
+            if _router:
+                for cache in (_router.direct_links,_router.backchannel_links):
+                    for address,link in cache.copy().items():
+                        if (link.attached_interface is _peer or
+                            (link.status==RNS.Link.PENDING and RNS.Transport.next_hop_interface(address) is _peer)):
+                            link.teardown()
             _peer.detach()
             if _peer in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(_peer)
             _peer=None
             _announce_available_routes()
         with _lock:peer=dict(_state['peer'])
         if peer['enabled']:
-            _peer=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
-            _rns._add_interface(_peer)
+            interface=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
+            _rns._add_interface(interface)
+            with _lock:
+                _tcp_generation+=1
+                _peer=interface
             _error=''
             _announce_available_routes()
     except Exception as e:_error=str(e)
@@ -261,6 +294,8 @@ def _receive(message):
             if LXMF.FIELD_TELEMETRY in fields:_locations.receive(peer,fields[LXMF.FIELD_TELEMETRY])
         if not message.content_as_string().strip():return
         if any(m.get('hash')==message.hash.hex() for m in _state['messages']):return
+        if _tcp_only and not contact.get('identityPublicKey'):
+            contact['identityPublicKey']=message.source.identity.get_public_key().hex()
         _state['messages'].append({'id':uuid.uuid4().hex,'hash':message.hash.hex(),'peer':peer,'text':message.content_as_string()[:4096],'status':'Received · signature verified','incoming':True,'timestamp':time.time()})
         _state['messages']=_state['messages'][-500:];_save()
 
@@ -476,6 +511,54 @@ def _conversation_messages(contact):
     owner=(_state.get('meshcore') or {}).get('publicKey','')
     return [dict(m,pending=False) for m in _state['messages'] if (m.get('service','reticulum')=='reticulum' and m['peer']==peer) or (m.get('service')=='meshcore' and m['peer']==mesh_peer and m.get('owner')==owner)]
 
+
+def _mailbox_snapshot():
+    address=_state.get('mailbox','')
+    if not address:return {'address':'','status':'disabled'}
+    if not _router:return {'address':address,'status':'waiting'}
+    phase=_router.propagation_transfer_state
+    if phase==_router.PR_COMPLETE:status='complete'
+    elif _router.PR_IDLE<phase<_router.PR_COMPLETE:status='syncing'
+    elif phase>_router.PR_COMPLETE:status='failed'
+    else:status='waiting'
+    return {'address':address,'status':status}
+
+def _configure_mailbox(payload):
+    _authorized(payload)
+    address=payload.get('address','')
+    if not isinstance(address,str) or (address and not re.fullmatch('[0-9a-fA-F]{32}',address)):
+        raise ValueError('Enter a 32-character LXMF propagation node address.')
+    address=address.lower()
+    with _mailbox_lock:
+        if address==_state.get('mailbox',''):return
+        if _router:_router.cancel_propagation_node_requests()
+        with _lock:
+            previous=_state.get('mailbox','')
+            _state['mailbox']=address
+            try:_save()
+            except OSError:
+                _state['mailbox']=previous
+                raise
+
+def _tcp_session():
+    with _lock:
+        return f'{_tcp_generation}:{_peer.family_connection_epoch}' if _peer and _peer.online else None
+
+def _sync_mailbox():
+    global _mailbox_tcp_session
+    with _mailbox_lock:
+        address=_state.get('mailbox','')
+        session=_tcp_session()
+        if not address or not _router or not _destination or session is None:return _mailbox_snapshot()
+        if session!=_mailbox_tcp_session:
+            _router.cancel_propagation_node_requests()
+            _mailbox_tcp_session=session
+        phase=_router.propagation_transfer_state
+        if _router.PR_IDLE<phase<_router.PR_COMPLETE:return _mailbox_snapshot()
+        _router.set_outbound_propagation_node(bytes.fromhex(address))
+        _router.request_messages_from_propagation_node(_destination.identity,max_messages=50)
+        return _mailbox_snapshot()
+
 def _snapshot():
     import RNS
     _announce_available_routes()
@@ -495,7 +578,11 @@ def _snapshot():
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
         result['tcpOnline']=bool(_peer and _peer.online)
+        if _tcp_only:
+            result['mailbox']=_mailbox_snapshot()
+            result['tcpSession']=_tcp_session()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
+        if _tcp_only:result['voiceSupported']=_ios_voice
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
         result['activeMap']=_state.get('active_map','pnw')
@@ -517,10 +604,12 @@ def background(lock_guardian=True):
     if _meshcore:_meshcore.rooms.close_view()
 
 def request(raw):
-    global _client_lookup
+    global _client_lookup,_ios_voice_foreground
     try:
         if len(raw)>1500000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
+        if _tcp_only and action not in TCP_ONLY_ACTIONS:
+            raise ValueError('This build supports Reticulum TCP messaging only.')
         if action=='setup':
             with _lock:
                 if _state.get('setup_complete'):raise ValueError('Guardian setup is already complete')
@@ -548,6 +637,16 @@ def request(raw):
                     timer=getattr(hub,'_reconnect_timer',None)
                     hubs.append({'hubHash':hub.hub_hash.hex(),'status':hub.status,'autoReconnect':hub.auto_reconnect,'manualDisconnect':hub._manual_disconnect,'connectEpoch':getattr(hub,'_connect_epoch',0),'reconnectAttempts':hub._reconnect_attempts,'reconnectScheduled':bool(timer and timer.is_alive())})
             return json.dumps({'ok':True,'threads':threads,'hubs':hubs})
+        if action=='tcp_network_changed':
+            if not _tcp_only:raise ValueError('iOS network status is only available in the TCP build')
+            with _lock:reconnect=bool(_rns and _state['peer'].get('enabled'))
+            if reconnect:threading.Thread(target=_connect,daemon=True).start()
+            return json.dumps({'ok':True})
+        if action in ['mailbox_config','mailbox_sync']:
+            if not _tcp_only:raise ValueError('Mailbox sync is only available in the TCP build')
+            if action=='mailbox_sync':return json.dumps({'ok':True,'mailbox':_sync_mailbox()})
+            _configure_mailbox(p)
+            return json.dumps({'ok':True,**_snapshot()})
         if action=='unlock':
             if not _state.get('setup_complete'):raise ValueError('Finish guardian setup first.')
             now=time.time();_auth_failures[:]=[t for t in _auth_failures if now-t<60]
@@ -595,6 +694,23 @@ def request(raw):
             if action=='meshcore_config':_meshcore.configure(p.get('config'))
             elif action=='meshcore_scan':_meshcore.scan()
             else:_meshcore.refresh_contacts()
+        elif _tcp_only and action in ['map_import_prepare','map_import','map_select','map_tile']:
+            if not _maps:raise ValueError('Map service is starting')
+            if action=='map_tile':
+                with _lock:
+                    if p.get('mapId')!=_state.get('active_map') or not _state['location_policy']['mapEnabled']:
+                        raise ValueError('This map is not active')
+                tile=_maps.tile(p.get('mapId'),p.get('z'),p.get('x'),p.get('y'))
+                return json.dumps({'ok':True,'tile':base64.b64encode(tile['bytes']).decode('ascii') if tile else None})
+            _authorized(p)
+            if action=='map_import_prepare':
+                return json.dumps({'ok':True,'mapImportPath':str(_maps.root/('import-'+uuid.uuid4().hex+'.tmp'))})
+            if action=='map_import':
+                _maps.install(p.get('path'),p.get('name'))
+            elif p.get('mapId')=='apple':
+                with _lock:_state['active_map']='apple';_save()
+            else:
+                _maps.select(p.get('mapId'))
         elif action=='authorize_map_import':
             _authorized(p)
             return json.dumps({'ok':True})
@@ -602,6 +718,12 @@ def request(raw):
             _authorized(p)
             if not _maps:raise ValueError('Map service is starting')
             _maps.remove(p.get('mapId'))
+        elif _tcp_only and action in ['location_sample','location_suspend']:
+            if action=='location_sample':
+                _locations.record(p.get('fix'))
+            else:
+                _locations.suspend_samples()
+            return json.dumps({'ok':True})
         elif action in ['location_policy','location_start','location_stop','authorize_location']:
             if not _locations:raise ValueError('Location service is starting')
             guardian=False
@@ -623,7 +745,9 @@ def request(raw):
         elif action=='qr_parse':
             _authorized(p)
             from family_cards import parse
-            return json.dumps({'ok':True,'card':parse(p.get('text'),p.get('target','contact'))})
+            target=p.get('target','contact')
+            card=parse(p.get('text'),target)
+            return json.dumps({'ok':True,'roomCard' if _tcp_only and target=='room' else 'card':card})
         elif action=='device_name':
             name=p.get('name')
             with _announce_lock,_lock:
@@ -690,6 +814,13 @@ def request(raw):
                     validate_public_key(address,c['identityPublicKey'])
                 if not isinstance(c.get('name'),str) or not c['name'].strip() or len(c['name'])>32:raise ValueError('Invalid contact name')
             with _lock:
+                if _tcp_only:
+                    known_keys={c['addresses'].get('lxmf','').lower():c['identityPublicKey']
+                                for c in _state['contacts'] if c.get('identityPublicKey')}
+                    for contact in contacts:
+                        address=contact['addresses'].get('lxmf','').lower()
+                        if address in known_keys and not contact.get('identityPublicKey'):
+                            contact['identityPublicKey']=known_keys[address]
                 _state['contacts']=contacts
                 if _locations:_locations.reconcile()
                 if _voice:_voice.reconcile()
@@ -717,6 +848,7 @@ def request(raw):
             _authorized(p)
             from family_radios import validate
             config=validate(p.get('config')) if p.get('config') is not None else None
+            if _tcp_only and config and config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
             with _lock:_state['rnode']=config;_save()
             if _radio:_radio.configure(config)
         elif action=='peer':
@@ -724,6 +856,11 @@ def request(raw):
             if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
             with _lock:_state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True))};_save()
             threading.Thread(target=_connect,daemon=True).start()
+        elif action=='voice_presence' and _ios_voice:
+            if type(p.get('foreground')) is not bool:raise ValueError('Invalid voice availability')
+            _ios_voice_foreground=p['foreground']
+            if not _ios_voice_foreground and _voice and _voice.phase!='idle':_voice.hangup()
+            return json.dumps({'ok':True})
         elif action=='voice_resolve':
             _authorized(p)
             import RNS

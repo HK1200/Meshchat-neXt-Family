@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Stage the pure-Python pieces for an embedded Family TCP runtime."""
+from argparse import ArgumentParser
+from hashlib import file_digest
+from pathlib import Path, PurePosixPath
+import shutil
+from zipfile import ZipFile
+
+
+RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
+FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
+FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
+
+
+def standalone_rns(source):
+    # Only shared-instance RPC uses multiprocessing. Family starts a standalone
+    # Reticulum instance, so delay the import until one of those paths runs.
+    replacements = {
+        "import multiprocessing.connection\n": "",
+        "        if self.is_shared_instance:\n            self.rpc_listener = multiprocessing.connection.Listener":
+            "        if self.is_shared_instance:\n            import multiprocessing.connection\n"
+            "            self.rpc_listener = multiprocessing.connection.Listener",
+        "    def get_rpc_client(self): return multiprocessing.connection.Client":
+            "    def get_rpc_client(self):\n        import multiprocessing.connection\n"
+            "        return multiprocessing.connection.Client",
+    }
+    for before, after in replacements.items():
+        if source.count(before) != 1:
+            raise ValueError("The pinned Reticulum source no longer matches the standalone patch")
+        source = source.replace(before, after)
+    return source
+
+
+def tcp_rnode(source):
+    start = source.index("        import importlib.util\n", source.index("    def __init__(self, owner, configuration):"))
+    end = source.index("        super().__init__()", start)
+    return source[:start] + """        port = configuration.get("port", "")
+        if not isinstance(port, str) or not port.lower().startswith("tcp://"):
+            raise ValueError("The iOS RNode driver requires TCP")
+        serial = None
+
+""" + source[end:]
+
+
+def stage(wheel, destination, cbor_wheel=None):
+    with wheel.open("rb") as stream:
+        if file_digest(stream, "sha256").hexdigest() != RNS_SHA256:
+            raise ValueError("Expected the pinned rns-1.5.7 wheel")
+    with ZipFile(wheel) as archive:
+        replacements = {
+            "RNS/Reticulum.py": standalone_rns(archive.read("RNS/Reticulum.py").decode()),
+            "RNS/Interfaces/RNodeInterface.py": tcp_rnode(archive.read("RNS/Interfaces/RNodeInterface.py").decode()),
+        }
+        destination.mkdir(parents=True, exist_ok=False)
+        for entry in archive.infolist():
+            relative = PurePosixPath(entry.filename)
+            if entry.is_dir() or relative.parts[0] not in {"RNS", "rns-1.5.7.dist-info"}:
+                continue
+            if ".." in relative.parts:
+                raise ValueError("Unexpected wheel path")
+            target = destination.joinpath(*relative.parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            replacement = replacements.get(relative.as_posix())
+            target.write_bytes(replacement.encode() if replacement is not None else archive.read(entry))
+    for module in FAMILY_MODULES:
+        shutil.copyfile(FAMILY_SOURCE / module, destination / module)
+    shutil.copytree(FAMILY_SOURCE / "LXMF", destination / "LXMF", ignore=shutil.ignore_patterns("__pycache__"))
+    telemetry = Path("meshchatnext/src/backend/telemetry_utils.py")
+    (destination / telemetry.parent).mkdir(parents=True)
+    shutil.copyfile(FAMILY_SOURCE / telemetry, destination / telemetry)
+    for module in ("src/path_utils.py", "src/backend/constants.py", "src/backend/path_utils.py", "src/backend/traffic_stats.py"):
+        path = Path("meshchatnext") / module
+        shutil.copyfile(FAMILY_SOURCE / path, destination / path)
+    rrc = Path("meshchatnext/src/backend/rrc")
+    shutil.copytree(FAMILY_SOURCE / rrc, destination / rrc, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(FAMILY_SOURCE / "pycparser", destination / "pycparser", ignore=shutil.ignore_patterns("__pycache__"))
+    if cbor_wheel is not None:
+        with cbor_wheel.open("rb") as stream:
+            if file_digest(stream, "sha256").hexdigest() != "3038523b8fc7de312bb9cdcbbbd599987e64307c4db357cd2030c472a6c7d468":
+                raise ValueError("Expected the pinned pure-Python cbor2 wheel")
+        with ZipFile(cbor_wheel) as archive:
+            archive.extractall(destination)
+
+
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("rns_wheel", type=Path)
+    parser.add_argument("destination", type=Path, help="New directory for staged modules")
+    parser.add_argument("--cbor-wheel", type=Path)
+    args = parser.parse_args()
+    stage(args.rns_wheel, args.destination, args.cbor_wheel)

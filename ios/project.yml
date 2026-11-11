@@ -1,0 +1,51 @@
+name: FamilyPreview
+options:
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  FamilyPreview:
+    type: application
+    platform: iOS
+    sources:
+      - path: FamilyPreview
+        excludes:
+          - FamilyPreview.css
+      - path: FamilyPreview/FamilyPreview.css
+        buildPhase: resources
+      - path: ../app/src/main/assets
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.preview
+        PRODUCT_NAME: FamilyPreview
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: neXt Family Preview
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+
+  FamilyPreviewUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: FamilyPreviewUITests
+    dependencies:
+      - target: FamilyPreview
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.preview.uitests
+        TEST_TARGET_NAME: FamilyPreview
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  FamilyPreview:
+    build:
+      targets:
+        FamilyPreview: all
+    test:
+      targets:
+        - FamilyPreviewUITests

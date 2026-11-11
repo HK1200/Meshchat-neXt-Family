@@ -1,0 +1,73 @@
+name: Family iOS simulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      rmap:
+        description: Run live messaging through rmap.world on both simulators
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - 'ios/**'
+      - '!ios/build-voice-codecs.sh'
+      - 'app/src/main/assets/**'
+      - 'app/src/main/python/**'
+      - '.github/workflows/ios-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    name: ${{ matrix.device }} ${{ matrix.suite }}
+    runs-on: macos-15
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+        suite: [live, preview]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Run live Reticulum messaging test
+        if: matrix.suite == 'live'
+        run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Run public Reticulum messaging test
+        if: ${{ success() && matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test')) }}
+        run: |
+          if ! bash ios/test-live.sh "${{ matrix.device }}" rmap; then
+            echo "Retrying the external Reticulum peer once with a fresh test identity."
+            bash ios/test-live.sh "${{ matrix.device }}" rmap
+          fi
+      - name: Build Family for physical iPhone and iPad
+        if: ${{ !cancelled() && matrix.device == 'iPad' && matrix.suite == 'live' }}
+        working-directory: ios
+        run: |
+          bash prepare-live.sh
+          xcodegen generate --spec project-live.yml
+          xcodebuild build -project FamilyLive.xcodeproj -scheme FamilyLive \
+            -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO
+          app=DerivedData/Build/Products/Debug-iphoneos/FamilyLive.app
+          lipo "$app/FamilyLive" -verify_arch arm64
+          test -f "$app/Frameworks/Python.framework/Python"
+          test -f "$app/staged/family_tcp.py"
+          test -s "$app/offline-tiles/tiles.bin"
+          test -s "$app/offline-tiles/index.json"
+      - name: Run preview smoke test
+        if: matrix.suite == 'preview'
+        run: bash ios/test-preview.sh "${{ matrix.device }}"
+
+      - name: Keep simulator test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-results-${{ matrix.device }}-${{ matrix.suite }}-${{ github.run_attempt }}
+          path: ios/RuntimeBuild/results/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7

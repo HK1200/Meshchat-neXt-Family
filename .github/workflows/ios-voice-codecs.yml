@@ -1,0 +1,27 @@
+name: Family iOS voice codec build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/family-ios]
+    paths:
+      - ios/build-voice-codecs.sh
+      - .github/workflows/ios-voice-codecs.yml
+
+permissions:
+  contents: read
+
+jobs:
+  apple-codecs:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Locate CMake
+        run: command -v cmake || brew install cmake
+      - name: Prepare the embedded Python framework
+        run: bash ios/prepare-live.sh
+      - name: Build and verify Apple codec libraries
+        run: bash ios/build-voice-codecs.sh

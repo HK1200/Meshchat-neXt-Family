@@ -1,0 +1,38 @@
+{
+  "iphoneos-arm64": [
+    {
+      "file": "cryptography-47.0.0-cp313-abi3-ios_13_0_arm64_iphoneos.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cryptography/47.0.0/cryptography-47.0.0-cp313-abi3-ios_13_0_arm64_iphoneos.whl",
+      "sha256": "e62eec90567173553046e20e05c8e190dd785e002cca300e01b8202788bee948"
+    },
+    {
+      "file": "cffi-2.0.0-cp314-cp314-ios_13_0_arm64_iphoneos.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cffi/2.0.0/cffi-2.0.0-cp314-cp314-ios_13_0_arm64_iphoneos.whl",
+      "sha256": "8476fd4acb43ac772411f251c1386f1925b2e7ee16bb7b061fe97a7fb96308e0"
+    }
+  ],
+  "iphonesimulator-arm64": [
+    {
+      "file": "cryptography-47.0.0-cp313-abi3-ios_13_0_arm64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cryptography/47.0.0/cryptography-47.0.0-cp313-abi3-ios_13_0_arm64_iphonesimulator.whl",
+      "sha256": "3d9650d49dfd995971d79201800e5dc46a1c0bf35391c4e7af8266efb6bf8262"
+    },
+    {
+      "file": "cffi-2.0.0-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cffi/2.0.0/cffi-2.0.0-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl",
+      "sha256": "751f8fc7ed04ab5ca318b50823db1e6c1f1098cc484d53289f7a429e6cef975b"
+    }
+  ],
+  "iphonesimulator-x86_64": [
+    {
+      "file": "cryptography-47.0.0-cp313-abi3-ios_13_0_x86_64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cryptography/47.0.0/cryptography-47.0.0-cp313-abi3-ios_13_0_x86_64_iphonesimulator.whl",
+      "sha256": "753502bd2f3591eade673ff72ff8965d38007276a6a4b76a7953ed3c38c9a7e1"
+    },
+    {
+      "file": "cffi-2.0.0-cp314-cp314-ios_13_0_x86_64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/cffi/2.0.0/cffi-2.0.0-cp314-cp314-ios_13_0_x86_64_iphonesimulator.whl",
+      "sha256": "d84d8a7a636b6a1b1373aa42cf8cee1e02999be06dcefac2dd78265d27e8509d"
+    }
+  ]
+}
