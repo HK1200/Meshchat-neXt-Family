@@ -1,5 +1,7 @@
 # neXt Family
 
+**[Download Family v0.6.20 for Android (ARM64)](https://github.com/HK1200/Meshchat-neXt-Family/releases/download/v0.6.20/MeshchatNextFamily-v0.6.20-android-arm64.apk)**
+
 neXt Family is an Android companion to Meshchat neXt. A guardian approves the people and rooms the device can reach, then locks those settings. Family members can call or text an approved person from a simple contact list.
 
 - **Reticulum** provides LXMF text, LXST calling on suitable links, and approved Relay Chat rooms. Use an internet TCP peer, an RNode, or both.
@@ -10,7 +12,7 @@ You can enable any combination. Family keeps these services separate and uses an
 
 ## Install and set up
 
-Use an ARM64 phone or tablet running Android 8.0 or later. Install the Family APK from GitHub Releases, then follow the first-run guide. The first public APK uses a production signing certificate. Participants upgrading from a development build need the migration package to preserve their app data. [GitHub Releases](https://github.com/HK1200/Meshchat-neXt-Family/releases) · [Initial setup](docs/INITIAL_SETUP.md)
+Use an ARM64 phone or tablet running Android 8.0 or later. Family v0.6.20 uses the new Android package ID and starts with guardian setup. If you still need your v0.6.19 settings or messages, keep that app installed. GitHub’s Latest link serves the previous package’s updater. Use the download above for the current production package. [v0.6.20 release notes](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.20) · [Initial setup](docs/INITIAL_SETUP.md)
 
 Family can show updates on its home screen. **Install now** downloads the APK from this repository, verifies it, and opens Android’s installer. Android handles the installation approval.
 
