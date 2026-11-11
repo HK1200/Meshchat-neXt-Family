@@ -35,29 +35,15 @@ final class FamilyVoiceAudio {
             let input = engine.inputNode
             let hardware = input.outputFormat(forBus: 0)
             guard hardware.sampleRate > 0, hardware.channelCount > 0,
-                  let pcm = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: true),
-                  let playback = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1),
-                  let converter = AVAudioConverter(from: hardware, to: pcm) else {
+                  let playback = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1) else {
                 throw AudioError.unavailable
             }
             engine.connect(player, to: engine.mainMixerNode, format: playback)
             let pump = VoicePCMPump(callID: callID, player: player, format: playback)
+            let capture = try VoiceMicrophoneCapture(input: hardware, output: playback, pump: pump)
             self.pump = pump
             input.installTap(onBus: 0, bufferSize: 960, format: hardware) { buffer, _ in
-                let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * pcm.sampleRate / hardware.sampleRate)) + 8
-                guard let converted = AVAudioPCMBuffer(pcmFormat: pcm, frameCapacity: capacity) else { return }
-                var sent = false
-                let status = converter.convert(to: converted, error: nil) { _, result in
-                    if sent {
-                        result.pointee = .noDataNow
-                        return nil
-                    }
-                    sent = true
-                    result.pointee = .haveData
-                    return buffer
-                }
-                guard status != .error, let samples = converted.int16ChannelData?[0], converted.frameLength > 0 else { return }
-                pump.capture(Data(bytes: samples, count: Int(converted.frameLength) * 2))
+                capture.receive(buffer)
             }
             tapInstalled = true
             engine.prepare()
@@ -69,6 +55,10 @@ final class FamilyVoiceAudio {
             stop()
             throw error
         }
+    }
+
+    var captureStatus: String {
+        pump?.captureStatus ?? "Starting microphone"
     }
 
     func setSpeaker(_ enabled: Bool) throws {
@@ -93,9 +83,65 @@ final class FamilyVoiceAudio {
         }
     }
 
-    private enum AudioError: LocalizedError {
+    fileprivate enum AudioError: LocalizedError {
         case unavailable
         var errorDescription: String? { "No usable microphone route is available." }
+    }
+}
+
+// Keep the hardware-rate tap in Float32 and convert the final mono samples to
+// signed PCM explicitly. The common 48 kHz mono route bypasses AVAudioConverter.
+private final class VoiceMicrophoneCapture: @unchecked Sendable {
+    private let output: AVAudioFormat
+    private let converter: AVAudioConverter?
+    private let pump: VoicePCMPump
+
+    init(input: AVAudioFormat, output: AVAudioFormat, pump: VoicePCMPump) throws {
+        self.output = output
+        self.pump = pump
+        if input == output {
+            converter = nil
+        } else {
+            guard let converter = AVAudioConverter(from: input, to: output) else {
+                throw FamilyVoiceAudio.AudioError.unavailable
+            }
+            self.converter = converter
+        }
+    }
+
+    func receive(_ buffer: AVAudioPCMBuffer) {
+        pump.noteTap()
+        guard buffer.frameLength > 0 else { return }
+        guard let converter else {
+            encode(buffer)
+            return
+        }
+        let ratio = output.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 32
+        guard let converted = AVAudioPCMBuffer(pcmFormat: output, frameCapacity: capacity) else { return }
+        var supplied = false
+        let status = converter.convert(to: converted, error: nil) { _, inputStatus in
+            inputStatus.pointee = supplied ? .noDataNow : .haveData
+            if supplied { return nil }
+            supplied = true
+            return buffer
+        }
+        if status != .error { encode(converted) }
+    }
+
+    private func encode(_ buffer: AVAudioPCMBuffer) {
+        let length = Int(buffer.frameLength)
+        guard length > 0, let samples = buffer.floatChannelData?[0] else { return }
+        var pcm = Data(count: length * MemoryLayout<Int16>.size)
+        pcm.withUnsafeMutableBytes { bytes in
+            let output = bytes.bindMemory(to: Int16.self)
+            for index in 0..<length {
+                let sample = samples[index]
+                let scaled = sample.isFinite ? max(-1, min(1, sample)) * 32_768 : 0
+                output[index] = Int16(clamping: Int(scaled)).littleEndian
+            }
+        }
+        pump.capture(pcm)
     }
 }
 
@@ -110,6 +156,8 @@ private final class VoicePCMPump: @unchecked Sendable {
     private let player: AVAudioPlayerNode
     private let format: AVAudioFormat
     private var captured = Data()
+    private var tapDelivered = false
+    private var pcmQueued = false
     private var timer: DispatchSourceTimer?
     private var scheduled = 0
 
@@ -119,8 +167,23 @@ private final class VoicePCMPump: @unchecked Sendable {
         self.format = format
     }
 
+    func noteTap() {
+        lock.lock()
+        tapDelivered = true
+        lock.unlock()
+    }
+
+    var captureStatus: String {
+        lock.lock()
+        defer { lock.unlock() }
+        if pcmQueued { return "Microphone captured. Waiting for Reticulum to send audio." }
+        if tapDelivered { return "Microphone input received. Waiting for audio conversion." }
+        return "Waiting for iPad microphone input"
+    }
+
     func capture(_ data: Data) {
         lock.lock()
+        pcmQueued = true
         captured.append(data)
         let excess = captured.count - Self.captureLimit
         if excess > 0 { captured.removeFirst(excess) }

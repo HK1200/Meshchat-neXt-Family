@@ -172,6 +172,8 @@ final class FamilyModel: ObservableObject {
         _ = await perform("voice_hangup", ["callId": id])
     }
 
+    var voiceCaptureStatus: String { voiceAudio.captureStatus }
+
     func reconnectVoiceAudio() {
         guard voiceAudio.callID != nil else { return }
         voiceAudio.stop()
@@ -830,9 +832,8 @@ struct FamilyGuardian: View {
                             if let address = family.state?.voice?.address, !address.isEmpty {
                                 Text(address).font(.caption.monospaced()).textSelection(.enabled)
                             }
-                            if let incoming = family.state?.voice?.lastIncoming, !incoming.isEmpty {
-                                LabeledContent("Last incoming attempt", value: incoming)
-                            }
+                            let incoming = family.state?.voice?.lastIncoming ?? ""
+                            LabeledContent("Last incoming attempt", value: incoming.isEmpty ? "No incoming link recorded" : incoming)
                             if let error = family.state?.voice?.error, !error.isEmpty { Text(error).foregroundStyle(.red) }
                         }
                     }
