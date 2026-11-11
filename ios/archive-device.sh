@@ -99,6 +99,18 @@ test -f "$app/PrivacyInfo.xcprivacy"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.family.ios.live
 /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon' "$app/Info.plist" >/dev/null
 
+if [[ "$mode" == unsigned ]]; then
+    packaging="$(mktemp -d "$PWD/RuntimeBuild/device-ipa.XXXXXXXX")"
+    trap 'rm -rf -- "$packaging"' EXIT
+    mkdir "$packaging/Payload"
+    ditto "$app" "$packaging/Payload/FamilyLive.app"
+    ipa="$PWD/RuntimeBuild/neXt-Family-iOS-unsigned.ipa"
+    rm -f -- "$ipa"
+    ditto -c -k --keepParent "$packaging/Payload" "$ipa"
+    unzip -tq "$ipa"
+    shasum -a 256 "$ipa"
+fi
+
 if [[ "$mode" == testflight ]]; then
     codesign --verify --deep --strict "$app"
     python3 - "$signing_dir/ExportOptions.plist" "$team" "$identity" "$uuid" <<'PY'
