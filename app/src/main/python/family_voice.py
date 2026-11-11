@@ -140,7 +140,8 @@ class FamilyVoice:
   class Input(LocalSource):
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):
     from lxst_audio_processing import prepare_capture_filters
-    self.filters=prepare_capture_filters(kwargs.get('filters'))
+    self.filters=prepare_capture_filters(
+     kwargs.get('filters'),default_max_gain_db=18.0 if sys.platform=='ios' else None)
     self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
     self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
     self.pending=bytearray()

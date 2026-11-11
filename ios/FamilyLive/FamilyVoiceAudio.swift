@@ -9,6 +9,7 @@ final class FamilyVoiceAudio {
     private var pump: VoicePCMPump?
     private var tapInstalled = false
     private var sessionActive = false
+    private var nativeCaptureStarted: ContinuousClock.Instant?
     private(set) var callID: String?
 
     init() { engine.attach(player) }
@@ -63,6 +64,7 @@ final class FamilyVoiceAudio {
             player.play()
             pump.start()
             self.callID = callID
+            nativeCaptureStarted = input.isVoiceProcessingEnabled ? ContinuousClock.now : nil
         } catch {
             stop()
             throw error
@@ -73,6 +75,17 @@ final class FamilyVoiceAudio {
         pump?.captureStatus ?? "Starting microphone"
     }
 
+    func recoverStalledCapture() throws {
+        guard let started = nativeCaptureStarted, let callID, let pump else { return }
+        if pump.hasCapturedPCM {
+            nativeCaptureStarted = nil
+            return
+        }
+        guard started.duration(to: ContinuousClock.now) >= .seconds(2) else { return }
+        stop()
+        try start(callID: callID, useVoiceProcessing: false)
+    }
+
     func setSpeaker(_ enabled: Bool) throws {
         guard callID != nil else { return }
         try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none)
@@ -81,6 +94,7 @@ final class FamilyVoiceAudio {
     func stop() {
         pump?.stop()
         pump = nil
+        nativeCaptureStarted = nil
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -179,6 +193,12 @@ private final class VoicePCMPump: @unchecked Sendable {
         self.player = player
         self.format = format
         self.nativeProcessing = nativeProcessing
+    }
+
+    var hasCapturedPCM: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return pcmQueued
     }
 
     func noteTap() {

@@ -3,7 +3,7 @@
 import math
 
 
-def prepare_capture_filters(filters):
+def prepare_capture_filters(filters, *, default_max_gain_db=None):
     if not filters:
         return []
     from LXST.Filters import AGC
@@ -18,4 +18,9 @@ def prepare_capture_filters(filters):
                 level = getattr(audio_filter, level_name)
                 if math.isclose(getattr(audio_filter, gain_name), 10 ** (level / 10)):
                     setattr(audio_filter, gain_name, 10 ** (level / 20))
+            if (default_max_gain_db is not None
+                    and audio_filter.max_gain_db == 12.0
+                    and math.isclose(audio_filter.max_gain_linear, 10 ** (12 / 20))):
+                audio_filter.max_gain_db = default_max_gain_db
+                audio_filter.max_gain_linear = 10 ** (default_max_gain_db / 20)
     return prepared

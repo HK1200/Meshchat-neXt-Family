@@ -217,9 +217,13 @@ final class FamilyModel: ObservableObject {
             }
             return
         }
-        guard voiceAudio.callID != id, failingAudioCallID != id else { return }
+        guard failingAudioCallID != id else { return }
         do {
-            try voiceAudio.start(callID: id)
+            if voiceAudio.callID == id {
+                try voiceAudio.recoverStalledCapture()
+            } else {
+                try voiceAudio.start(callID: id)
+            }
             speakerOn = voiceAudio.usingBuiltInSpeaker
         } catch {
             failingAudioCallID = id

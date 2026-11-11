@@ -173,3 +173,19 @@ def test_capture_restores_gain_control_for_quiet_and_loud_speech():
         else:
             assert rms < 0.25
     assert results[1] / results[0] < 4
+
+
+def test_ios_software_gain_keeps_quiet_speech_and_peak_headroom():
+    np = pytest.importorskip("numpy")
+    from LXST.Filters import AGC
+    from lxst_audio_processing import prepare_capture_filters
+
+    signal = np.sin(np.arange(2880, dtype=np.float32) * 2 * np.pi * 1000 / 48000)
+    standard, enhanced = AGC(target_level=-15), AGC(target_level=-15)
+    prepare_capture_filters([standard])
+    prepare_capture_filters([enhanced], default_max_gain_db=18)
+    for _ in range(120):
+        baseline = standard.handle_frame(signal * 0.01, 48000)
+        boosted = enhanced.handle_frame(signal * 0.01, 48000)
+    assert np.linalg.norm(boosted) > 1.7 * np.linalg.norm(baseline)
+    assert np.max(np.abs(enhanced.handle_frame(signal * 0.95, 48000))) <= 0.751
