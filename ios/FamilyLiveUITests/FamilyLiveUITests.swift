@@ -155,9 +155,16 @@ final class FamilyLiveUITests: XCTestCase {
             voice.tap()
             XCTAssertTrue(app.staticTexts["reticulum-voice-ready"].waitForExistence(timeout: 35), app.debugDescription)
             app.buttons["Disable Reticulum calling"].tap()
+            XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
             let offlineMaps = app.buttons["Offline maps"]
-            for _ in 0..<4 where !offlineMaps.isHittable { app.swipeUp() }
-            XCTAssertTrue(offlineMaps.isHittable, app.debugDescription)
+            let bottom = app.frame.maxY - 55
+            for _ in 0..<4 {
+                if offlineMaps.isHittable && offlineMaps.frame.midY < bottom { break }
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+                let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
+            XCTAssertTrue(offlineMaps.isHittable && offlineMaps.frame.midY < bottom, app.debugDescription)
             offlineMaps.tap()
             let pnw = app.buttons["offline-map-layer-pnw"]
             XCTAssertTrue(pnw.waitForExistence(timeout: 10), app.debugDescription)
