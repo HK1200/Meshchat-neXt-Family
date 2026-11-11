@@ -198,3 +198,13 @@ def test_ios_extra_speech_gain_waits_for_the_speaker_echo_to_decay():
     assert ios_transmit_gain(2.6, 2.0, 0.01, 0.01) == 1
     assert ios_transmit_gain(2.6, 2.0, 0.015, 0.006) == pytest.approx(10 ** (5 / 20))
     assert ios_transmit_gain(2.8, 2.0, 0.004, 0.01) == pytest.approx(10 ** (5 / 20))
+
+
+def test_ios_echo_processing_precedes_capture_gain():
+    pytest.importorskip("numpy")
+    from LXST.Filters import AGC
+    from lxst_audio_processing import prepare_capture_filters
+
+    bandpass, echo = object(), object()
+    gain = AGC()
+    assert prepare_capture_filters([bandpass, gain, echo], echo_before_gain=True) == [bandpass, echo, gain]

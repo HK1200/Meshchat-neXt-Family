@@ -153,7 +153,8 @@ class FamilyVoice:
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):
     from lxst_audio_processing import prepare_capture_filters
     self.filters=prepare_capture_filters(
-     kwargs.get('filters'),default_max_gain_db=18.0 if sys.platform=='ios' else None)
+     kwargs.get('filters'),default_max_gain_db=18.0 if sys.platform=='ios' else None,
+     echo_before_gain=sys.platform=='ios')
     self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
     self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
     self.pending=bytearray()
@@ -232,7 +233,14 @@ class FamilyVoice:
  def _connected(self,identity):
   with self.lock:
    if self.phase not in ['calling','incoming'] or not self.call_id or not self.allowed(identity.hash):threading.Thread(target=self.hangup,daemon=True).start();return
-   self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(getattr(self.phone,'active_call',None),'rtt',None);self.name=self._contact(identity.hash)['name']
+   call=getattr(self.phone,'active_call',None)
+   if self.gate is not None and getattr(call,'echo_suppressor',None):
+    # Native playback is buffered after the LXST mixer. Feed the reference
+    # from pull() at that boundary instead of feeding it twice.
+    mixer=getattr(self.phone,'receive_mixer',None)
+    if mixer is not None:
+     mixer.reference_outs=[ref for ref in mixer.reference_outs if ref is not call.echo_suppressor]
+   self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(call,'rtt',None);self.name=self._contact(identity.hash)['name']
  def _ended(self,identity=None):
   with self.lock:
    if self.outgoing and self.target and ((self.connected_at and time.time()-self.connected_at>=3) or self.error):
@@ -312,7 +320,13 @@ class FamilyVoice:
  def pull(self,call_id):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.peer or not self.allowed(bytes.fromhex(self.peer)):return b''
-   return self.pcm.pull()
+   pcm=self.pcm.pull()
+   reference=getattr(getattr(self.phone,'active_call',None),'echo_suppressor',None) if self.gate is not None else None
+  if reference:
+   import numpy as np
+   samples=(np.frombuffer(pcm or bytes(PLAYBACK_CHUNK),dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
+   reference.handle_reference(samples,48000)
+  return pcm
  def set_muted(self,muted):
   with self.lock:
    self.muted=muted
