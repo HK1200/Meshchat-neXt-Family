@@ -257,6 +257,10 @@ final class FamilyModel: ObservableObject {
         _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": true])
     }
 
+    func saveRNode(_ config: [String: Any]) async -> Bool {
+        await perform("rnode", ["token": token, "config": config])
+    }
+
     func saveDeviceName(_ name: String) async -> Bool {
         await perform("device_name", ["token": token, "name": name])
     }
@@ -413,6 +417,13 @@ struct FamilyHome: View {
                 } else if let state = family.state {
                     Section("Connection") {
                         Text(state.tcpOnline == true ? "Reticulum TCP connected" : "Reticulum TCP offline")
+                        if state.rnode?.enabled == true, let radio = state.rnodeRuntime {
+                            Text(radio.online ? "Wi-Fi RNode connected" : radio.connecting ? "Connecting to RNode" : "Wi-Fi RNode offline")
+                            if let battery = radio.battery {
+                                let level = Int((battery.percent / 25).rounded()) * 25
+                                Label("RNode battery: \(Int(battery.percent))%", systemImage: battery.state == "charging" ? "battery.100.bolt" : "battery.\(level)")
+                            }
+                        }
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), state.rrcIdentity != nil {
                             Text("Relay Chat ready").accessibilityIdentifier("relay-chat-ready")
@@ -564,6 +575,7 @@ struct FamilyGuardian: View {
                         .onChange(of: address) { contactSaved = false }
                     }
                     Section {
+                        NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
                         NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
                     }

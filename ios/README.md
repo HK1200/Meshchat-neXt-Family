@@ -44,6 +44,10 @@ To exercise the same messaging test through `rmap.world:4242`, append `rmap` to 
 
 **FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. It uses the same TCP write recovery as Android, reconnects when iOS reports a restored or changed network path, and rechecks the mailbox after reconnecting. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
 
+## Wi-Fi RNode
+
+Open **Guardian settings → Wi-Fi RNode** and enter the radio’s hostname or IPv4 address and LoRa settings. The radio must offer RNode TCP on port 7633. The connection screen shows link status and the radio’s reported battery level when available. Approved Reticulum messages, rooms, and private location can use this link. Verify actual radio and battery behavior on a signed device build.
+
 ## Contact discovery and the live map
 
 In Guardian settings, open **Find messaging client** to search Reticulum announces by name or LXMF address. You can also scan a contact QR on supported devices or import a QR image. Review the populated name and address before saving the contact.

@@ -17,9 +17,15 @@ final class FamilyPreviewUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue((wasNight ? night : day).waitForExistence(timeout: 30))
-        textButton.tap()
-
-        XCTAssertTrue(webView.textFields["Message"].waitForExistence(timeout: 10))
+        let reopenedView = app.webViews.firstMatch
+        let reopenedTextButton = reopenedView.buttons["Text Mom"]
+        let message = reopenedView.textFields["Message"]
+        XCTAssertTrue(reopenedTextButton.waitForExistence(timeout: 15))
+        reopenedTextButton.tap()
+        if !message.waitForExistence(timeout: 5), reopenedTextButton.isHittable {
+            reopenedTextButton.tap()
+        }
+        XCTAssertTrue(message.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.staticTexts["iOS preview · Sample data only"].exists)
     }
 }

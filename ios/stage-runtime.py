@@ -31,12 +31,26 @@ def standalone_rns(source):
     return source
 
 
+def tcp_rnode(source):
+    start = source.index("        import importlib.util\n", source.index("    def __init__(self, owner, configuration):"))
+    end = source.index("        super().__init__()", start)
+    return source[:start] + """        port = configuration.get("port", "")
+        if not isinstance(port, str) or not port.lower().startswith("tcp://"):
+            raise ValueError("The iOS RNode driver requires TCP")
+        serial = None
+
+""" + source[end:]
+
+
 def stage(wheel, destination, cbor_wheel=None):
     with wheel.open("rb") as stream:
         if file_digest(stream, "sha256").hexdigest() != RNS_SHA256:
             raise ValueError("Expected the pinned rns-1.5.7 wheel")
     with ZipFile(wheel) as archive:
-        patched = standalone_rns(archive.read("RNS/Reticulum.py").decode())
+        replacements = {
+            "RNS/Reticulum.py": standalone_rns(archive.read("RNS/Reticulum.py").decode()),
+            "RNS/Interfaces/RNodeInterface.py": tcp_rnode(archive.read("RNS/Interfaces/RNodeInterface.py").decode()),
+        }
         destination.mkdir(parents=True, exist_ok=False)
         for entry in archive.infolist():
             relative = PurePosixPath(entry.filename)
@@ -46,7 +60,8 @@ def stage(wheel, destination, cbor_wheel=None):
                 raise ValueError("Unexpected wheel path")
             target = destination.joinpath(*relative.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(patched.encode() if relative.as_posix() == "RNS/Reticulum.py" else archive.read(entry))
+            replacement = replacements.get(relative.as_posix())
+            target.write_bytes(replacement.encode() if replacement is not None else archive.read(entry))
     for module in FAMILY_MODULES:
         shutil.copyfile(FAMILY_SOURCE / module, destination / module)
     shutil.copytree(FAMILY_SOURCE / "LXMF", destination / "LXMF", ignore=shutil.ignore_patterns("__pycache__"))

@@ -16,7 +16,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'device_name','preferences','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
-    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
 })
 _tcp_only=False
 _lock=threading.RLock()
@@ -192,9 +192,9 @@ def _start():
                 if not m.get('incoming') and not m['status'].startswith(('Delivered','Failed','Not sent','Not confirmed')):
                     m['status']='Interrupted · delivery not confirmed'
             _save()
-        if not _tcp_only:
-            from family_radios import Radio
-            _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None);_radio.configure(_state.get('rnode'))
+        from family_radios import Radio
+        _radio=Radio(_rns,on_ready=_announce_available_routes,on_retire=lambda interface:_rooms.retire_interface(interface) if _rooms else None,network_only=_tcp_only)
+        _radio.configure(_state.get('rnode'))
         for contact in _state['contacts']:
             if contact.get('identityPublicKey'):RNS.Identity.remember(None,bytes.fromhex(contact['addresses']['lxmf']),bytes.fromhex(contact['identityPublicKey']))
         _error=''
@@ -821,6 +821,7 @@ def request(raw):
             _authorized(p)
             from family_radios import validate
             config=validate(p.get('config')) if p.get('config') is not None else None
+            if _tcp_only and config and config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
             with _lock:_state['rnode']=config;_save()
             if _radio:_radio.configure(config)
         elif action=='peer':

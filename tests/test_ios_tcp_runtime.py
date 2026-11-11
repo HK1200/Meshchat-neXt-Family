@@ -10,6 +10,7 @@ import runpy
 from pathlib import Path
 import socket
 import sys
+import threading
 import time
 
 import pytest
@@ -87,6 +88,11 @@ def run_family(folder, pipe):
 
         assert RNS.Cryptography.Provider.backend() == "internal"
         assert LXStamper.IS_IOS
+    radio_port = os.getenv("FAMILY_IOS_TEST_RNODE_PORT")
+    if radio_port:
+        from RNS.Interfaces.RNodeInterface import TCPConnection
+
+        TCPConnection.TARGET_PORT = int(radio_port)
     family_backend.initialize(folder, tcp_only=True)
     try:
         while True:
@@ -396,6 +402,10 @@ def test_tcp_runtime_rejoins_saved_password_room(tmp_path, monkeypatch):
             ready = wait_status(client, lambda state: state["tcpOnline"])
             assert not ready["roomError"], ready["roomError"]
             approval = {"name": "Test room", "key": hub_hash, "channel": "family-test", "service": "reticulum"}
+            card = json.dumps({"format": "next-family-room", "version": 1, "service": "reticulum",
+                               "hubHash": hub_hash, "room": "family-test", "name": "Test room"})
+            request(client, "qr_parse", succeeds=False, target="room", text=card)
+            assert request(client, "qr_parse", token=token, target="room", text=card)["roomCard"] == approval
             request(client, "room_save", succeeds=False, room=approval, approved=True)
             request(client, "room_save", token=token, room=approval, approved=True, password="private room test key")
             joined = wait_status(client, lambda state: state["roomRuntime"].get("1", {}).get("joined"), timeout=40)
@@ -409,3 +419,50 @@ def test_tcp_runtime_rejoins_saved_password_room(tmp_path, monkeypatch):
         wait_status(clients[1], lambda state: any(
             row["text"] == "Hello from the approved room" for row in state["roomRuntime"]["1"]["messages"]
         ))
+
+
+def test_wifi_rnode_negotiates_configuration_and_battery(tmp_path, monkeypatch):
+    if not os.getenv("FAMILY_IOS_TCP_TEST_RUNTIME"):
+        pytest.skip("Requires the staged iOS TCP-only RNode driver")
+    with ExitStack() as stack:
+        listener = stack.enter_context(socket.socket())
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(10)
+        monkeypatch.setenv("FAMILY_IOS_TEST_RNODE_PORT", str(listener.getsockname()[1]))
+
+        def serve():
+            with listener.accept()[0] as connection:
+                pending = b""
+                while data := connection.recv(4096):
+                    pending += data
+                    frames = pending.split(b"\xc0")
+                    pending = frames.pop()
+                    for frame in filter(None, frames):
+                        command = frame[0]
+                        reply = {0x08: b"\x08\x46", 0x50: b"\x50\x01\x50", 0x48: b"\x48\x80",
+                                 0x49: b"\x49\x01"}.get(command)
+                        if command in (1, 2, 3, 4, 5, 6, 11, 12):
+                            reply = frame
+                        if reply is not None:
+                            connection.sendall(b"\xc0" + reply + b"\xc0")
+                        if command == 6 and frame[1:] == b"\x01":
+                            connection.sendall(b"\xc0\x27\x01\x4b\xc0")
+
+        server = threading.Thread(target=serve, daemon=True)
+        server.start()
+        client = start_process(stack, run_family, tmp_path / "rnode-client")
+        password = "local test guardian password"
+        request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+        token = request(client, "unlock", password=password)["token"]
+        wait_status(client, lambda state: state["ready"])
+        config = {"enabled": True, "transport": "tcp", "endpoint": "127.0.0.1", "frequency": "914.875",
+                  "bandwidth": "125", "sf": 8, "cr": 7, "power": 17}
+        request(client, "rnode", config=config, succeeds=False)
+        request(client, "rnode", token=token, config=config)
+        status = wait_status(client, lambda state: state["rnodeRuntime"]["online"])
+        assert status["online"] and not status["tcpOnline"]
+        assert status["rnodeRuntime"]["battery"] == {"percent": 75, "state": "discharging"}
+        request(client, "rnode", token=token, config=None)
+        assert not request(client, "status")["rnodeRuntime"]["online"]
+    server.join(timeout=5)

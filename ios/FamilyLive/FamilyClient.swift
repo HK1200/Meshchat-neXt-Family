@@ -108,6 +108,27 @@ struct FamilyRoomListing: Decodable, Sendable {
     let rooms: [Channel]
 }
 
+struct FamilyRNode: Decodable, Sendable {
+    let enabled: Bool
+    let endpoint: String
+    let frequency: Double
+    let bandwidth: Double
+    let sf: Int
+    let cr: Int
+    let power: Int
+}
+
+struct FamilyRNodeRuntime: Decodable, Sendable {
+    struct Battery: Decodable, Sendable {
+        let percent: Double
+        let state: String
+    }
+    let online: Bool
+    let connecting: Bool
+    let battery: Battery?
+    let error: String
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -118,6 +139,8 @@ struct FamilyReply: Decodable, Sendable {
     var address: String?
     var deviceName: String?
     var peer: FamilyPeer?
+    var rnode: FamilyRNode?
+    var rnodeRuntime: FamilyRNodeRuntime?
     var mailbox: FamilyMailbox?
     var location: FamilyLocationState?
     var contacts: [FamilyContact]?

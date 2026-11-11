@@ -114,9 +114,10 @@ def prepare_ble(module):
         module.BLEConnection._family_lifecycle_safe=True
 
 class Radio:
-    def __init__(self,reticulum,on_ready=None,on_retire=None):
+    def __init__(self,reticulum,on_ready=None,on_retire=None,network_only=False):
         self.reticulum=reticulum;self.interface=None;self.error='';self.config=None;self.applied=None;self.on_ready=on_ready;self.on_retire=on_retire
         self._last_ready=None
+        self.network_only=network_only
         self._lock=threading.RLock();self._pending=threading.Event()
         threading.Thread(target=self._worker,daemon=True).start()
         threading.Thread(target=self._monitor,daemon=True).start()
@@ -146,6 +147,9 @@ class Radio:
                     old.detach()
                     if old in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(old)
                 if not config or not config['enabled']:continue
+                if self.network_only:
+                    self._open_network_radio(RNS,config)
+                    continue
                 from RNS.Interfaces.Android import RNodeInterface as module
                 RNodeInterface=module.RNodeInterface
                 # A new radio session needs its own battery report.
@@ -180,6 +184,17 @@ class Radio:
                 with self._lock:self.interface=interface;self.applied=config
             except Exception as exc:
                 with self._lock:self.error=str(exc)
+    def _open_network_radio(self,rns,config):
+        if config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
+        from RNS.Interfaces.RNodeInterface import RNodeInterface
+        interface=RNodeInterface(rns.Transport,{
+            'name':'Family Wi-Fi RNode','port':'tcp://'+config['endpoint'],
+            'frequency':config['frequency'],'bandwidth':config['bandwidth'],'txpower':config['power'],
+            'spreadingfactor':config['sf'],'codingrate':config['cr'],'flow_control':False,
+        })
+        self.reticulum._add_interface(interface)
+        with self._lock:self.interface=interface;self.applied=config
+
     def snapshot(self):
         with self._lock:
             interface=self.interface;enabled=bool(self.config and self.config['enabled']);current=getattr(self,'applied',self.config)==self.config
