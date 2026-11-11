@@ -780,7 +780,7 @@ def request(raw):
         elif action in ['authorize_update_config','authorize_apk_share']:
             _authorized(p)
             return json.dumps({'ok': True})
-        elif action=='authorize_camera':
+        elif action in ['authorize_camera','authorize_boot_config']:
             _authorized(p)
         elif action=='qr_parse':
             _authorized(p)

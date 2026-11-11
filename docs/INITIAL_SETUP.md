@@ -64,3 +64,7 @@ Location sharing is optional. Grant device location access only if you intend to
 - If a service cannot reach a person, verify the contact address, selected route, and radio or account status under **Connections**.
 - If notifications are missing, check the app’s notification permissions in Android settings. If calls can’t use audio, check microphone permission.
 - Use the home screen’s **Install now** button when an update is offered. Guardians can also use **Security → Family updates → Check for updates**. Updates come from this repository.
+
+### Start connections after a restart
+
+Open **Guardian settings → Security** and enable **Restore connections after a reboot or app update** if Family should reconnect automatically. This setting starts off. With it off, open Family after a reboot or update to reconnect.

@@ -7,6 +7,17 @@ import org.json.JSONObject;
 /** Restore only saved, enabled services after credential storage becomes available. */
 public final class FamilyBootReceiver extends BroadcastReceiver {
  static final int NOTICE=43;
+ static boolean enabled(Context context) {
+  return context.getPackageManager().getComponentEnabledSetting(new ComponentName(context,FamilyBootReceiver.class))
+      == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+ }
+ static void setEnabled(Context context,boolean enabled) {
+  context.getPackageManager().setComponentEnabledSetting(new ComponentName(context,FamilyBootReceiver.class),
+      enabled ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+              : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+      android.content.pm.PackageManager.DONT_KILL_APP);
+  if(!enabled)context.getSystemService(NotificationManager.class).cancel(NOTICE);
+ }
  @Override public void onReceive(Context context,Intent intent){
   String action=intent.getAction();
   if(!Intent.ACTION_BOOT_COMPLETED.equals(action)&&!Intent.ACTION_MY_PACKAGE_REPLACED.equals(action))return;
@@ -15,6 +26,7 @@ public final class FamilyBootReceiver extends BroadcastReceiver {
   new Thread(()->{try{restore(context.getApplicationContext(),action);}finally{result.finish();}},"family-boot").start();
  }
  static void restore(Context context,String action){
+  if(!enabled(context))return;
   boolean messaging=false,voice=false,sip=false,started=false,needsTap=false;
   try{
    File file=new File(context.getFilesDir(),"family-live/state.json");if(!file.isFile())return;

@@ -208,6 +208,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void saveMessageAttachment(int contact, String message, int index, String name) {
             activity.runOnUiThread(() -> activity.chooseAttachmentDestination(contact, message, index, name));
         }
+        @JavascriptInterface public boolean bootRecoveryEnabled() {
+            return FamilyBootReceiver.enabled(activity);
+        }
         @JavascriptInterface public void setNightMode(boolean night) {
             activity.runOnUiThread(() -> activity.setNightMode(night));
         }
@@ -300,6 +303,20 @@ public class MainActivity extends Activity {
                 String target=backend.callAttr("approved_call_target",id,method).toString();
                 String response=method.equals("sip")?com.meshchatnext.sip.SipController.get(activity).send(new org.json.JSONObject().put("op","call").put("target",target).toString()):backend.callAttr("request",new org.json.JSONObject().put("action","voice_call").put("payload",new org.json.JSONObject().put("contactId",id).put("automatic",true)).toString()).toString();
                 org.json.JSONObject result=new org.json.JSONObject(response);result.put("selectedMethod",method);return result.toString();
+            }
+            if ("boot_config".equals(action)) {
+                org.json.JSONObject payload = input.getJSONObject("payload");
+                org.json.JSONObject requestAuth = new org.json.JSONObject()
+                        .put("action", "authorize_boot_config")
+                        .put("payload", new org.json.JSONObject().put("token", payload.optString("token")));
+                org.json.JSONObject authorization = new org.json.JSONObject(
+                        backend.callAttr("request", requestAuth.toString()).toString());
+                if (!authorization.optBoolean("ok")) return authorization.toString();
+                if (!(payload.opt("enabled") instanceof Boolean))
+                    return new org.json.JSONObject().put("ok", false).put("error", "Choose whether to restart connections.").toString();
+                FamilyBootReceiver.setEnabled(activity, payload.getBoolean("enabled"));
+                return new org.json.JSONObject().put("ok", true)
+                        .put("enabled", FamilyBootReceiver.enabled(activity)).toString();
             }
             if("sip_diagnostics".equals(action)){
                 org.json.JSONObject authorization=new org.json.JSONObject(backend.callAttr("request",new org.json.JSONObject().put("action","authorize_camera").put("payload",new org.json.JSONObject().put("token",input.getJSONObject("payload").optString("token"))).toString()).toString());

@@ -4,7 +4,7 @@
     <grant-uri-permission android:path="/family.apk"/>
 </provider>
 <activity android:name=".FamilyUpdateActivity" android:exported="false" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden"/>
-<receiver android:name=".FamilyBootReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/></intent-filter></receiver>
+<receiver android:name=".FamilyBootReceiver" android:enabled="false" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/></intent-filter></receiver>
 <service android:name="com.meshchatnext.sip.SipService" android:exported="false" android:process=":sip" android:foregroundServiceType="phoneCall|microphone"/><service android:name=".FamilyVoiceService" android:exported="false" android:foregroundServiceType="phoneCall|microphone"/><service android:name=".FamilyService" android:exported="false" android:foregroundServiceType="remoteMessaging|location"/><activity android:name=".MainActivity" android:launchMode="singleTop" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
 </activity></application></manifest>
