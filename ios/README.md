@@ -44,6 +44,12 @@ To exercise the same messaging test through `rmap.world:4242`, append `rmap` to 
 
 **FamilyLive** is a foreground TCP development app with its own bundle ID and private storage. It links the native CPython bridge to the shared Family backend. It uses the same TCP write recovery as Android, reconnects when iOS reports a restored or changed network path, and rechecks the mailbox after reconnecting. For manual use, run `bash ios/prepare-live.sh`, then generate `ios/project-live.yml` using XcodeGen from the `ios` directory. Open `FamilyLive.xcodeproj`, select the **FamilyLive** scheme, and enter the TCP peer and contact in Guardian settings.
 
+## Contact discovery and the live map
+
+In Guardian settings, open **Find messaging client** to search Reticulum announces by name or LXMF address. You can also scan a contact QR on supported devices or import a QR image. Review the populated name and address before saving the contact.
+
+Open **Guardian settings → Location sharing** to choose which approved contacts can exchange private location updates, set the sharing duration, and decide whether children can start or stop timed sharing. The Family map displays approved locations and their last update time. iOS samples GPS and sends updates while Family is open. The live map uses Apple Maps; the preview’s bundled tiles are separate.
+
 ## Notifications and background delivery
 
 Tap **Enable message notifications** on the home screen. Incoming messages from approved contacts can trigger a local alert while the app is running. The alert leaves out the sender and message text. Family keeps a record of posted alerts to avoid repeating them on refresh.
@@ -52,6 +58,6 @@ If Family is sending a message when iOS moves it to the background, it requests 
 
 To receive messages sent while Family is offline, open **Guardian settings → Offline message mailbox** and enter a trusted LXMF propagation node's 32-character address. The sender needs to use the same mailbox in propagated delivery mode. Exchange a direct message from each contact first so Family can keep the contact's verified public key. Family checks the mailbox on return to the app and requests periodic iOS Background App Refresh. iOS controls whether and when those background checks run. Leave the mailbox field blank and save to disable it.
 
-Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Reticulum voice, Bluetooth, camera, location, SIP, maps, and distribution are separate iOS milestones. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
+Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Reticulum voice, Bluetooth radio transport, Relay Chat, SIP, offline maps, and distribution are separate iOS milestones. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)

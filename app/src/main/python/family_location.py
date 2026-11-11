@@ -60,6 +60,14 @@ class FamilyLocation:
             self.motion_anchor = None
             self.stationary = False
             self.generation+=1;self.sent={};self.cancel();self.save()
+    def suspend_samples(self):
+        with self.lock:
+            self.fix = None
+            self.motion_anchor = None
+            self.stationary = False
+            self.generation += 1
+            self.cancel()
+
     def configure(self,payload):
         map_enabled=payload.get('mapEnabled');user_controls=payload.get('userControls');ids=payload.get('contactIds')
         if not isinstance(map_enabled,bool) or not isinstance(user_controls,bool) or not isinstance(ids,list):raise ValueError('Invalid location policy')

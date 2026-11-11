@@ -1,3 +1,5 @@
+import VisionKit
+import CoreLocation
 import PhotosUI
 import Vision
 import BackgroundTasks
@@ -21,12 +23,16 @@ struct FamilyLiveApp: App {
                         await family.refreshNotificationPermission()
                         family.checkMailboxOnNextRefresh()
                     } else if scenePhase == .background {
+                        await family.suspendLocation()
                         await family.lock()
                         family.scheduleMailboxRefresh()
                     }
                     while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
                         await family.refresh()
-                        if scenePhase == .active { await family.checkMailboxIfDue() }
+                        if scenePhase == .active {
+                            await family.checkMailboxIfDue()
+                            family.sampleLocationIfDue()
+                        }
                         do { try await Task.sleep(for: .seconds(1)) }
                         catch { break }
                     }
@@ -62,6 +68,7 @@ final class FamilyModel: ObservableObject {
     var finishingSend: Bool { sendTask != .invalid }
 
     private let client = FamilyClient()
+    private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?
     private var token = ""
@@ -255,6 +262,37 @@ final class FamilyModel: ObservableObject {
         await perform("device_name", ["token": token, "name": name])
     }
 
+    func saveLocationPolicy(mapEnabled: Bool, userControls: Bool, contactIDs: Set<Int>) async -> Bool {
+        await perform("location_policy", [
+            "token": token, "mapEnabled": mapEnabled, "userControls": userControls,
+            "contactIds": contactIDs.sorted()
+        ])
+    }
+
+    func startLocation(_ duration: String) async -> Bool {
+        guard await perform("location_start", ["token": token, "duration": duration]) else { return false }
+        locationSampler.requestPermission()
+        return true
+    }
+
+    func stopLocation() async {
+        if await perform("location_stop", ["token": token]) { locationSampler.suspend() }
+    }
+
+    func suspendLocation() async {
+        locationSampler.suspend()
+        _ = try? await request("location_suspend")
+    }
+
+    func sampleLocationIfDue() {
+        guard state?.location?.active == true else { return }
+        locationSampler.sampleIfDue { [weak self] fix in
+            guard let self, UIApplication.shared.applicationState == .active,
+                  self.state?.location?.active == true else { return }
+            _ = try? await self.request("location_sample", ["fix": fix])
+        }
+    }
+
     func lookUpClient(_ address: String) async -> Bool {
         await perform("discover_client", ["token": token, "address": address])
     }
@@ -360,6 +398,11 @@ struct FamilyHome: View {
                         }
                         Button("Guardian settings") { showGuardian = true }
                     }
+                    if state.location?.mapEnabled == true {
+                        Section {
+                            NavigationLink("Family map") { FamilyLocationMap(family: family) }
+                        }
+                    }
                     if !family.notificationsAllowed {
                         Button("Enable message notifications") { Task { await family.enableNotifications() } }
                     }
@@ -396,6 +439,7 @@ struct FamilyGuardian: View {
     @State private var contactSaved = false
     @State private var importedCard: FamilyContactCard?
     @State private var qrPhoto: PhotosPickerItem?
+    @State private var showingQRScanner = false
     @State private var readingQR = false
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
@@ -448,6 +492,10 @@ struct FamilyGuardian: View {
                                 contactSaved = false
                             }
                         }
+                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                            Button("Scan contact QR code", systemImage: "camera") { showingQRScanner = true }
+                                .disabled(readingQR)
+                        }
                         PhotosPicker(selection: $qrPhoto, matching: .images) {
                             Label("Import contact QR image", systemImage: "qrcode")
                         }
@@ -469,6 +517,9 @@ struct FamilyGuardian: View {
                         .disabled(readingQR)
                         .onChange(of: name) { contactSaved = false }
                         .onChange(of: address) { contactSaved = false }
+                    }
+                    Section {
+                        NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
                     }
                     Section("Offline message mailbox") {
                         TextField("LXMF propagation node address", text: $mailboxAddress)
@@ -503,6 +554,28 @@ struct FamilyGuardian: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
             .navigationTitle("Guardian settings")
+            .sheet(isPresented: $showingQRScanner) {
+                NavigationStack {
+                    FamilyQRScanner { payload in
+                        showingQRScanner = false
+                        readingQR = true
+                        Task {
+                            await importQRPayload(payload)
+                            readingQR = false
+                        }
+                    } onError: {
+                        showingQRScanner = false
+                        family.error = "The camera couldn’t start. You can import a QR image instead."
+                    }
+                    .navigationTitle("Scan contact QR code")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showingQRScanner = false }
+                        }
+                    }
+                }
+            }
             .onAppear {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
@@ -514,6 +587,14 @@ struct FamilyGuardian: View {
             .toolbar { Button("Done") { dismiss() } }
         }
     }
+    private func importQRPayload(_ payload: String) async {
+        guard let card = await family.readContactCard(payload), let lxmf = card.addresses["lxmf"] else { return }
+        importedCard = card
+        name = card.name ?? ""
+        address = lxmf
+        contactSaved = false
+    }
+
     private func importQRPhoto(_ photo: PhotosPickerItem) async {
         defer {
             qrPhoto = nil
@@ -535,11 +616,7 @@ struct FamilyGuardian: View {
                 family.error = payloads.isEmpty ? "No QR code found in the image." : "Choose an image with one QR code."
                 return
             }
-            guard let card = await family.readContactCard(payload), let lxmf = card.addresses["lxmf"] else { return }
-            importedCard = card
-            name = card.name ?? ""
-            address = lxmf
-            contactSaved = false
+            await importQRPayload(payload)
         } catch {
             if family.unlocked { family.error = "Couldn’t read the QR image." }
         }

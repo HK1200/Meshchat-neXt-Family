@@ -15,6 +15,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
     'device_name','preferences','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','tcp_network_changed',
+    'location_policy','location_start','location_stop','location_sample','location_suspend',
 })
 _tcp_only=False
 _lock=threading.RLock()
@@ -81,10 +82,10 @@ def initialize(folder,*,tcp_only=False):
         _meshcore=FamilyMeshCore(_state,_lock,_save)
         from family_maps import MapStore
         _maps=MapStore(_root,_state,_lock,_save)
-        from family_location import FamilyLocation
-        _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
-        _meshcore.locations=_locations
-        threading.Thread(target=_location_loop,daemon=True).start()
+    from family_location import FamilyLocation
+    _locations=FamilyLocation(_state,_lock,_save,_cancel_location)
+    if _meshcore:_meshcore.locations=_locations
+    threading.Thread(target=_location_loop,daemon=True).start()
     if _state['setup_complete']:threading.Thread(target=_start,daemon=True).start()
 
 def _cancel_location():
@@ -213,6 +214,12 @@ def _connect():
         from family_tcp import FamilyTCPInterface
         if _peer:
             if _rooms:_rooms.retire_interface(_peer)
+            if _router:
+                for cache in (_router.direct_links,_router.backchannel_links):
+                    for address,link in cache.copy().items():
+                        if (link.attached_interface is _peer or
+                            (link.status==RNS.Link.PENDING and RNS.Transport.next_hop_interface(address) is _peer)):
+                            link.teardown()
             _peer.detach()
             if _peer in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(_peer)
             _peer=None
@@ -683,6 +690,12 @@ def request(raw):
             _authorized(p)
             if not _maps:raise ValueError('Map service is starting')
             _maps.remove(p.get('mapId'))
+        elif _tcp_only and action in ['location_sample','location_suspend']:
+            if action=='location_sample':
+                _locations.record(p.get('fix'))
+            else:
+                _locations.suspend_samples()
+            return json.dumps({'ok':True})
         elif action in ['location_policy','location_start','location_stop','authorize_location']:
             if not _locations:raise ValueError('Location service is starting')
             guardian=False

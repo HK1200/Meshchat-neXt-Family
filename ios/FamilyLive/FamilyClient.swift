@@ -45,6 +45,21 @@ struct FamilyContactCard: Decodable, Sendable {
     let identityPublicKey: String?
 }
 
+struct FamilyLocationFix: Decodable, Sendable {
+    let latitude: Double
+    let longitude: Double
+    let last_update: Double
+}
+
+struct FamilyLocationState: Decodable, Sendable {
+    let mapEnabled: Bool
+    let userControls: Bool
+    let active: Bool
+    let duration: String?
+    let contactIds: [Int]
+    let locations: [String: FamilyLocationFix]
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -56,6 +71,7 @@ struct FamilyReply: Decodable, Sendable {
     var deviceName: String?
     var peer: FamilyPeer?
     var mailbox: FamilyMailbox?
+    var location: FamilyLocationState?
     var contacts: [FamilyContact]?
     var announces: [FamilyDiscoveredClient]?
     var clientLookup: FamilyClientLookup?

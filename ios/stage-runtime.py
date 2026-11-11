@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
 FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
-FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py", "family_tcp.py")
+FAMILY_MODULES = ("family_backend.py", "family_cards.py", "family_radios.py", "family_routes.py", "family_tcp.py", "family_location.py")
 
 
 def standalone_rns(source):
@@ -50,6 +50,10 @@ def stage(wheel, destination):
     for module in FAMILY_MODULES:
         shutil.copyfile(FAMILY_SOURCE / module, destination / module)
     shutil.copytree(FAMILY_SOURCE / "LXMF", destination / "LXMF", ignore=shutil.ignore_patterns("__pycache__"))
+    telemetry = Path("meshchatnext/src/backend/telemetry_utils.py")
+    (destination / telemetry.parent).mkdir(parents=True)
+    shutil.copyfile(FAMILY_SOURCE / telemetry, destination / telemetry)
+
 
 
 if __name__ == "__main__":

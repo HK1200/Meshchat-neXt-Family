@@ -171,6 +171,19 @@ def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path, public_
         )
 
         if not public_peer:
+            request(families[0], "location_policy", succeeds=False, mapEnabled=True, userControls=False, contactIds=[1])
+            for pipe, token in zip(families, tokens):
+                request(pipe, "location_policy", token=token, mapEnabled=True, userControls=False, contactIds=[1])
+            request(families[0], "location_start", succeeds=False, duration="15")
+            request(families[0], "location_start", token=tokens[0], duration="ongoing")
+            request(families[0], "location_sample", fix={"latitude": 48.75, "longitude": -122.48, "accuracy": 10})
+            received = wait_status(families[1], lambda s: "1" in s["location"]["locations"])
+            assert received["location"]["locations"]["1"]["latitude"] == 48.75
+            assert all(row["text"].strip() for row in received["messages"]["1"])
+            request(families[0], "location_suspend")
+            location = request(families[0], "status")["location"]
+            assert location["duration"] == "ongoing" and not location["hasFreshFix"]
+            request(families[0], "location_stop", token=tokens[0])
             previous = request(families[0], "status")["tcpSession"]
             request(families[0], "tcp_network_changed")
             restarted = wait_status(families[0], lambda s: s["tcpSession"] and s["tcpSession"] != previous)
