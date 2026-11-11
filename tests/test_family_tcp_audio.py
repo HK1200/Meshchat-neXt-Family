@@ -194,6 +194,7 @@ def test_ios_software_gain_keeps_quiet_speech_and_peak_headroom():
 def test_ios_extra_speech_gain_waits_for_the_speaker_echo_to_decay():
     from family_voice import ios_transmit_gain
 
-    assert ios_transmit_gain(2.0, 2.0) == 1
-    assert ios_transmit_gain(2.6, 2.0) == 1
-    assert ios_transmit_gain(2.8, 2.0) == pytest.approx(10 ** (5 / 20))
+    assert ios_transmit_gain(2.0, 2.0, 0.004, 0.01) == 1
+    assert ios_transmit_gain(2.6, 2.0, 0.01, 0.01) == 1
+    assert ios_transmit_gain(2.6, 2.0, 0.015, 0.006) == pytest.approx(10 ** (5 / 20))
+    assert ios_transmit_gain(2.8, 2.0, 0.004, 0.01) == pytest.approx(10 ** (5 / 20))
