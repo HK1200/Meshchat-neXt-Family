@@ -3,6 +3,12 @@ import sys,threading,time,uuid
 
 PCM_BYTES_PER_MS = 96
 PLAYBACK_CHUNK = 20 * PCM_BYTES_PER_MS
+IOS_SPEECH_GAIN = 10 ** (3 / 20)
+PLAYBACK_ECHO_HOLD = 0.7
+
+
+def ios_transmit_gain(now, last_playback):
+ return 1.0 if now - last_playback < PLAYBACK_ECHO_HOLD else IOS_SPEECH_GAIN
 
 
 class VoicePlaybackBuffer:
@@ -61,7 +67,7 @@ class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
   self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
-  self.last_incoming=''
+  self.last_incoming='';self.last_playback_activity=float('-inf')
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
   if state['voiceEnabled'] and autostart:threading.Thread(target=self._ensure,daemon=True).start()
  def _gate(self,acquire):
@@ -145,6 +151,7 @@ class FamilyVoice:
     self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
     self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
     self.pending=bytearray()
+    self.speech_gain=1.0
     manager.input=self
    def start(self):self.should_run=True
    def stop(self):
@@ -162,6 +169,12 @@ class FamilyVoice:
       samples=(np.frombuffer(frame,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
       if not native_processing:
        for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
+       if sys.platform=='ios':
+        gain=ios_transmit_gain(time.monotonic(),manager.last_playback_activity)
+        if gain!=1.0 or self.speech_gain!=1.0:
+         ramp=np.linspace(self.speech_gain,gain,len(samples),dtype=np.float32).reshape(-1,1)
+         samples=np.clip(samples*ramp,-0.75,0.75)
+        self.speech_gain=gain
       self.sink.handle_frame(self.codec.encode(samples),self)
       sent+=1
     return sent
@@ -177,6 +190,8 @@ class FamilyVoice:
      if manager.phase!='connected' or not manager.state.get('voiceEnabled'):return
      data=np.asarray(frame,dtype=np.float32)
      if data.ndim==2 and data.shape[1]>1:data=data.mean(axis=1)
+     if sys.platform=='ios' and data.size and np.mean(data*data)>0.003**2:
+      manager.last_playback_activity=time.monotonic()
      pcm=(np.clip(data,-1,1)*32767).astype('<i2').tobytes()
      if not pcm or len(pcm)>65536:return
      manager.pcm.append(pcm);manager.received+=1
@@ -214,7 +229,7 @@ class FamilyVoice:
     self.error='The Reticulum call ended before audio connected.'
    self.outgoing=False;self.connected_at=0.
    self.generation+=1;self.phase='idle';self.peer='';self.target='';self.call_id='';self.muted=False;self._gate(False)
-   self.pcm.clear()
+   self.pcm.clear();self.last_playback_activity=float('-inf')
  def call(self,contact_id,automatic=False):
   with self.lock:
    contact=next((c for c in self.state['contacts'] if c['id']==contact_id),None)
