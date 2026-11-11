@@ -478,6 +478,13 @@ final class FamilyModel: ObservableObject {
         await perform("discover_client", ["token": token, "address": address])
     }
 
+    func ownContactCard() async throws -> String? {
+        let epoch = guardianEpoch
+        let reply = try await request("contact_card", ["token": token])
+        guard epoch == guardianEpoch, unlocked else { return nil }
+        return reply.contactCardText
+    }
+
     func readContactCard(_ text: String) async -> FamilyContactCard? {
         let epoch = guardianEpoch
         do {
@@ -709,6 +716,7 @@ struct FamilyGuardian: View {
             Form {
                 if family.unlocked {
                     Section("Approved contacts") {
+                        NavigationLink("My contact QR") { FamilyOwnContactQR(family: family) }
                         NavigationLink("Add approved contact") { FamilyContactApproval(family: family) }
                         ForEach(family.state?.contacts ?? []) { contact in
                             NavigationLink(contact.name) { FamilyContactEditor(family: family, contact: contact) }

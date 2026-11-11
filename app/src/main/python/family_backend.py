@@ -13,7 +13,7 @@ DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
-    'device_name','preferences','qr_parse','discover_client','conversation_read','send',
+    'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
@@ -905,6 +905,17 @@ def request(raw):
             return json.dumps({'ok': True})
         elif action=='authorize_camera':
             _authorized(p)
+        elif action=='contact_card':
+            from family_cards import export_contact
+            with _lock:
+                _authorized(p)
+                identity = _destination.identity if _destination else None
+                meshcore = _state.get('meshcore') or {}
+                card = export_contact(
+                    _state['device_name'], identity, _state.get('voiceEnabled', False),
+                    (meshcore.get('publicKey') or '') if meshcore.get('enabled') else '',
+                )
+            return json.dumps({'ok': True, 'contactCardText': card})
         elif action=='qr_parse':
             _authorized(p)
             from family_cards import parse

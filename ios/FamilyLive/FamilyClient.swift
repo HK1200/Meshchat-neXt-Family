@@ -197,6 +197,7 @@ struct FamilyReply: Decodable, Sendable {
     var rrcIdentity: String?
     var announces: [FamilyDiscoveredClient]?
     var clientLookup: FamilyClientLookup?
+    var contactCardText: String?
     var card: FamilyContactCard?
     var roomCard: FamilyRoomCard?
     var messages: [String: [FamilyMessage]]?
