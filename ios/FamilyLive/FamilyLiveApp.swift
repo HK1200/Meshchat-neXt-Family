@@ -18,6 +18,9 @@ struct FamilyLiveApp: App {
             FamilyHome(family: family)
                 .task(id: scenePhase) {
                     family.notifications = notifications
+                    notifications.openMessage = { [weak family = family] contactID, messageID in
+                        family?.openNotification(contactID: contactID, messageID: messageID)
+                    }
                     if scenePhase == .active {
                         await family.refreshNotificationPermission()
                         family.checkMailboxOnNextRefresh()
@@ -49,6 +52,7 @@ final class FamilyModel: ObservableObject {
     @Published private(set) var unlocked = false
     @Published var error = ""
     @Published private(set) var notificationsAllowed = false
+    @Published var notificationContactID: Int?
     #if DEBUG
     @Published private(set) var testNotificationDelivered = false
 
@@ -62,6 +66,7 @@ final class FamilyModel: ObservableObject {
     private var sendTask: UIBackgroundTaskIdentifier = .invalid
     private var sendsStarting = 0
     private var guardianEpoch = 0
+    private var pendingNotification: (Int, String)?
     private var nextMailboxCheck = ContinuousClock.now
     static let mailboxRefreshID = "org.meshchat.family.ios.live.mailbox"
     var finishingSend: Bool { sendTask != .invalid }
@@ -93,8 +98,9 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
+            resolveNotification()
             if notificationsAllowed {
-                await notifications?.publish(messages)
+                await notifications?.publish(updated.messages ?? [:])
                 #if DEBUG
                 if !testNotificationDelivered &&
                     ProcessInfo.processInfo.environment["FAMILY_TEST_NOTIFICATIONS"] == "1" {
@@ -104,6 +110,20 @@ final class FamilyModel: ObservableObject {
             }
             finishSendIfIdle()
         } catch { self.error = error.localizedDescription }
+    }
+
+    func openNotification(contactID: Int, messageID: String) {
+        pendingNotification = (contactID, messageID)
+        resolveNotification()
+    }
+
+    private func resolveNotification() {
+        guard let (contactID, messageID) = pendingNotification,
+              let contacts = state?.contacts, let messages = state?.messages else { return }
+        pendingNotification = nil
+        guard contacts.contains(where: { $0.id == contactID }),
+              messages[String(contactID)]?.contains(where: { $0.id == messageID && $0.incoming }) == true else { return }
+        notificationContactID = contactID
     }
 
     private var messages: [FamilyMessage] {
@@ -248,13 +268,13 @@ final class FamilyModel: ObservableObject {
         _ = try? await request("lock", ["token": current])
     }
 
-    func savePeer(host: String, port: Int) async {
+    func savePeer(host: String, port: Int, enabled: Bool) async {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), host == "rmap.world" {
+        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), host == "rmap.world", enabled {
             guard await perform("device_name", ["token": token, "name": "Family iOS simulator test"]) else { return }
         }
         #endif
-        _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": true])
+        _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": enabled])
     }
 
     func saveRNode(_ config: [String: Any]) async -> Bool {
@@ -389,6 +409,8 @@ struct FamilyHome: View {
     @State private var password = ""
     @State private var confirmation = ""
     @State private var showGuardian = false
+    @State private var notificationContact: FamilyContact?
+    @State private var showNotificationChat = false
     @AppStorage("next-family-appearance") private var appearance = ""
     @Environment(\.colorScheme) private var systemAppearance
 
@@ -477,6 +499,19 @@ struct FamilyHome: View {
                     .accessibilityIdentifier("appearance-toggle")
                 }
             }
+            .navigationDestination(isPresented: $showNotificationChat) {
+                if let contact = notificationContact {
+                    FamilyChat(family: family, contact: contact).id(contact.id)
+                }
+            }
+            .onChange(of: family.notificationContactID, initial: true) {
+                guard let id = family.notificationContactID else { return }
+                family.notificationContactID = nil
+                guard let contact = family.state?.contacts?.first(where: { $0.id == id }) else { return }
+                showGuardian = false
+                notificationContact = contact
+                showNotificationChat = true
+            }
             .sheet(isPresented: $showGuardian, onDismiss: { Task { await family.lock() } }) {
                 FamilyGuardian(family: family)
             }
@@ -490,6 +525,7 @@ struct FamilyGuardian: View {
     @State private var password = ""
     @State private var host = "rmap.world"
     @State private var port = "4242"
+    @State private var peerEnabled = false
     @State private var name = ""
     @State private var address = ""
     @State private var contactSaved = false
@@ -520,6 +556,7 @@ struct FamilyGuardian: View {
                         if let peer = family.state?.peer {
                             host = peer.host
                             port = String(peer.port)
+                            peerEnabled = peer.enabled
                         }
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
@@ -529,11 +566,12 @@ struct FamilyGuardian: View {
                         #endif
                     }
                     Section("Reticulum TCP peer") {
+                        Toggle("Enable Reticulum TCP peer", isOn: $peerEnabled)
                         TextField("Host", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
                         TextField("Port", text: $port).keyboardType(.numberPad)
                             .accessibilityIdentifier("peer-port")
-                        Button("Save peer") { Task { await family.savePeer(host: host, port: Int(port) ?? 0) } }
+                        Button("Save peer") { Task { await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled) } }
                     }
                     Section("Approve contact") {
                         TextField("Contact name", text: $name)

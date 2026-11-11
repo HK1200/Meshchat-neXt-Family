@@ -7,6 +7,30 @@ final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotifica
     private let defaults = UserDefaults.standard
     private let ledgerKey = "family.notifiedMessageIDs"
     private var processing = false
+    private var pendingOpen: (Int, String)?
+    var openMessage: ((Int, String) -> Void)? {
+        didSet {
+            if let openMessage, let (contactID, messageID) = pendingOpen {
+                pendingOpen = nil
+                openMessage(contactID, messageID)
+            }
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let contactID = response.notification.request.content.userInfo["contactId"] as? Int else { return }
+        let messageID = response.notification.request.identifier
+        await routeMessage(contactID, messageID)
+    }
+
+    private func routeMessage(_ contactID: Int, _ messageID: String) {
+        if let openMessage { openMessage(contactID, messageID) }
+        else { pendingOpen = (contactID, messageID) }
+    }
+
 
     func application(
         _ application: UIApplication,
@@ -47,26 +71,30 @@ final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotifica
     }
     #endif
 
-    func publish(_ messages: [FamilyMessage]) async {
+    func publish(_ conversations: [String: [FamilyMessage]]) async {
         guard !processing else { return }
         processing = true
         defer { processing = false }
 
         var ids = defaults.stringArray(forKey: ledgerKey) ?? []
         var known = Set(ids)
-        for message in messages where message.incoming && message.read != true && !known.contains(message.id) {
-            let content = UNMutableNotificationContent()
-            content.title = "New Family message"
-            content.body = "Open neXt Family to read it."
-            content.sound = .default
-            let request = UNNotificationRequest(identifier: message.id, content: content, trigger: nil)
-            do {
-                try await center.add(request)
-                known.insert(message.id)
-                ids.append(message.id)
-                defaults.set(Array(ids.suffix(1000)), forKey: ledgerKey)
-            } catch {
-                // A subsequent refresh can retry a notification the system did not accept.
+        for (key, messages) in conversations {
+            guard let contactID = Int(key) else { continue }
+            for message in messages where message.incoming && message.read != true && !known.contains(message.id) {
+                let content = UNMutableNotificationContent()
+                content.title = "New Family message"
+                content.body = "Open neXt Family to read it."
+                content.userInfo = ["contactId": contactID]
+                content.sound = .default
+                let request = UNNotificationRequest(identifier: message.id, content: content, trigger: nil)
+                do {
+                    try await center.add(request)
+                    known.insert(message.id)
+                    ids.append(message.id)
+                    defaults.set(Array(ids.suffix(1000)), forKey: ledgerKey)
+                } catch {
+                    // A subsequent refresh can retry a notification the system did not accept.
+                }
             }
         }
     }

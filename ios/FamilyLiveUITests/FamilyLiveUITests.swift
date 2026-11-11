@@ -43,6 +43,9 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Unlock"].tap()
         let savePeer = app.buttons["Save peer"]
         XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
+        let enablePeer = app.switches["Enable Reticulum TCP peer"]
+        XCTAssertTrue(enablePeer.exists)
+        if (enablePeer.value as? String) == "0" { enablePeer.tap() }
         savePeer.tap()
         let deviceName = "Family simulator device"
         let nameField = app.textFields["device-name"]
