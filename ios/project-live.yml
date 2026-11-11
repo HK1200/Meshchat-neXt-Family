@@ -15,10 +15,7 @@ targets:
     sources:
       - FamilyLive
       - LiveRuntime
-      - path: ../app/src/main/assets/pnw-tiles
-        type: folder
-        buildPhase: resources
-      - path: ../app/src/main/assets/whatcom-tiles
+      - path: RuntimeBuild/offline-tiles
         type: folder
         buildPhase: resources
       - path: ../app/src/main/assets/notices/whatcom-maps.txt

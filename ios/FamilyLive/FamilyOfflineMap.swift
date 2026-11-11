@@ -164,8 +164,7 @@ private final class OfflineTileOverlay: MKTileOverlay {
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, Error?) -> Void) {
         if layer == "pnw" || layer == "whatcom" {
-            let url = Bundle.main.resourceURL?.appendingPathComponent("\(layer)-tiles/\(path.z)/\(path.x)/\(path.y).png")
-            result(url.flatMap { try? Data(contentsOf: $0) }, nil)
+            result(BundledMapTiles.shared?.tile(z: path.z, x: path.x, y: path.y), nil)
             return
         }
         let layer = layer
@@ -173,5 +172,28 @@ private final class OfflineTileOverlay: MKTileOverlay {
             do { result(try await family?.mapTile(id: layer, x: path.x, y: path.y, z: path.z), nil) }
             catch { result(nil, error) }
         }
+    }
+}
+
+private struct BundledMapTiles: Sendable {
+    static let shared = try? BundledMapTiles()
+
+    private let bytes: Data
+    private let index: [String: [Int]]
+
+    private init() throws {
+        guard let folder = Bundle.main.resourceURL?.appendingPathComponent("offline-tiles") else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        bytes = try Data(contentsOf: folder.appendingPathComponent("tiles.bin"), options: .mappedIfSafe)
+        let contents = try Data(contentsOf: folder.appendingPathComponent("index.json"))
+        index = try JSONDecoder().decode([String: [Int]].self, from: contents)
+    }
+
+    func tile(z: Int, x: Int, y: Int) -> Data? {
+        guard let range = index["\(z)/\(x)/\(y)"], range.count == 2,
+              range[0] >= 0, range[1] > 0, range[1] <= bytes.count,
+              range[0] <= bytes.count - range[1] else { return nil }
+        return bytes.subdata(in: range[0]..<(range[0] + range[1]))
     }
 }

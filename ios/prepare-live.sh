@@ -41,3 +41,6 @@ trap 'rm -rf -- "$stage"' EXIT
 python3 stage-runtime.py "$wheel" "$stage/staged" --cbor-wheel "$cbor"
 if [[ -d RuntimeBuild/staged ]]; then rm -rf RuntimeBuild/staged; fi
 mv -- "$stage/staged" RuntimeBuild/staged
+python3 pack-offline-tiles.py ../app/src/main/assets "$stage/offline-tiles"
+if [[ -d RuntimeBuild/offline-tiles ]]; then rm -rf RuntimeBuild/offline-tiles; fi
+mv -- "$stage/offline-tiles" RuntimeBuild/offline-tiles
