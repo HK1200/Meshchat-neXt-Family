@@ -16,6 +16,10 @@ struct FamilyVoiceCall: View {
                         .buttonStyle(.borderedProminent)
                 }
                 if voice.call_state == "connected" {
+                    if voice.sentFrames == 0 || voice.receivedFrames == 0 {
+                        Text(voice.sentFrames == 0 ? "Waiting for microphone audio" : "Waiting for audio from the other device")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                     HStack {
                         if UIDevice.current.userInterfaceIdiom != .pad {
                             Button(family.speakerOn ? "Turn speaker off" : "Use speaker", systemImage: "speaker.wave.2") {

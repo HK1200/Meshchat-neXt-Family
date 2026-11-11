@@ -14,9 +14,16 @@ struct FamilyLiveApp: App {
     @StateObject private var family = FamilyModel()
     @Environment(\.scenePhase) private var scenePhase
 
+    private var keepScreenAwake: Bool {
+        scenePhase == .active && family.state?.voice?.enabled == true && family.state?.voiceKeepAwake == true
+    }
+
     var body: some Scene {
         WindowGroup {
             FamilyHome(family: family)
+                .onChange(of: keepScreenAwake, initial: true) {
+                    UIApplication.shared.isIdleTimerDisabled = keepScreenAwake
+                }
                 .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
                     .receive(on: RunLoop.main)) { notification in
                     let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
@@ -136,6 +143,10 @@ final class FamilyModel: ObservableObject {
             speakerOn = false
         }
         _ = try? await request("voice_presence", ["foreground": active])
+    }
+
+    func configureVoiceKeepAwake(_ enabled: Bool) async {
+        _ = await perform("voice_keep_awake", ["token": token, "enabled": enabled])
     }
 
     func configureVoice(_ enabled: Bool) async {
@@ -805,9 +816,22 @@ struct FamilyGuardian: View {
                             }
                             if family.state?.voice?.ready == true {
                                 Text("Reticulum calling ready").accessibilityIdentifier("reticulum-voice-ready")
+                                if family.state?.tcpOnline != true && family.state?.rnodeRuntime?.online != true {
+                                    Text("Waiting for a Reticulum connection").font(.footnote)
+                                }
                             }
+                            Toggle("Keep screen awake for calls", isOn: Binding(
+                                get: { family.state?.voiceKeepAwake == true },
+                                set: { enabled in Task { await family.configureVoiceKeepAwake(enabled) } }
+                            ))
+                            .disabled(family.state?.voice?.enabled != true)
+                            Text("Family receives calls while open. This option prevents auto-lock while you’re in Family. Locking the iPad or switching apps pauses incoming calls.")
+                                .font(.footnote).foregroundStyle(.secondary)
                             if let address = family.state?.voice?.address, !address.isEmpty {
                                 Text(address).font(.caption.monospaced()).textSelection(.enabled)
+                            }
+                            if let incoming = family.state?.voice?.lastIncoming, !incoming.isEmpty {
+                                LabeledContent("Last incoming attempt", value: incoming)
                             }
                             if let error = family.state?.voice?.error, !error.isEmpty { Text(error).foregroundStyle(.red) }
                         }

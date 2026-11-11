@@ -150,6 +150,9 @@ struct FamilyVoiceState: Decodable, Sendable {
     let error: String?
     let muted: Bool?
     let profile: String?
+    let lastIncoming: String?
+    let sentFrames: Int?
+    let receivedFrames: Int?
 
     var active: Bool { call_state != "idle" && call_id?.isEmpty == false }
 }
@@ -179,6 +182,7 @@ struct FamilyReply: Decodable, Sendable {
     var rnode: FamilyRNode?
     var rnodeRuntime: FamilyRNodeRuntime?
     var voiceSupported: Bool?
+    var voiceKeepAwake: Bool?
     var voice: FamilyVoiceState?
     var mailbox: FamilyMailbox?
     var location: FamilyLocationState?

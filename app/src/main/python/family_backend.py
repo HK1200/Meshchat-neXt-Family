@@ -17,7 +17,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'mailbox_config','mailbox_sync','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
-    'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence',
+    'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
     'incoming_delivery_limit','attachment_read',
 })
@@ -744,7 +744,9 @@ def _snapshot():
             result['mailbox']=_mailbox_snapshot()
             result['tcpSession']=_tcp_session()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
-        if _tcp_only:result['voiceSupported']=_ios_voice
+        if _tcp_only:
+            result['voiceSupported']=_ios_voice
+            result['voiceKeepAwake']=bool(_state.get('voiceKeepAwake',False))
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
         result['activeMap']=_state.get('active_map','pnw')
@@ -1042,6 +1044,13 @@ def request(raw):
             if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
             with _lock:_state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True))};_save()
             threading.Thread(target=_connect,daemon=True).start()
+        elif action=='voice_keep_awake' and _ios_voice:
+            _authorized(p)
+            enabled=p.get('enabled')
+            if type(enabled) is not bool:raise ValueError('Choose whether to keep the screen awake')
+            with _lock:
+                _state['voiceKeepAwake']=enabled
+                _save()
         elif action=='voice_presence' and _ios_voice:
             if type(p.get('foreground')) is not bool:raise ValueError('Invalid voice availability')
             resumed=p['foreground'] and not _ios_voice_foreground

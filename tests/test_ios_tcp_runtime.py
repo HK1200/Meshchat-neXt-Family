@@ -558,14 +558,23 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index)
             wait_status(client, lambda state: state["tcpOnline"])
             request(client, "voice_config", succeeds=False, enabled=True)
             request(client, "voice_config", token=token, enabled=True)
+            assert request(client, "status")["voiceKeepAwake"] is False
+            request(client, "voice_keep_awake", succeeds=False, enabled=True)
+            request(client, "voice_keep_awake", succeeds=False, token=token, enabled=1)
+            assert request(client, "voice_keep_awake", token=token, enabled=True)["voiceKeepAwake"] is True
             request(client, "voice_presence", foreground=True)
             voice = wait_status(client, lambda state: state["voice"]["ready"])["voice"]
             tokens.append(token)
             addresses.append(voice["address"])
         request(caller_client, "voice_call", succeeds=False, contactId=1)
-        for index, client in enumerate(clients):
+        for index in (caller_index, 1-caller_index):
             contact = {"id": 1, "name": "Approved voice peer", "addresses": {"lxst": addresses[1-index]}}
-            request(client, "contacts", token=tokens[index], contacts=[contact])
+            request(clients[index], "contacts", token=tokens[index], contacts=[contact])
+            if index == caller_index:
+                request(caller_client, "voice_call", contactId=1)
+                rejected = wait_status(receiver_client, lambda state: state["voice"]["lastIncoming"].startswith("Call rejected"))
+                assert rejected["voice"]["call_state"] == "idle"
+                wait_status(caller_client, lambda state: state["voice"]["call_state"] == "idle")
         request(caller_client, "voice_call", contactId=1)
         deadline = time.monotonic() + 35
         history = set()
@@ -578,6 +587,7 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index)
             time.sleep(.2)
         assert incoming["call_state"] == "incoming", history
         assert incoming["caller_name"] == "Approved voice peer"
+        assert incoming["lastIncoming"] == "Incoming call rang."
         request(receiver_client, "voice_answer", callId=incoming["call_id"])
         connected = [wait_status(client, lambda state: state["voice"]["call_state"] == "connected")["voice"]
                      for client in clients]

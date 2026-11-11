@@ -61,6 +61,7 @@ class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
   self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
+  self.last_incoming=''
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
   if state['voiceEnabled'] and autostart:threading.Thread(target=self._ensure,daemon=True).start()
  def _gate(self,acquire):
@@ -99,7 +100,13 @@ class FamilyVoice:
     from RNS.vendor import umsgpack
     if sys.platform == 'ios':check_default_codec(Telephony.Profiles)
     self._install_audio(Telephony)
-    phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self.allowed,wait_time=30)
+    phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self._approve_incoming,wait_time=30)
+    if self.gate is not None:
+     handle_link=phone.destination.callbacks.link_established
+     def incoming_link(link):
+      with self.lock:self.last_incoming='Call connection reached this iPad; waiting for caller identification.'
+      handle_link(link)
+     phone.destination.set_link_established_callback(incoming_link)
     phone.destination.set_default_app_data(lambda: umsgpack.packb([self.state.get('device_name','neXt Family'),None,None]))
     # LXST 0.5.4's worker reads ANNOUNCE_INTERVAL directly. Family schedules
     # announcements on its enabled routes, so suppress the library's broadcast.
@@ -157,10 +164,18 @@ class FamilyVoice:
      if not pcm or len(pcm)>65536:return
      manager.pcm.append(pcm);manager.received+=1
   telephony.LineSource=Input;telephony.LineSink=Output
+ def _approve_incoming(self,identity_hash):
+  with self.lock:
+   approved=self.allowed(identity_hash)
+   if self.gate is not None:
+    self.last_incoming=('Approved caller identified.' if approved else
+                        'Call rejected. Check the approved contact’s Reticulum voice address.')
+   return approved
  def _ring(self,identity):
   with self.lock:
    contact=self._contact(identity.hash)
    if not self.allowed(identity.hash) or not self._gate(True):threading.Thread(target=self.hangup,daemon=True).start();return
+   if self.gate is not None:self.last_incoming='Incoming call rang.'
    self.outgoing=False;self.connected_at=0.;self.last_rtt=None
    self.generation+=1;self.call_id=uuid.uuid4().hex;self.phase='incoming';self.peer=identity.hash.hex();self.target=contact['addresses']['lxst'];self.name=contact['name'];self.error='';self.sent=0;self.received=0
  def _connected(self,identity):
@@ -256,4 +271,4 @@ class FamilyVoice:
    call=getattr(self.phone,'active_call',None)
    profile=getattr(call,'profile',None)
    profile_name=self.profiles.profile_name(profile) if self.profiles and profile is not None else ''
-   return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target,'profile':profile_name}
+   return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'lastIncoming':self.last_incoming,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target,'profile':profile_name}
