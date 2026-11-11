@@ -43,10 +43,12 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Unlock"].tap()
         let savePeer = app.buttons["Save peer"]
         XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
-        let enablePeer = app.switches["Enable Reticulum TCP peer"]
+        let enablePeer = app.switches["peer-enabled"]
         XCTAssertTrue(enablePeer.exists)
         if (enablePeer.value as? String) == "0" { enablePeer.tap() }
+        XCTAssertEqual(enablePeer.value as? String, "1")
         savePeer.tap()
+        XCTAssertTrue(app.staticTexts["guardian-peer-connected"].waitForExistence(timeout: 25), app.debugDescription)
         let deviceName = "Family simulator device"
         let nameField = app.textFields["device-name"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
@@ -58,6 +60,10 @@ final class FamilyLiveUITests: XCTestCase {
         nameField.typeText(deviceName)
         app.buttons["Save device name"].tap()
         XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
+        let addContact = app.buttons["Add approved contact"]
+        if !addContact.isHittable { app.swipeDown() }
+        XCTAssertTrue(addContact.waitForExistence(timeout: 10))
+        addContact.tap()
         let contactName = localTest ? "Simulator echo peer" : "Echo peer"
         if localTest {
             let discovery = app.buttons["Find messaging client"]
@@ -81,6 +87,7 @@ final class FamilyLiveUITests: XCTestCase {
         if !saveContact.isHittable { app.swipeUp() }
         saveContact.tap()
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
+        app.buttons["Back to settings"].tap()
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))

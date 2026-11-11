@@ -1,6 +1,4 @@
-import VisionKit
 import CoreLocation
-import PhotosUI
 import BackgroundTasks
 import Network
 import SwiftUI
@@ -544,13 +542,7 @@ struct FamilyGuardian: View {
     @State private var host = "rmap.world"
     @State private var port = "4242"
     @State private var peerEnabled = false
-    @State private var name = ""
-    @State private var address = ""
-    @State private var contactSaved = false
-    @State private var importedCard: FamilyContactCard?
-    @State private var qrPhoto: PhotosPickerItem?
-    @State private var showingQRScanner = false
-    @State private var readingQR = false
+    @FocusState private var editingDeviceName: Bool
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
     @State private var deviceName = ""
@@ -561,81 +553,34 @@ struct FamilyGuardian: View {
         NavigationStack {
             Form {
                 if family.unlocked {
+                    Section("Approved contacts") {
+                        NavigationLink("Add approved contact") { FamilyContactApproval(family: family) }
+                        ForEach(family.state?.contacts ?? []) { contact in
+                            NavigationLink(contact.name) { FamilyContactEditor(family: family, contact: contact) }
+                        }
+                    }
                     Section("Device name") {
                         TextField("Device name", text: $deviceName)
                             .accessibilityIdentifier("device-name")
+                            .focused($editingDeviceName)
                         Button("Save device name") {
+                            editingDeviceName = false
                             Task { deviceNameSaved = await family.saveDeviceName(deviceName) }
                         }
                         if deviceNameSaved { Text("Device name saved") }
                     }
-                    .onAppear {
-                        deviceName = family.state?.deviceName ?? "neXt Family"
-                        if let peer = family.state?.peer {
-                            host = peer.host
-                            port = String(peer.port)
-                            peerEnabled = peer.enabled
-                        }
-                        #if DEBUG
-                        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
-                            host = ProcessInfo.processInfo.environment["FAMILY_TEST_HOST"] ?? host
-                            port = ProcessInfo.processInfo.environment["FAMILY_TEST_PORT"] ?? port
-                        }
-                        #endif
-                    }
                     Section("Reticulum TCP peer") {
                         Toggle("Enable Reticulum TCP peer", isOn: $peerEnabled)
+                            .accessibilityIdentifier("peer-enabled")
                         TextField("Host", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
                         TextField("Port", text: $port).keyboardType(.numberPad)
                             .accessibilityIdentifier("peer-port")
                         Button("Save peer") { Task { await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled) } }
-                    }
-                    if let contacts = family.state?.contacts, !contacts.isEmpty {
-                        Section("Manage approved contacts") {
-                            ForEach(contacts) { contact in
-                                NavigationLink(contact.name) { FamilyContactEditor(family: family, contact: contact) }
-                            }
+                        if family.state?.tcpOnline == true {
+                            Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
                         }
-                    }
-                    Section("Approve contact") {
-                        TextField("Contact name", text: $name)
-                            .accessibilityIdentifier("contact-name")
-                        TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .accessibilityIdentifier("contact-address")
-                        NavigationLink("Find messaging client") {
-                            FamilyClientDiscovery(family: family) { client in
-                                importedCard = nil
-                                name = String(client.name.prefix(32))
-                                address = client.address
-                                contactSaved = false
-                            }
-                        }
-                        if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
-                            Button("Scan contact QR code", systemImage: "camera") { showingQRScanner = true }
-                                .disabled(readingQR)
-                        }
-                        PhotosPicker(selection: $qrPhoto, matching: .images) {
-                            Label("Import contact QR image", systemImage: "qrcode")
-                        }
-                        .disabled(readingQR)
-                        .onChange(of: qrPhoto) {
-                            guard let photo = qrPhoto else { return }
-                            readingQR = true
-                            Task { await importQRPhoto(photo) }
-                        }
-                        if readingQR { ProgressView("Reading contact code") }
-                        Button(contactSaved ? "Contact saved" : "Save approved contact") {
-                            let approvedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                            let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
-                                ? importedCard?.identityPublicKey : nil
-                            Task {
-                                contactSaved = await family.saveContact(name: name, address: address, identityPublicKey: key)
-                            }
-                        }
-                        .disabled(readingQR)
-                        .onChange(of: name) { contactSaved = false }
-                        .onChange(of: address) { contactSaved = false }
+
                     }
                     Section {
                         NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
@@ -650,7 +595,6 @@ struct FamilyGuardian: View {
                         Text("Leave blank to disable. Senders must use this mailbox for offline delivery.")
                             .font(.caption)
                     }
-                    .onAppear { mailboxAddress = family.state?.mailbox?.address ?? "" }
                 } else {
                     Group {
                         if showPassword {
@@ -675,60 +619,28 @@ struct FamilyGuardian: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
             .navigationTitle("Guardian settings")
-            .sheet(isPresented: $showingQRScanner) {
-                NavigationStack {
-                    FamilyQRScanner { payload in
-                        showingQRScanner = false
-                        readingQR = true
-                        Task {
-                            await importQRPayload(payload)
-                            readingQR = false
-                        }
-                    } onError: {
-                        showingQRScanner = false
-                        family.error = "The camera couldn’t start. You can import a QR image instead."
-                    }
-                    .navigationTitle("Scan contact QR code")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showingQRScanner = false }
-                        }
-                    }
-                }
-            }
-            .onAppear {
-                #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
-                    host = ProcessInfo.processInfo.environment["FAMILY_TEST_HOST"] ?? host
-                    port = ProcessInfo.processInfo.environment["FAMILY_TEST_PORT"] ?? port
-                }
-                #endif
+            .onChange(of: family.unlocked, initial: true) {
+                if family.unlocked { loadSettings() }
             }
             .toolbar { Button("Done") { dismiss() } }
         }
     }
-    private func importQRPayload(_ payload: String) async {
-        guard let card = await family.readContactCard(payload), let lxmf = card.addresses["lxmf"] else { return }
-        importedCard = card
-        name = card.name ?? ""
-        address = lxmf
-        contactSaved = false
+    private func loadSettings() {
+        deviceName = family.state?.deviceName ?? "neXt Family"
+        if let peer = family.state?.peer {
+            host = peer.host
+            port = String(peer.port)
+            peerEnabled = peer.enabled
+        }
+        mailboxAddress = family.state?.mailbox?.address ?? ""
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {
+            host = ProcessInfo.processInfo.environment["FAMILY_TEST_HOST"] ?? host
+            port = ProcessInfo.processInfo.environment["FAMILY_TEST_PORT"] ?? port
+        }
+        #endif
     }
 
-    private func importQRPhoto(_ photo: PhotosPickerItem) async {
-        defer {
-            qrPhoto = nil
-            readingQR = false
-        }
-        do {
-            let payload = try await FamilyQRImage.read(photo)
-            guard family.unlocked else { return }
-            await importQRPayload(payload)
-        } catch {
-            if family.unlocked { family.error = error.localizedDescription }
-        }
-    }
 }
 
 struct FamilyClientDiscovery: View {
