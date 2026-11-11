@@ -62,6 +62,9 @@ body,.phone{background:var(--app-background)}header,.intro{display:none}.layout{
 .attachment-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
 .attachment-controls button,.message-attachment{min-height:44px}
 .attachment-name,.message-attachment{overflow-wrap:anywhere}
+.attachment-preview{display:flex;align-items:center;gap:8px;margin:6px 0;overflow-wrap:anywhere}
+.attachment-preview img{width:56px;height:56px;object-fit:cover;border-radius:8px}
+.chat-photo{display:block;max-width:min(100%,320px);max-height:320px;object-fit:contain;border-radius:8px;margin:6px 0}
 </style></head><body>
 <header><div class="brand"><span class="mark">nX</span>neXt<span>Family</span></div><span class="pill">Interactive concept · no live traffic</span></header>
 <main class="layout"><section class="intro"><div class="eyebrow">A little closer. Wherever you are.</div><h1>Your people.<br>One simple place.</h1><p class="tagline">Tap a familiar face. Call or send a message.<br>Let neXt take care of the connection.</p><div class="principles"><div class="principle"><span class="number">01</span><div><b>A familiar circle</b><p>Only contacts approved by a trusted adult appear here. Only approved people and rooms on the home screen.</p></div></div><div class="principle"><span class="number">02</span><div><b>Connection without the guesswork</b><p>Choose automatically for each call or message. See the method, or change it yourself.</p></div></div><div class="principle"><span class="number">03</span><div><b>Simple for everyone</b><p>Clear names, generous buttons, and the same two choices for every person.</p></div></div></div><div class="demo"><label for="scenario">Try a connection scenario</label><select id="scenario"><option value="home">At home · all services reachable</option><option value="outside">Outside · Reticulum and radio</option><option value="reticulum">Reticulum only · no MeshCore</option><option value="radio">Off grid · MeshCore text only</option><option value="offline">No reachable services</option></select><p class="fine">Scenarios simulate contact reachability. Changes reset when this page reloads.</p></div></section>
@@ -563,7 +566,9 @@ function bindFamilyUpdateSettings(){
     };
 }
 
+let releaseComposerAttachments=()=>{};
 function render(){
+releaseComposerAttachments();releaseComposerAttachments=()=>{};
 if(view!=='map'||!mapEnabled)releaseMap();
 if(liveNative&&liveState?.setupComplete===false){renderFirstSetup();return;}
 if(liveNative&&window.familyRenderedView==='room'&&view!=='room')nativeRequest('room_close');
@@ -576,83 +581,121 @@ if(liveNative&&view==='voice-settings'){renderVoiceSettings();return;}if(liveNat
 if(view==='map'){renderMap();return;}
 if(view==='room'){renderRoom();return;}
 if(['admin','contact-edit','interfaces','interface-edit','qr-import','rooms','room-edit','room-discover','room-names','map-settings','security'].includes(view)){renderSettings();return;}
-const kind=view;screen.innerHTML=`<button class="back" id="back">← Your people</button><h2 class="view-title">${kind==='call'?'Call':'Text'} ${escape(selected.name)}</h2>${routeUI(kind)}${kind==='call'?`<div class="call-view"><div class="avatar">${contactAvatar(selected)}</div><h3>${escape(selected.name)}</h3><p id="call-state">${chosen(kind)?'Ready for a demo call':'Calls aren’t available right now'}</p>${chosen(kind)?'<button class="primary dial-action" id="start-call"><span aria-hidden="true">☎</span><span>Start demo call</span></button>':'<p class="notice">Try a text instead. Radio can carry messages when live voice is unavailable.</p><button class="secondary" id="try-text">Text '+escape(selected.name)+'</button>'}</div>`:`<div class="notice">${liveNative?'Private conversation · approved contact only':'Demo conversation. Messages stay in this preview.'}</div><div class="chat" id="chat"></div><form class="compose" id="send"><input id="message" aria-label="Message" placeholder="Write a message…" maxlength="2000" enterkeyhint="send"><button class="primary">Send</button></form>${liveNative&&selected.addresses?.lxmf?'<div class="attachment-controls"><button class="secondary" id="add-attachment" type="button">Attach file or photo</button><input id="message-attachment" type="file" hidden><span class="attachment-name" id="attachment-name"></span><button class="secondary" id="remove-attachment" type="button" hidden>Remove attachment</button></div>':''}<p class="fine" id="send-state" role="status">${chosen(kind)?'Ready when you are.':'No route available. Messages will stay here until you retry.'}</p>`}`;
+const kind=view;screen.innerHTML=`<button class="back" id="back">← Your people</button><h2 class="view-title">${kind==='call'?'Call':'Text'} ${escape(selected.name)}</h2>${routeUI(kind)}${kind==='call'?`<div class="call-view"><div class="avatar">${contactAvatar(selected)}</div><h3>${escape(selected.name)}</h3><p id="call-state">${chosen(kind)?'Ready for a demo call':'Calls aren’t available right now'}</p>${chosen(kind)?'<button class="primary dial-action" id="start-call"><span aria-hidden="true">☎</span><span>Start demo call</span></button>':'<p class="notice">Try a text instead. Radio can carry messages when live voice is unavailable.</p><button class="secondary" id="try-text">Text '+escape(selected.name)+'</button>'}</div>`:`<div class="notice">${liveNative?'Private conversation · approved contact only':'Demo conversation. Messages stay in this preview.'}</div><div class="chat" id="chat"></div><form class="compose" id="send"><input id="message" aria-label="Message" placeholder="Write a message…" maxlength="2000" enterkeyhint="send"><button class="primary">Send</button></form>${liveNative&&selected.addresses?.lxmf?'<div class="attachment-controls"><button class="secondary" id="add-attachment" type="button">Attach files</button><input id="message-attachment" type="file" multiple hidden><label for="photo-quality">Photo quality</label><select id="photo-quality"><option value="low">Low · 320 px</option><option value="medium">Medium · 640 px</option><option value="high" selected>High · 1280 px</option><option value="original">Original</option></select><button class="secondary" id="add-photo" type="button">Add photos</button><input id="message-photo" type="file" accept="image/*" multiple hidden></div><div id="attachment-list"></div>':''}<p class="fine" id="send-state" role="status">${chosen(kind)?'Ready when you are.':'No route available. Messages will stay here until you retry.'}</p>`}`;
 $('back').onclick=()=>{view='home';render();};$('method').onchange=e=>{manual=e.target.value;if(kind!=='text')render();};
 if(kind==='call'){if($('start-call'))$('start-call').onclick=()=>{$('call-state').textContent='Demo call screen · no audio connection';$('start-call').textContent='End demo call';$('start-call').className='end';$('start-call').onclick=()=>{view='home';render();};};if($('try-text'))$('try-text').onclick=()=>{view='text';manual='auto';render();};}
 else{markConversationRead();drawDirectMessages();bindDirectComposer();}
 }
-const MESSAGE_ATTACHMENT_LIMIT=950000;
-async function prepareMessageAttachment(file){
-    if(!file.size)throw Error('Choose a file that is not empty.');
-    if(file.size<=MESSAGE_ATTACHMENT_LIMIT)return file;
-    if(!/^image\/(jpeg|png|webp|heic|heif)$/.test(file.type)||file.size>25*1024*1024){
-        throw Error('Choose a file up to 950 KB or a photo up to 25 MB.');
-    }
+const MESSAGE_ATTACHMENT_LIMIT=9950000;
+const PHOTO_QUALITY={low:[320,0.2],medium:[640,0.6],high:[1280,0.75]};
+const PHOTO_PREVIEW_TYPES=new Set(['png','jpeg','jpg','webp','gif','bmp','avif']);
+function photoType(file){
+    const type=file.type.startsWith('image/')?file.type.slice(6).split(';')[0]:null;
+    if(type&&/^[a-z0-9.+-]{1,32}$/.test(type))return type;
+    const extension=file.name.split('.').pop().toLowerCase();
+    return /^(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/.test(extension)?(extension==='svg'?'svg+xml':extension):null;
+}
+async function prepareMessagePhoto(file,quality){
+    const preset=PHOTO_QUALITY[quality];
+    if(!preset)return file;
+    const [maxEdge,webpQuality]=preset;
     let photo;
-    try{photo=await createImageBitmap(file);}catch{throw Error('Could not resize this photo. Choose a smaller image or export it as JPEG.');}
+    try{photo=await createImageBitmap(file);}catch{throw Error('Could not resize this photo. Try Original or choose another image.');}
     try{
-        const canvas=document.createElement('canvas'), context=canvas.getContext('2d');
-        for(const maxEdge of [1280,960,640]){
-            const scale=Math.min(1,maxEdge/Math.max(photo.width,photo.height));
-            canvas.width=Math.max(1,Math.round(photo.width*scale));
-            canvas.height=Math.max(1,Math.round(photo.height*scale));
-            context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
-            context.drawImage(photo,0,0,canvas.width,canvas.height);
-            const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
-            if(blob&&blob.size<=MESSAGE_ATTACHMENT_LIMIT){
-                return new File([blob],file.name.replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
-            }
-        }
-        throw Error('Could not reduce this photo to 950 KB.');
+        const canvas=document.createElement('canvas');
+        const scale=Math.min(1,maxEdge/Math.max(photo.width,photo.height));
+        canvas.width=Math.max(1,Math.round(photo.width*scale));
+        canvas.height=Math.max(1,Math.round(photo.height*scale));
+        canvas.getContext('2d').drawImage(photo,0,0,canvas.width,canvas.height);
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',webpQuality));
+        if(!blob||blob.type!=='image/webp')throw Error('Could not create the WebP photo.');
+        return new File([blob],file.name.replace(/\.[^.]+$/,'')+'.webp',{type:'image/webp'});
     }finally{photo.close();}
 }
+function encodeMessageAttachment(item){
+    return new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve({name:item.file.name,data:String(reader.result).split(',',2)[1],image:item.image});
+        reader.onerror=()=>reject(Error('Could not read '+item.file.name));
+        reader.readAsDataURL(item.file);
+    });
+}
 function bindDirectComposer(){
-    const form=$('send'), input=$('message'), status=$('send-state'), picker=$('message-attachment');
-    const add=$('add-attachment'), remove=$('remove-attachment'), filename=$('attachment-name');
-    let attachment=null, reading=false, generation=0;
-    function clearAttachment(){
-        generation++;reading=false;attachment=null;
-        if(!picker)return;
-        picker.value='';filename.textContent='';remove.hidden=true;form.querySelector('button').disabled=false;
+    const form=$('send'),input=$('message'),status=$('send-state'),picker=$('message-attachment'),photoPicker=$('message-photo');
+    const send=form.querySelector('button'),list=$('attachment-list');
+    let attachments=[],busy=false,confirmation=false;
+    releaseComposerAttachments=()=>attachments.forEach(item=>{if(item.preview)URL.revokeObjectURL(item.preview);});
+    function resetConfirmation(){if(confirmation){confirmation=false;send.textContent='Send';status.textContent='';}}
+    function remove(item){
+        if(item.preview)URL.revokeObjectURL(item.preview);
+        attachments=attachments.filter(value=>value!==item);
+    }
+    function showAttachments(){
+        if(!list)return;
+        list.innerHTML=attachments.map((item,index)=>`<div class="attachment-preview">${item.preview?`<img src="${escape(item.preview)}" alt="">`:''}<span>${escape(item.file.name)} · ${Math.ceil(item.file.size/1000)} KB</span><button type="button" class="secondary" data-remove-attachment="${index}">Remove</button></div>`).join('');
+        list.querySelectorAll('[data-remove-attachment]').forEach(button=>button.onclick=()=>{
+            if(busy)return;
+            remove(attachments[Number(button.dataset.removeAttachment)]);resetConfirmation();showAttachments();
+        });
+    }
+    async function pick(control,quality){
+        const files=[...control.files];control.value='';
+        if(busy||!files.length)return;
+        resetConfirmation();busy=true;send.disabled=true;
+        status.textContent='Preparing attachments…';
+        let error='';
+        try{
+            for(const file of files){
+                if(attachments.length>=32)throw Error('Choose up to 32 files or photos.');
+                const image=photoType(file);
+                if(quality&&!image)throw Error('Choose a supported photo.');
+                const prepared=image&&quality?await prepareMessagePhoto(file,quality):file;
+                if(!form.isConnected)return;
+                if(!prepared.size||prepared.size>MESSAGE_ATTACHMENT_LIMIT)throw Error('Choose a file under 9.95 MB or use a smaller photo quality.');
+                const type=image?photoType(prepared):null;
+                attachments.push({file:prepared,image:type,preview:PHOTO_PREVIEW_TYPES.has(type)?URL.createObjectURL(prepared):null});
+            }
+        }catch(failure){error=failure.message;}
+        finally{busy=false;send.disabled=false;showAttachments();status.textContent=error||(attachments.length?'Attachments send via Reticulum.':'');}
     }
     if(picker){
-        add.onclick=()=>picker.click();
-        remove.onclick=clearAttachment;
-        picker.onchange=async()=>{
-            let file=picker.files[0];
-            if(!file)return;
-            clearAttachment();
-            const current=++generation, reader=new FileReader();
-            reading=true;form.querySelector('button').disabled=true;
-            filename.textContent='Reading '+file.name;remove.hidden=false;
-            const original=file;
-            try{file=await prepareMessageAttachment(file);}catch(error){
-                if(current===generation&&form.isConnected){clearAttachment();status.textContent=error.message;}
-                return;
-            }
-            if(current!==generation||!form.isConnected)return;
-            reader.onload=()=>{
-                if(current!==generation||!form.isConnected)return;
-                attachment={name:file.name,data:String(reader.result).split(',',2)[1]};
-                filename.textContent=file.name;reading=false;form.querySelector('button').disabled=false;
-                status.textContent=file===original?'Attachment will send via Reticulum.':'Photo resized for Reticulum.';
-            };
-            reader.onerror=()=>{
-                if(current!==generation||!form.isConnected)return;
-                clearAttachment();status.textContent='Could not read the attachment.';
-            };
-            reader.readAsDataURL(file);
-        };
+        $('add-attachment').onclick=()=>picker.click();
+        $('add-photo').onclick=()=>photoPicker.click();
+        picker.onchange=()=>pick(picker,null);
+        photoPicker.onchange=()=>pick(photoPicker,$('photo-quality').value);
     }
+    input.addEventListener('input',resetConfirmation);
     input.addEventListener('focus',()=>requestAnimationFrame(revealMessageInput));
-    form.onsubmit=e=>{
+    form.onsubmit=async e=>{
         e.preventDefault();
         const text=input.value.trim();
-        if(reading||(!text&&!attachment))return;
+        if(busy||(!text&&!attachments.length))return;
         if(liveNative){
-            const r=nativeRequest('send',{contactId:selected.id,text,method:manual,attachment});
-            if(!r.ok){status.textContent=r.error;return;}
-            messages=r.messages;input.value='';clearAttachment();status.textContent='';drawDirectMessages();
+            const photos=attachments.filter(item=>item.image);
+            const files=attachments.filter(item=>!item.image);
+            const batches=[[...files,...photos.slice(0,1)],...photos.slice(1).map(photo=>[photo])];
+            if(batches[0].reduce((total,item)=>total+item.file.size,0)>MESSAGE_ATTACHMENT_LIMIT){
+                status.textContent='The first message exceeds 9.95 MB. Send some files separately.';return;
+            }
+            if(!confirmation&&attachments.reduce((total,item)=>total+item.file.size,0)>900000){
+                confirmation=true;send.textContent='Send anyway';
+                status.textContent='This attachment may be too large for some recipients. Tap Send anyway to continue.';return;
+            }
+            resetConfirmation();busy=true;send.disabled=true;input.readOnly=true;
+            const contactId=selected.id,method=manual;
+            try{
+                for(const [index,batch] of batches.entries()){
+                    const encoded=await Promise.all(batch.map(encodeMessageAttachment));
+                    if(!form.isConnected)return;
+                    const r=nativeRequest('send',{contactId,text:index===0?text:'',method,attachments:encoded.length?encoded:null});
+                    if(!r.ok){status.textContent=r.error;return;}
+                    messages=r.messages;
+                    if(index===0)input.value='';
+                    batch.forEach(remove);showAttachments();drawDirectMessages();
+                }
+                status.textContent='';
+            }catch(error){status.textContent=error.message;}
+            finally{busy=false;send.disabled=false;input.readOnly=false;}
             return;
         }
         const route=chosen('text');
@@ -668,7 +711,27 @@ function revealMessageInput(){
 }
 window.visualViewport?.addEventListener('resize',()=>requestAnimationFrame(revealMessageInput));
 window.addEventListener('resize',()=>requestAnimationFrame(revealMessageInput));
-function drawDirectMessages(){$('chat').innerHTML=(messages[selected.id]||[]).map(m=>`<div class="bubble ${m.incoming?'incoming':''}">${escape(m.text)}${m.attachment?`<button type="button" class="secondary message-attachment" data-save-attachment="${escape(m.id)}">Save ${escape(m.attachment.name)} · ${Math.ceil(m.attachment.size/1024)} KB</button>`:''}${m.attachmentError?`<small>${escape(m.attachmentError)}</small>`:''}<small>${escape(messageStatus(m))}</small>${m.pending?' <button class="secondary" data-retry="'+m.id+'">Retry</button>':''}</div>`).join('');$('chat').scrollTop=$('chat').scrollHeight;screen.querySelectorAll('[data-save-attachment]').forEach(button=>button.onclick=()=>{const row=(messages[selected.id]||[]).find(m=>m.id===button.dataset.saveAttachment);if(row?.attachment)FamilyNative.saveMessageAttachment(selected.id,row.id,row.attachment.name);});screen.querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>{const route=chosen('text');if(route){const m=messages[selected.id].find(m=>m.id===+b.dataset.retry);m.pending=false;m.status='Simulated send via '+labels[route];drawDirectMessages();}else $('send-state').textContent='Still no compatible connection. Your draft is saved in this preview.';});}
+function drawDirectMessages(){
+    const chat=$('chat'),rows=messages[selected.id]||[];
+    const html=rows.map(m=>{
+        const items=m.attachments||(m.attachment?[m.attachment]:[]);
+        const attachments=items.map((item,index)=>`${PHOTO_PREVIEW_TYPES.has(item.image)?`<img class="chat-photo" src="message-photo/${selected.id}/${escape(m.id)}/${index}" alt="${escape(item.name)}" loading="lazy">`:''}<button type="button" class="secondary message-attachment" data-save-attachment="${escape(m.id)}" data-attachment-index="${index}">Save ${escape(item.name)} · ${Math.ceil(item.size/1000)} KB</button>`).join('');
+        return `<div class="bubble ${m.incoming?'incoming':''}">${escape(m.text)}${attachments}${m.attachmentError?`<small>${escape(m.attachmentError)}</small>`:''}<small>${escape(messageStatus(m))}</small>${m.pending?` <button class="secondary" data-retry="${m.id}">Retry</button>`:''}</div>`;
+    }).join('');
+    if(chat.familyMessageHtml===html)return;
+    chat.familyMessageHtml=html;chat.innerHTML=html;chat.scrollTop=chat.scrollHeight;
+    chat.querySelectorAll('[data-save-attachment]').forEach(button=>button.onclick=()=>{
+        const row=rows.find(m=>m.id===button.dataset.saveAttachment),index=Number(button.dataset.attachmentIndex);
+        const item=row?.attachments?.[index]||(index===0?row?.attachment:null);
+        if(item)FamilyNative.saveMessageAttachment(selected.id,row.id,index,item.name);
+    });
+    chat.querySelectorAll('[data-retry]').forEach(button=>button.onclick=()=>{
+        const route=chosen('text');
+        if(!route){$('send-state').textContent='Still no compatible connection. Your draft is saved in this preview.';return;}
+        const row=rows.find(m=>m.id===+button.dataset.retry);
+        row.pending=false;row.status='Simulated send via '+labels[route];drawDirectMessages();
+    });
+}
 function renderMeshCoreSettings(shell){const state=liveState?.meshcore||{},config=state.config||{};screen.innerHTML=shell+`<h3>MeshCore companion</h3><p class="sub">Use a separate MeshCore radio. Reticulum and SIP can be left disabled.</p><button class="secondary" id="meshcore-bluetooth-permission">Allow Bluetooth access</button><button class="secondary" id="meshcore-scan">Find Bluetooth companions</button><p class="fine" id="meshcore-scan-status"></p><div id="meshcore-devices"></div><form id="meshcore-form"><label for="meshcore-transport">Connection</label><select id="meshcore-transport"><option value="ble" ${config.transport!=='usb'?'selected':''}>Bluetooth</option><option value="usb" ${config.transport==='usb'?'selected':''}>USB serial</option></select><label for="meshcore-target">Bluetooth address or USB device path</label><input id="meshcore-target" value="${escape(config.target||'')}" required><label><input id="meshcore-enabled" type="checkbox" ${config.enabled?'checked':''}> Enable MeshCore</label><label><input id="meshcore-receive" type="checkbox" ${config.receive?'checked':''}> Receive messages on this device</label><p class="fine">Receiving reads the companion’s queued messages. Only approved contacts are stored or displayed. Connecting reads its identity and settings; it does not advertise or change its radio profile.</p><p id="meshcore-error" class="error" role="status">${escape(state.error||'')}</p><button class="primary">Save and connect</button></form>${state.name?`<p class="fine">${escape(state.name)} · ${escape(state.model)} · ${state.connected?'Connected':'Disconnected'}</p>`:''}${config?'<button class="secondary" id="meshcore-remove">Remove companion setup</button>':''}`;
 for(const [id,next] of [['contacts-tab','admin'],['rooms-tab','rooms'],['interfaces-tab','interfaces'],['maps-tab','map-settings'],['security-tab','security']])$(id).onclick=()=>{view=next;render();};$('done').onclick=()=>{lockLive();admin=false;view='home';render();};$('meshcore-bluetooth-permission').onclick=()=>FamilyNative.requestBluetooth();
 const devices=()=>{const r=nativeRequest('status');if(!r.ok)return;liveState=r;const status=r.meshcore||{};$('meshcore-scan-status').textContent=status.scanning?'Scanning…':status.error||'Select a device, then save to verify it is a MeshCore companion.';$('meshcore-devices').innerHTML=(status.devices||[]).map(d=>`<button type="button" class="secondary" data-meshcore-device="${escape(d.address)}">${escape(d.name||'UART device')} · ${escape(d.address)}</button>`).join('');screen.querySelectorAll('[data-meshcore-device]').forEach(b=>b.onclick=()=>{$('meshcore-target').value=b.dataset.meshcoreDevice;$('meshcore-transport').value='ble';$('meshcore-enabled').checked=true;});if(status.scanning)setTimeout(()=>{if(view==='interface-edit'&&editingInterface===3)devices();},1000);};
@@ -678,13 +741,25 @@ function renderLiveConnections(shell){
 if(view==='interface-edit'&&editingInterface===3){renderMeshCoreSettings(shell);return;}
 const r=liveState||{},radio=r.rnode;const field=(id,label,value='',extra='')=>`<label for="${id}">${label}</label><input id="${id}" value="${escape(value??'')}" ${extra}>`;
 let content='';
-if(view==='interfaces')content=`<h3>Reticulum connections</h3><p class="sub">Internet peers and RNodes can work together. Reticulum finds a path to each approved person or room.</p><article class="contact"><b>TCP peer</b><p>${escape(r.peer?.host)}:${escape(r.peer?.port)} · ${r.peer?.enabled?(r.tcpOnline?'Connected':'Offline'):'Disabled'}</p><button id="edit-tcp">Configure TCP peer</button></article><article class="contact"><b>RNode radio</b><p>${radio?escape(radio.transport==='usb'?'USB · '+radio.endpoint:['ble','classic'].includes(radio.transport)?'Bluetooth · '+radio.endpoint:'Wi-Fi · '+radio.endpoint):'No RNode configured'} · ${radio?(radio.enabled?(r.rnodeRuntime?.online?'Connected':r.rnodeRuntime?.connecting?'Connecting':'Offline'):'Disabled'):''}</p>${r.rnodeRuntime?.error?`<p class="error">${escape(r.rnodeRuntime.error)}</p>`:''}<button id="edit-radio">${radio?'Configure':'Add'} RNode</button></article><article class="contact"><b>MeshCore companion</b><p>${escape(r.meshcore?.name||'No companion connected')} · ${r.meshcore?.connected?'Connected':r.meshcore?.enabled?'Connecting or offline':'Disabled'}</p>${r.meshcore?.error?'<p class="error">'+escape(r.meshcore.error)+'</p>':''}<button id="edit-meshcore">Configure MeshCore</button></article><article class="contact"><b>Reticulum calling</b><p>${r.voice?.enabled?(r.voice?.ready?'Enabled':escape(r.voice?.error||'Starting…')):'Disabled'}</p><button id="edit-voice">Configure Reticulum calls</button></article><article class="contact"><b>SIP calling</b><p>${escape(sipStatus(r.sip))}</p><button id="edit-sip">Configure SIP account</button></article><p class="fine">Each connection can be enabled independently. The RNode profile and MeshCore companion settings are separate.</p>`;
+if(view==='interfaces')content=`<h3>Reticulum connections</h3><p class="sub">Internet peers and RNodes can work together. Reticulum finds a path to each approved person or room.</p><article class="contact"><b>TCP peer</b><p>${escape(r.peer?.host)}:${escape(r.peer?.port)} · ${r.peer?.enabled?(r.tcpOnline?'Connected':'Offline'):'Disabled'}</p><button id="edit-tcp">Configure TCP peer</button></article><article class="contact"><form id="incoming-limit-form"><label for="incoming-limit">Incoming message size</label><select id="incoming-limit">${[[1000000,'1 MB'],[10000000,'10 MB'],[25000000,'25 MB'],[50000000,'50 MB'],[1000000000,'1 GB']].map(([bytes,label])=>`<option value="${bytes}" ${(r.incomingDeliveryLimit||10000000)===bytes?'selected':''}>${label}</option>`).join('')}<option value="custom" ${![1000000,10000000,25000000,50000000,1000000000].includes(r.incomingDeliveryLimit||10000000)?'selected':''}>Custom</option></select><label id="incoming-custom-label" for="incoming-custom">Custom size (MB)</label><input id="incoming-custom" type="number" min="0.001" max="1000" step="any" value="${(r.incomingDeliveryLimit||10000000)/1000000}"><p class="fine">Maximum size for one direct Reticulum message you receive.</p><button class="secondary">Save limit</button><p id="incoming-limit-status" role="status"></p></form></article><article class="contact"><b>RNode radio</b><p>${radio?escape(radio.transport==='usb'?'USB · '+radio.endpoint:['ble','classic'].includes(radio.transport)?'Bluetooth · '+radio.endpoint:'Wi-Fi · '+radio.endpoint):'No RNode configured'} · ${radio?(radio.enabled?(r.rnodeRuntime?.online?'Connected':r.rnodeRuntime?.connecting?'Connecting':'Offline'):'Disabled'):''}</p>${r.rnodeRuntime?.error?`<p class="error">${escape(r.rnodeRuntime.error)}</p>`:''}<button id="edit-radio">${radio?'Configure':'Add'} RNode</button></article><article class="contact"><b>MeshCore companion</b><p>${escape(r.meshcore?.name||'No companion connected')} · ${r.meshcore?.connected?'Connected':r.meshcore?.enabled?'Connecting or offline':'Disabled'}</p>${r.meshcore?.error?'<p class="error">'+escape(r.meshcore.error)+'</p>':''}<button id="edit-meshcore">Configure MeshCore</button></article><article class="contact"><b>Reticulum calling</b><p>${r.voice?.enabled?(r.voice?.ready?'Enabled':escape(r.voice?.error||'Starting…')):'Disabled'}</p><button id="edit-voice">Configure Reticulum calls</button></article><article class="contact"><b>SIP calling</b><p>${escape(sipStatus(r.sip))}</p><button id="edit-sip">Configure SIP account</button></article><p class="fine">Each connection can be enabled independently. The RNode profile and MeshCore companion settings are separate.</p>`;
 else if(editingInterface===1)content=`<h3>Reticulum TCP peer</h3><form id="live-tcp-form">${field('endpoint','Peer hostname',r.peer?.host||'rmap.world','required')}${field('port','Port',r.peer?.port||4242,'required type="number" min="1" max="65535"')}<label><input type="checkbox" id="enabled" ${r.peer?.enabled?'checked':''}> Enable this peer</label><p class="fine">Suggested peer: rmap.world:4242. Disable this peer to use a radio connection alone.</p><p id="radio-error" class="error" role="status"></p><button class="primary">Save peer</button></form>`;
 else {const c=radio||{frequency:914.875,bandwidth:125,sf:8,cr:7,power:17};content=`<h3>RNode radio</h3><form id="live-radio-form"><label for="transport">Connection</label><select id="transport"><option value="usb" ${c.transport!=='tcp'?'selected':''}>USB serial</option><option value="ble" ${c.transport==='ble'?'selected':''}>Bluetooth Low Energy</option><option value="classic" ${c.transport==='classic'?'selected':''}>Bluetooth Classic</option><option value="tcp" ${c.transport==='tcp'?'selected':''}>Wi-Fi / RNode over IP</option></select><div id="radio-endpoint"></div>${field('frequency','Frequency',c.frequency,'required type="text" inputmode="decimal" maxlength="32" placeholder="914.875" aria-describedby="frequency-help"')}<small id="frequency-help">MHz, kHz or Hz. For example, 914.875 MHz, 914875 kHz and 914875000 Hz are equivalent.</small>${field('bandwidth','Bandwidth (kHz)',c.bandwidth,'required type="number" step="0.001" min="7.8" max="500"')}${field('sf','Spreading factor',c.sf,'required type="number" min="5" max="12"')}${field('cr','Coding rate · 4/x',c.cr,'required type="number" min="5" max="8"')}${field('power','Transmit power (dBm)',c.power,'required type="number" min="0" max="30"')}<label><input type="checkbox" id="enabled" ${c.enabled?'checked':''}> Enable RNode</label><p class="fine">Use settings that match your RNode and local radio rules. Wi-Fi RNodes use port 7633. Saving an enabled profile configures the radio.</p><p id="radio-error" class="error" role="status"></p><button class="primary">Save RNode</button></form>${radio?'<button class="secondary" id="delete-radio">Remove RNode</button>':''}`;}
 screen.innerHTML=shell+content;
 $('done').onclick=()=>{nativeRequest('lock',{token:liveToken});liveToken='';admin=false;view='home';render();};
 for(const [id,next] of [['contacts-tab','admin'],['rooms-tab','rooms'],['interfaces-tab','interfaces'],['maps-tab','map-settings'],['security-tab','security']])$(id).onclick=()=>{view=next;render();};
 const complete=result=>{if(!result.ok){$('radio-error').textContent=result.error;return;}liveState=result;refreshLive(true);view='interfaces';render();};
+if($('incoming-limit-form')){
+    const preset=$('incoming-limit'),custom=$('incoming-custom');
+    const update=()=>{custom.hidden=preset.value!=='custom';$('incoming-custom-label').hidden=custom.hidden;};
+    preset.onchange=update;update();
+    $('incoming-limit-form').onsubmit=e=>{
+        e.preventDefault();
+        const bytes=preset.value==='custom'?Math.round(Number(custom.value)*1000000):Number(preset.value);
+        const result=nativeRequest('incoming_delivery_limit',{token:liveToken,bytes});
+        if(result.ok)liveState=result;
+        $('incoming-limit-status').textContent=result.ok?'Incoming limit saved.':result.error;
+    };
+}
 if($('edit-tcp'))$('edit-tcp').onclick=()=>{editingInterface=1;view='interface-edit';render();};
 if($('edit-voice'))$('edit-voice').onclick=()=>{view='voice-settings';render();};if($('edit-sip'))$('edit-sip').onclick=()=>{view='sip-settings';render();};if($('edit-meshcore'))$('edit-meshcore').onclick=()=>{editingInterface=3;view='interface-edit';render();};
 if($('edit-radio'))$('edit-radio').onclick=()=>{editingInterface=2;view='interface-edit';render();};

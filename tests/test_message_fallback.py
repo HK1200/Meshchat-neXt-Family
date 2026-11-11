@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import signal
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -218,7 +219,7 @@ def test_attachment_only_uses_reticulum_and_is_private_to_approved_chat(backend,
     result = json.loads(backend.request(json.dumps({"action": "send", "payload": payload})))
     assert result["ok"], result
     row, = backend._state["messages"]
-    assert row["attachment"] == {"name": "example.txt", "size": len(data)}
+    assert row["attachments"] == [{"name": "example.txt", "size": len(data), "image": None}]
     assert backend._dispatch_message.call_args.args == (row["id"], "reticulum", LXMF_ADDRESS, "", None)
     assert backend.read_attachment(1, row["id"]) == data
     with pytest.raises(ValueError, match="unavailable"):
@@ -240,9 +241,50 @@ def test_verified_attachment_only_message_and_photo_appear_in_chat(backend, tmp_
     backend._receive(message)
     backend._receive(message)
     row, = backend._state["messages"]
-    assert row["incoming"] and row["attachment"] == {"name": "photo.png", "size": len(photo)}
+    assert row["incoming"] and row["attachments"] == [{"name": "photo.png", "size": len(photo), "image": "png"}]
     assert backend.read_attachment(1, row["id"]) == photo
     message.source_hash = b"unapproved-peer!"
     message.hash = b"different-photo"
     backend._receive(message)
     assert len(backend._state["messages"]) == 1
+
+def test_neXt_photo_with_multiple_file_fields_and_legacy_download(backend, tmp_path):
+    import LXMF
+
+    backend._root = tmp_path
+    photo = b"x" * 1_300_000
+    message = SimpleNamespace(source_hash=bytes.fromhex(LXMF_ADDRESS), signature_validated=True,
+                              hash=b"next-multi", content_as_string=lambda: "Caption",
+                              fields={LXMF.FIELD_IMAGE: [b"webp", photo],
+                                      LXMF.FIELD_FILE_ATTACHMENTS: [["one.txt", b"one"], ["two.txt", b"two"]]})
+    backend._receive(message)
+    row, = backend._state["messages"]
+    assert [item["name"] for item in row["attachments"]] == ["photo.webp", "one.txt", "two.txt"]
+    assert backend.read_attachment(1, row["id"]) == photo
+    assert backend.read_attachment(1, row["id"], 2) == b"two"
+    assert backend.attachment_path(1, row["id"], 0, True)[1] == "image/webp"
+    with pytest.raises(ValueError, match="preview"):
+        backend.attachment_path(1, row["id"], 1, True)
+    legacy_id = "f" * 32
+    (tmp_path / "attachments" / (legacy_id + ".bin")).write_bytes(b"legacy")
+    backend._state["messages"].append(dict(row, id=legacy_id, attachments=None,
+                                           attachment={"name": "legacy.txt", "size": 6}))
+    assert backend.read_attachment(1, legacy_id) == b"legacy"
+
+
+def test_guardian_can_change_incoming_delivery_limit(backend):
+    backend._router = SimpleNamespace(delivery_per_transfer_limit=10_000)
+    backend._sessions["guardian"] = time.time() + 60
+
+    def request(limit, token="guardian"):
+        return json.loads(backend.request(json.dumps({"action": "incoming_delivery_limit",
+                                                      "payload": {"token": token, "bytes": limit}})))
+
+    assert backend._incoming_limit() == 10_000_000
+    assert not request(25_000_000, token="locked")["ok"]
+    assert request(25_000_000)["ok"]
+    assert backend._incoming_limit() == 25_000_000
+    assert backend._router.delivery_per_transfer_limit == 25_000
+    assert request(1_000_000_000)["ok"]
+    assert not request(1_000_000_001)["ok"]
+    assert not request(True)["ok"]

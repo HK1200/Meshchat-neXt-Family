@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     private static final int MAP_PICK_FILE = 15;
     private static final int SAVE_MESSAGE_ATTACHMENT = 17;
     private int attachmentContact;
+    private int attachmentIndex;
     private String attachmentMessage;
     private static final int MAP_LOCATION_PERMISSION = 17;
     private WebView web;
@@ -109,11 +110,24 @@ public class MainActivity extends Activity {
                 String path=uri.getPath().substring(1);
                 if(path.isEmpty())path="index.html";
                 if(path.contains("..")||path.contains("\\"))return denied();
+                if(path.startsWith("message-photo/")){
+                    try {
+                        String[] parts=path.split("/");
+                        if(parts.length!=4)return denied();
+                        PyObject photo=backend.callAttr("attachment_path",Integer.parseInt(parts[1]),
+                                parts[2],Integer.parseInt(parts[3]),true);
+                        String file=photo.callAttr("__getitem__",0).toString();
+                        String mime=photo.callAttr("__getitem__",1).toString();
+                        return new WebResourceResponse(mime,null,200,"OK",
+                                Collections.singletonMap("X-Content-Type-Options","nosniff"),
+                                new java.io.FileInputStream(file));
+                    } catch(Exception e) { return denied(); }
+                }
                 if(path.startsWith("offline-tiles/")){try{String[] parts=path.split("/");if(parts.length!=5)return denied();PyObject tile=backend.callAttr("map_tile",parts[1],Integer.parseInt(parts[2]),Integer.parseInt(parts[3]),Integer.parseInt(parts[4]));if(tile==null)return denied();return new WebResourceResponse(tile.callAttr("__getitem__","mime").toString(),null,new ByteArrayInputStream(tile.callAttr("__getitem__","bytes").toJava(byte[].class)));}catch(Exception e){return denied();}}
                 String mime=path.endsWith(".html")?"text/html":path.endsWith(".png")?"image/png":path.endsWith(".json")?"application/json":path.endsWith(".js")?"application/javascript":"application/octet-stream";
                 try {
                     Map<String,String> headers=new HashMap<>();
-                    headers.put("Content-Security-Policy","default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'");
+                    headers.put("Content-Security-Policy","default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'");
                     headers.put("X-Content-Type-Options","nosniff");
                     return new WebResourceResponse(mime,"UTF-8",200,"OK",headers,getAssets().open(path));
                 } catch(IOException e) {return denied();}
@@ -128,6 +142,7 @@ public class MainActivity extends Activity {
                 String[] accepted=params.getAcceptTypes();
                 boolean image=accepted!=null&&accepted.length>0&&accepted[0].startsWith("image/");
                 intent.setType(image?"image/*":"*/*");
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode()==FileChooserParams.MODE_OPEN_MULTIPLE);
                 try {startActivityForResult(intent,PICK_FILE);} catch(android.content.ActivityNotFoundException e){fileCallback.onReceiveValue(null);fileCallback=null;}
                 return true;
             }
@@ -190,8 +205,8 @@ public class MainActivity extends Activity {
         private final PyObject backend;
         private final MainActivity activity;
         NativeBridge(MainActivity owner,PyObject module){activity=owner;backend=module;}
-        @JavascriptInterface public void saveMessageAttachment(int contact, String message, String name) {
-            activity.runOnUiThread(() -> activity.chooseAttachmentDestination(contact, message, name));
+        @JavascriptInterface public void saveMessageAttachment(int contact, String message, int index, String name) {
+            activity.runOnUiThread(() -> activity.chooseAttachmentDestination(contact, message, index, name));
         }
         @JavascriptInterface public void setNightMode(boolean night) {
             activity.runOnUiThread(() -> activity.setNightMode(night));
@@ -393,7 +408,7 @@ public class MainActivity extends Activity {
         }, "Family-map-import").start();
     }
 
-    private void chooseAttachmentDestination(int contact, String message, String name) {
+    private void chooseAttachmentDestination(int contact, String message, int index, String name) {
         if (ownedDocument || message == null || !message.matches("[0-9a-f]{32}")) return;
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -403,6 +418,7 @@ public class MainActivity extends Activity {
         intent.setType(type == null ? "application/octet-stream" : type);
         intent.putExtra(Intent.EXTRA_TITLE, name);
         attachmentContact = contact;
+        attachmentIndex = index;
         attachmentMessage = message;
         ownedDocument = true;
         try {
@@ -414,14 +430,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void saveAttachment(Uri uri, int contact, String message) {
+    private void saveAttachment(Uri uri, int contact, String message, int index) {
         new Thread(() -> {
             String status = "Attachment saved";
             try {
-                byte[] bytes = runtime.callAttr("read_attachment", contact, message).toJava(byte[].class);
-                try (java.io.OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
+                String path = runtime.callAttr("attachment_path", contact, message, index).toString();
+                try (java.io.InputStream input = new java.io.FileInputStream(path);
+                     java.io.OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
                     if (output == null) throw new IOException("Could not open the selected file");
-                    output.write(bytes);
+                    byte[] buffer = new byte[65536];
+                    for (int size; (size = input.read(buffer)) != -1;) output.write(buffer, 0, size);
                 }
             } catch (Exception e) {
                 status = "Could not save attachment";
@@ -438,7 +456,7 @@ public class MainActivity extends Activity {
             String message = attachmentMessage;
             attachmentMessage = null;
             if (message != null && resultCode == RESULT_OK && data != null && data.getData() != null) {
-                saveAttachment(data.getData(), attachmentContact, message);
+                saveAttachment(data.getData(), attachmentContact, message, attachmentIndex);
             }
             return;
         }
@@ -450,7 +468,17 @@ public class MainActivity extends Activity {
                 importMapFile(data.getData(), token);
             }
         }
-        if(requestCode==PICK_FILE&&fileCallback!=null){fileCallback.onReceiveValue(resultCode==RESULT_OK&&data!=null&&data.getData()!=null?new Uri[]{data.getData()}:null);fileCallback=null;}
+        if(requestCode==PICK_FILE&&fileCallback!=null){
+            Uri[] uris=null;
+            if(resultCode==RESULT_OK&&data!=null){
+                android.content.ClipData clip=data.getClipData();
+                if(clip!=null){
+                    uris=new Uri[Math.min(clip.getItemCount(),32)];
+                    for(int i=0;i<uris.length;i++)uris[i]=clip.getItemAt(i).getUri();
+                }else if(data.getData()!=null)uris=new Uri[]{data.getData()};
+            }
+            fileCallback.onReceiveValue(uris);fileCallback=null;
+        }
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
