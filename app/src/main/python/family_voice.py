@@ -127,9 +127,15 @@ class FamilyVoice:
    except Exception as exc:self.error=str(exc)[:200]
  def _install_audio(self,telephony):
   import numpy as np
+  from importlib import import_module
+  from types import SimpleNamespace
   from LXST.Sources import LocalSource
   from LXST.Sinks import LocalSink
   from LXST.Codecs import Raw
+  # LXST 0.5.4 uses the host backend's sample rate when assigning a
+  # codec such as Null to a mixer. On iOS there is no LXST host backend.
+  mixer=import_module('LXST.Mixer')
+  if mixer.Backend is None:mixer.Backend=SimpleNamespace(SAMPLERATE=48000)
   manager=self
   class Input(LocalSource):
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):

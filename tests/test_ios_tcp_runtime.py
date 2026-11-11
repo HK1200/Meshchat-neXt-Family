@@ -98,6 +98,14 @@ def run_family(folder, pipe):
 
         TCPConnection.TARGET_PORT = int(radio_port)
     voice_enabled = os.getenv("FAMILY_IOS_TEST_VOICE") == "1"
+    if voice_enabled:
+        from importlib import import_module
+        from lxst_pyogg_ctypes_compat import ensure_lxst_pyogg_ctypes_compat
+
+        ensure_lxst_pyogg_ctypes_compat()
+        # iPadOS has no LXST desktop audio backend. The native PCM bridge
+        # still needs the same Mixer setup for inbound ringing and audio.
+        import_module("LXST.Mixer").Backend = None
     family_backend.initialize(folder, tcp_only=True, ios_voice=voice_enabled)
     try:
         while True:
