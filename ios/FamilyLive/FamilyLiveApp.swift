@@ -371,25 +371,43 @@ final class FamilyModel: ObservableObject {
         }
     }
 
-    func addContact(name: String, address: String, identityPublicKey: String? = nil) async -> Bool {
+    func saveContact(id: Int? = nil, name: String, address: String, identityPublicKey: String? = nil) async -> Bool {
         let current = state?.contacts ?? []
-        let existing = current.map { contact in
-            var value: [String: Any] = ["id": contact.id, "name": contact.name, "addresses": contact.addresses]
-            value["identityPublicKey"] = contact.identityPublicKey
-            return value
-        }
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard lxmf.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else {
             error = "Enter the contact’s 32-character LXMF address."
             return false
         }
-        var contact: [String: Any] = [
-            "id": (current.map(\.id).max() ?? 0) + 1,
-            "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
-            "addresses": ["lxmf": lxmf]
-        ]
-        contact["identityPublicKey"] = identityPublicKey
-        return await perform("contacts", ["token": token, "contacts": existing + [contact]])
+        let previous = id.flatMap { id in current.first { $0.id == id } }
+        if id != nil && previous == nil {
+            error = "This contact is no longer approved."
+            return false
+        }
+        var addresses = previous?.addresses ?? [:]
+        let previousKey = addresses["lxmf"]?.lowercased() == lxmf ? previous?.identityPublicKey : nil
+        addresses["lxmf"] = lxmf
+        let contact = FamilyContact(
+            id: id ?? (current.map(\.id).max() ?? 0) + 1,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines), addresses: addresses,
+            identityPublicKey: identityPublicKey ?? previousKey
+        )
+        var updated = current
+        if let index = updated.firstIndex(where: { $0.id == contact.id }) { updated[index] = contact }
+        else { updated.append(contact) }
+        return await saveContacts(updated)
+    }
+
+    func removeContact(_ id: Int) async -> Bool {
+        await saveContacts((state?.contacts ?? []).filter { $0.id != id })
+    }
+
+    private func saveContacts(_ contacts: [FamilyContact]) async -> Bool {
+        let values = contacts.map { contact in
+            var value: [String: Any] = ["id": contact.id, "name": contact.name, "addresses": contact.addresses]
+            value["identityPublicKey"] = contact.identityPublicKey
+            return value
+        }
+        return await perform("contacts", ["token": token, "contacts": values])
     }
 
     private func request(_ action: String, _ payload: [String: Any] = [:]) async throws -> FamilyReply {
@@ -573,6 +591,13 @@ struct FamilyGuardian: View {
                             .accessibilityIdentifier("peer-port")
                         Button("Save peer") { Task { await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled) } }
                     }
+                    if let contacts = family.state?.contacts, !contacts.isEmpty {
+                        Section("Manage approved contacts") {
+                            ForEach(contacts) { contact in
+                                NavigationLink(contact.name) { FamilyContactEditor(family: family, contact: contact) }
+                            }
+                        }
+                    }
                     Section("Approve contact") {
                         TextField("Contact name", text: $name)
                             .accessibilityIdentifier("contact-name")
@@ -605,7 +630,7 @@ struct FamilyGuardian: View {
                             let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
                                 ? importedCard?.identityPublicKey : nil
                             Task {
-                                contactSaved = await family.addContact(name: name, address: address, identityPublicKey: key)
+                                contactSaved = await family.saveContact(name: name, address: address, identityPublicKey: key)
                             }
                         }
                         .disabled(readingQR)
@@ -778,6 +803,14 @@ struct FamilyChat: View {
     @State private var draft = ""
     @State private var submitting = false
 
+    private var currentContact: FamilyContact? {
+        family.state?.contacts?.first { $0.id == contact.id }
+    }
+
+    private var canSend: Bool {
+        currentContact?.addresses["lxmf"] == contact.addresses["lxmf"] && currentContact != nil
+    }
+
     var body: some View {
         Form {
             Section("Messages") {
@@ -799,7 +832,8 @@ struct FamilyChat: View {
                         submitting = false
                     }
                 }
-                .disabled(submitting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSend || submitting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if !canSend { Text("Contact approval changed. Reopen this conversation.") }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG
                 if family.testNotificationDelivered { Text("Message notification delivered") }
@@ -807,6 +841,6 @@ struct FamilyChat: View {
                 #endif
             }
         }
-        .navigationTitle(contact.name)
+        .navigationTitle(currentContact?.name ?? contact.name)
     }
 }
