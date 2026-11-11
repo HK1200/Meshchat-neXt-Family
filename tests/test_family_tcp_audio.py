@@ -95,6 +95,7 @@ def test_capture_splits_or_joins_chunks_at_negotiated_profile(monkeypatch):
     monkeypatch.setitem(sys.modules, "LXST.Sources", types.SimpleNamespace(LocalSource=base))
     monkeypatch.setitem(sys.modules, "LXST.Sinks", types.SimpleNamespace(LocalSink=base))
     monkeypatch.setitem(sys.modules, "LXST.Codecs", types.SimpleNamespace(Raw=lambda **kwargs: None))
+    monkeypatch.setitem(sys.modules, "LXST.Mixer", types.SimpleNamespace(Backend=None))
     telephony = types.SimpleNamespace()
     voice = FamilyVoice(None, {}, threading.RLock(), lambda: None, autostart=False)
     voice._install_audio(telephony)
