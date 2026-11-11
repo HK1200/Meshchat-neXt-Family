@@ -139,27 +139,6 @@ def map_source(z,x,y):return _maps.source(z,x,y) if _maps else ''
 def _password(value):
     return hashlib.pbkdf2_hmac('sha256',value.encode(),bytes.fromhex(_state['password_salt']),200000).hex()
 
-def export_migration(token, destination):
-    from family_migration import export_profile
-
-    with _lock:
-        _authorized({'token': token})
-        export_profile(_root, _state, Path(destination))
-
-
-def import_migration(archive):
-    from family_migration import import_profile
-
-    with _lock:
-        if _state.get('setup_complete'):
-            raise ValueError('This Family installation is already set up.')
-        state = import_profile(_root, Path(archive))
-        _state.clear()
-        _state.update(state)
-        _sessions.clear()
-    threading.Thread(target=_start, daemon=True).start()
-
-
 def _authorized(payload):
     if not _state.get('setup_complete'):raise ValueError('Finish guardian setup first.')
     token=payload.get('token','');now=time.time()

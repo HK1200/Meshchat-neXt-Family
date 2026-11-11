@@ -96,7 +96,7 @@ final class FamilyUpdates {
         String result;
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            HttpsURLConnection connection = open(FamilyUpdateSource.manifest(repo, context.getPackageName()), repo);
+            HttpsURLConnection connection = open(FamilyUpdateSource.manifest(repo), repo);
             try (InputStream input = connection.getInputStream()) {
                 byte[] buffer = new byte[4096];
                 int count;

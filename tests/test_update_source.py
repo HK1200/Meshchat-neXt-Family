@@ -14,11 +14,7 @@ import java.net.URI;
 public class SourceTest {
     public static void main(String[] args) {
         String repo = FamilyUpdateSource.repository(" family-owner/family-app ");
-        URI feed = FamilyUpdateSource.manifest(repo, "org.meshchat.family");
-        URI legacyFeed = FamilyUpdateSource.manifest(repo, "org.meshchat.family.preview");
-        if (!legacyFeed.getPath().endsWith("/releases/latest/download/family-update.json")) {
-            throw new AssertionError("Unexpected legacy feed: " + legacyFeed);
-        }
+        URI feed = FamilyUpdateSource.manifest(repo);
         if (!feed.toString().endsWith("/releases/download/family-stable/family-update.json")) {
             throw new AssertionError(feed);
         }
