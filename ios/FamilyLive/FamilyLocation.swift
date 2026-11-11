@@ -105,13 +105,32 @@ struct FamilyLocationSettings: View {
     @State private var recipients: Set<Int> = []
     @State private var saved = false
 
+    private var eligibleContacts: [FamilyContact] {
+        (family.state?.contacts ?? []).filter { $0.addresses["lxmf"]?.isEmpty == false }
+    }
+
+    private var sharingRequirement: String? {
+        guard let location = family.state?.location else { return nil }
+        if eligibleContacts.isEmpty { return "Add an approved contact with a Reticulum messaging address to share your location." }
+        if !mapEnabled { return "Turn on the Family map to share your location." }
+        if recipients.isEmpty { return "Turn on at least one contact above and save the location policy." }
+        if recipients != Set(location.contactIds) || mapEnabled != location.mapEnabled
+            || userControls != location.userControls {
+            return "Save the location policy before starting sharing."
+        }
+        return nil
+    }
+
     var body: some View {
         Form {
             if family.unlocked {
                 Section {
                     Toggle("Show Family map", isOn: $mapEnabled)
                     Toggle("Allow timed sharing from the map", isOn: $userControls)
-                    ForEach(family.state?.contacts ?? []) { contact in
+                    if eligibleContacts.isEmpty {
+                        NavigationLink("Add approved contact") { FamilyContactApproval(family: family) }
+                    }
+                    ForEach(eligibleContacts) { contact in
                         Toggle(contact.name, isOn: Binding(
                             get: { recipients.contains(contact.id) },
                             set: { enabled in
@@ -132,7 +151,7 @@ struct FamilyLocationSettings: View {
                     .onChange(of: recipients) { saved = false }
                 } header: { Text("Approved location contacts") }
                 Section {
-                    FamilyLocationControls(family: family, guardian: true)
+                    FamilyLocationControls(family: family, guardian: true, startRequirement: sharingRequirement)
                 }
             }
         }
@@ -141,7 +160,7 @@ struct FamilyLocationSettings: View {
             if let location = family.state?.location {
                 mapEnabled = location.mapEnabled
                 userControls = location.userControls
-                recipients = Set(location.contactIds)
+                recipients = Set(location.contactIds).intersection(eligibleContacts.map(\.id))
             }
         }
     }
@@ -150,6 +169,7 @@ struct FamilyLocationSettings: View {
 struct FamilyLocationControls: View {
     @ObservedObject var family: FamilyModel
     let guardian: Bool
+    var startRequirement: String? = nil
     @State private var duration = "15"
 
     var body: some View {
@@ -166,7 +186,11 @@ struct FamilyLocationControls: View {
                     if guardian { Text("Until a guardian stops it").tag("ongoing") }
                 }
                 Button("Start sharing") { Task { _ = await family.startLocation(duration) } }
-                    .disabled(!location.mapEnabled || location.contactIds.isEmpty)
+                    .disabled(startRequirement != nil || !location.mapEnabled || location.contactIds.isEmpty)
+                if let reason = startRequirement ?? (location.contactIds.isEmpty
+                    ? "A guardian must approve a location recipient first." : nil) {
+                    Text(reason).font(.caption)
+                }
             }
             Text("Location updates are sent while Family is open.").font(.caption)
             if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
