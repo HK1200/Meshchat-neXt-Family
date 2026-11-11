@@ -1,3 +1,5 @@
+import PhotosUI
+import Vision
 import BackgroundTasks
 import Network
 import SwiftUI
@@ -18,9 +20,9 @@ struct FamilyLiveApp: App {
                     if scenePhase == .active {
                         await family.refreshNotificationPermission()
                         family.checkMailboxOnNextRefresh()
-                    } else {
+                    } else if scenePhase == .background {
                         await family.lock()
-                        if scenePhase == .background { family.scheduleMailboxRefresh() }
+                        family.scheduleMailboxRefresh()
                     }
                     while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
                         await family.refresh()
@@ -253,7 +255,28 @@ final class FamilyModel: ObservableObject {
         await perform("device_name", ["token": token, "name": name])
     }
 
-    func addContact(name: String, address: String) async -> Bool {
+    func lookUpClient(_ address: String) async -> Bool {
+        await perform("discover_client", ["token": token, "address": address])
+    }
+
+    func readContactCard(_ text: String) async -> FamilyContactCard? {
+        let epoch = guardianEpoch
+        do {
+            let result = try await request("qr_parse", ["token": token, "text": text, "target": "contact"])
+            guard epoch == guardianEpoch, unlocked else { return nil }
+            guard let card = result.card, card.addresses["lxmf"]?.isEmpty == false else {
+                error = "Choose a contact code with an LXMF address."
+                return nil
+            }
+            error = ""
+            return card
+        } catch {
+            if epoch == guardianEpoch { self.error = error.localizedDescription }
+            return nil
+        }
+    }
+
+    func addContact(name: String, address: String, identityPublicKey: String? = nil) async -> Bool {
         let current = state?.contacts ?? []
         let existing = current.map { contact in
             var value: [String: Any] = ["id": contact.id, "name": contact.name, "addresses": contact.addresses]
@@ -265,11 +288,12 @@ final class FamilyModel: ObservableObject {
             error = "Enter the contact’s 32-character LXMF address."
             return false
         }
-        let contact: [String: Any] = [
+        var contact: [String: Any] = [
             "id": (current.map(\.id).max() ?? 0) + 1,
             "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
             "addresses": ["lxmf": lxmf]
         ]
+        contact["identityPublicKey"] = identityPublicKey
         return await perform("contacts", ["token": token, "contacts": existing + [contact]])
     }
 
@@ -370,6 +394,9 @@ struct FamilyGuardian: View {
     @State private var name = ""
     @State private var address = ""
     @State private var contactSaved = false
+    @State private var importedCard: FamilyContactCard?
+    @State private var qrPhoto: PhotosPickerItem?
+    @State private var readingQR = false
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
     @State private var deviceName = ""
@@ -413,9 +440,33 @@ struct FamilyGuardian: View {
                             .accessibilityIdentifier("contact-name")
                         TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
                             .accessibilityIdentifier("contact-address")
-                        Button(contactSaved ? "Contact saved" : "Save approved contact") {
-                            Task { contactSaved = await family.addContact(name: name, address: address) }
+                        NavigationLink("Find messaging client") {
+                            FamilyClientDiscovery(family: family) { client in
+                                importedCard = nil
+                                name = String(client.name.prefix(32))
+                                address = client.address
+                                contactSaved = false
+                            }
                         }
+                        PhotosPicker(selection: $qrPhoto, matching: .images) {
+                            Label("Import contact QR image", systemImage: "qrcode")
+                        }
+                        .disabled(readingQR)
+                        .onChange(of: qrPhoto) {
+                            guard let photo = qrPhoto else { return }
+                            readingQR = true
+                            Task { await importQRPhoto(photo) }
+                        }
+                        if readingQR { ProgressView("Reading contact code") }
+                        Button(contactSaved ? "Contact saved" : "Save approved contact") {
+                            let approvedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
+                                ? importedCard?.identityPublicKey : nil
+                            Task {
+                                contactSaved = await family.addContact(name: name, address: address, identityPublicKey: key)
+                            }
+                        }
+                        .disabled(readingQR)
                         .onChange(of: name) { contactSaved = false }
                         .onChange(of: address) { contactSaved = false }
                     }
@@ -462,6 +513,102 @@ struct FamilyGuardian: View {
             }
             .toolbar { Button("Done") { dismiss() } }
         }
+    }
+    private func importQRPhoto(_ photo: PhotosPickerItem) async {
+        defer {
+            qrPhoto = nil
+            readingQR = false
+        }
+        do {
+            guard let data = try await photo.loadTransferable(type: Data.self) else {
+                family.error = "Couldn’t open the selected image."
+                return
+            }
+            let payloads = try await Task.detached(priority: .userInitiated) {
+                let request = VNDetectBarcodesRequest()
+                request.symbologies = [.qr]
+                try VNImageRequestHandler(data: data).perform([request])
+                return Set((request.results ?? []).compactMap(\.payloadStringValue))
+            }.value
+            guard family.unlocked else { return }
+            guard payloads.count == 1, let payload = payloads.first else {
+                family.error = payloads.isEmpty ? "No QR code found in the image." : "Choose an image with one QR code."
+                return
+            }
+            guard let card = await family.readContactCard(payload), let lxmf = card.addresses["lxmf"] else { return }
+            importedCard = card
+            name = card.name ?? ""
+            address = lxmf
+            contactSaved = false
+        } catch {
+            if family.unlocked { family.error = "Couldn’t read the QR image." }
+        }
+    }
+}
+
+struct FamilyClientDiscovery: View {
+    @ObservedObject var family: FamilyModel
+    let select: (FamilyDiscoveredClient) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+    @State private var requestedAddress: String?
+    @State private var requesting = false
+
+    private var query: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var lookup: FamilyClientLookup? { family.state?.clientLookup }
+    private var approvedAddresses: Set<String> {
+        Set((family.state?.contacts ?? []).compactMap { $0.addresses["lxmf"]?.lowercased() })
+    }
+    private var matches: [FamilyDiscoveredClient] {
+        (family.state?.announces ?? []).filter { client in
+            client.service == "lxmf" && !approvedAddresses.contains(client.address.lowercased()) &&
+                (query.isEmpty || client.name.localizedCaseInsensitiveContains(query) ||
+                    client.address.localizedCaseInsensitiveContains(query))
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Name or LXMF address", text: $search)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if query.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil,
+                   !approvedAddresses.contains(query.lowercased()), matches.isEmpty {
+                    Button("Look up address") {
+                        let address = query.lowercased()
+                        requestedAddress = nil
+                        requesting = true
+                        Task {
+                            if await family.lookUpClient(address) { requestedAddress = address }
+                            requesting = false
+                        }
+                    }
+                    .disabled(requesting || lookup?.pending == true || family.state?.tcpOnline != true)
+                }
+                if (requesting || requestedAddress == query.lowercased()),
+                   let message = lookup?.message, !message.isEmpty {
+                    Text(message).font(.caption)
+                }
+                if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+            }
+            Section("Discovered clients") {
+                if matches.isEmpty { Text("No matching clients") }
+                ForEach(matches) { client in
+                    Button {
+                        select(client)
+                        dismiss()
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(client.name)
+                            Text(client.address).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityIdentifier("discovered-client-\(client.address)")
+                }
+            }
+        }
+        .navigationTitle("Find messaging client")
     }
 }
 

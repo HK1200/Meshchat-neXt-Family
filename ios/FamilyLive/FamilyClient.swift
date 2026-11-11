@@ -26,6 +26,25 @@ struct FamilyPeer: Decodable, Sendable {
     let enabled: Bool
 }
 
+struct FamilyDiscoveredClient: Decodable, Identifiable, Sendable {
+    let name: String
+    let service: String
+    let address: String
+    var id: String { address }
+}
+
+struct FamilyClientLookup: Decodable, Sendable {
+    let pending: Bool?
+    let message: String?
+    let client: FamilyDiscoveredClient?
+}
+
+struct FamilyContactCard: Decodable, Sendable {
+    let name: String?
+    let addresses: [String: String]
+    let identityPublicKey: String?
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -38,6 +57,9 @@ struct FamilyReply: Decodable, Sendable {
     var peer: FamilyPeer?
     var mailbox: FamilyMailbox?
     var contacts: [FamilyContact]?
+    var announces: [FamilyDiscoveredClient]?
+    var clientLookup: FamilyClientLookup?
+    var card: FamilyContactCard?
     var messages: [String: [FamilyMessage]]?
 }
 

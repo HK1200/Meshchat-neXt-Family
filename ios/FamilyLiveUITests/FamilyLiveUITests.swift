@@ -55,8 +55,25 @@ final class FamilyLiveUITests: XCTestCase {
         nameField.typeText(deviceName)
         app.buttons["Save device name"].tap()
         XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
-        fill(app.textFields["contact-name"], "Echo peer")
-        fill(app.textFields["contact-address"], peer.address)
+        let contactName = localTest ? "Simulator echo peer" : "Echo peer"
+        if localTest {
+            let discovery = app.buttons["Find messaging client"]
+            XCTAssertTrue(discovery.waitForExistence(timeout: 10))
+            if !discovery.isHittable { app.swipeUp() }
+            discovery.tap()
+            fill(app.textFields["Name or LXMF address"], peer.address)
+            let result = app.buttons["discovered-client-\(peer.address)"]
+            if !result.exists {
+                let lookup = app.buttons["Look up address"]
+                if lookup.exists && lookup.isEnabled { lookup.tap() }
+            }
+            XCTAssertTrue(result.waitForExistence(timeout: 35))
+            result.tap()
+            XCTAssertEqual(app.textFields["contact-address"].value as? String, peer.address)
+        } else {
+            fill(app.textFields["contact-name"], contactName)
+            fill(app.textFields["contact-address"], peer.address)
+        }
         let saveContact = app.buttons["Save approved contact"]
         if !saveContact.isHittable { app.swipeUp() }
         saveContact.tap()
@@ -77,7 +94,7 @@ final class FamilyLiveUITests: XCTestCase {
                 XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
             }
         }
-        let contact = app.buttons["Echo peer"]
+        let contact = app.buttons[contactName]
         XCTAssertTrue(contact.waitForExistence(timeout: 10))
         contact.tap()
         fill(app.textFields["message-draft"], peer.message)
@@ -108,7 +125,7 @@ final class FamilyLiveUITests: XCTestCase {
         }
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["Echo peer"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
         XCTAssertTrue(app.navigationBars[deviceName].exists)
         XCTAssertTrue(app.buttons[changedAppearance].exists)
         app.buttons["Guardian settings"].tap()
