@@ -29,8 +29,18 @@ def install(sdk, arch, app, signer):
 
     build = root / "RuntimeBuild/voice-codecs"
     with ZipFile(build / "lxst.whl") as archive:
-        archive.extractall(resources, (item for item in archive.namelist()
-            if not any(part in item.split("/") for part in ("macos", "win32", "win_amd64"))))
+        native_suffixes = (".so", ".dylib", ".dll", ".pyd", ".a")
+        source_members = (
+            item for item in archive.namelist()
+            if not item.lower().endswith(native_suffixes) and ".so." not in item.lower()
+            and not any(part in item.split("/") for part in ("macos", "win32", "win_amd64"))
+        )
+        archive.extractall(resources, source_members)
+    # Remove the desktop filter framework from an incremental build made
+    # before the iOS-specific native library was selected here.
+    shutil.rmtree(app / "Frameworks/LXST.filterlib.framework", ignore_errors=True)
+    for stale in (resources / "LXST").glob("filterlib*.fwork"):
+        stale.unlink()
     for source in (root / "VoiceRuntime").glob("*.py"):
         shutil.copyfile(source, resources / source.name)
     loader = resources / "LXST/Codecs/libs/pyogg/library_loader.py"
