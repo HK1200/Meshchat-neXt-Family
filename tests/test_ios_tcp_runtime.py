@@ -529,9 +529,16 @@ def test_ios_guardian_imports_selects_and_removes_offline_map(tmp_path):
         assert not (source.parent / (map_id + ".mbtiles")).exists()
 
 
-def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):
+@pytest.mark.parametrize("caller_index", [0, 1])
+def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index):
     if importlib.util.find_spec("LXST") is None:
         pytest.skip("Requires LXST and the host voice dependencies")
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "app/src/main/python"))
+    from lxst_pyogg_ctypes_compat import ensure_lxst_pyogg_ctypes_compat
+    ensure_lxst_pyogg_ctypes_compat()
+    from LXST.Primitives.Telephony import Profiles
+    from family_voice import check_default_codec
+    check_default_codec(Profiles)
     monkeypatch.setenv("FAMILY_IOS_TEST_VOICE", "1")
     monkeypatch.setenv("FAMILY_IOS_TEST_NATIVE_CRYPTO", "1")
     password = "local test guardian password"
@@ -542,6 +549,7 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):
         hub = start_process(stack, run_hub, tmp_path / "voice-hub", port)
         assert hub.poll(8) and hub.recv()
         clients = [start_process(stack, run_family, tmp_path / name) for name in ("caller", "receiver")]
+        caller_client, receiver_client = clients[caller_index], clients[1-caller_index]
         tokens, addresses = [], []
         for client in clients:
             request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
@@ -554,23 +562,23 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):
             voice = wait_status(client, lambda state: state["voice"]["ready"])["voice"]
             tokens.append(token)
             addresses.append(voice["address"])
-        request(clients[0], "voice_call", succeeds=False, contactId=1)
+        request(caller_client, "voice_call", succeeds=False, contactId=1)
         for index, client in enumerate(clients):
             contact = {"id": 1, "name": "Approved voice peer", "addresses": {"lxst": addresses[1-index]}}
             request(client, "contacts", token=tokens[index], contacts=[contact])
-        request(clients[0], "voice_call", contactId=1)
+        request(caller_client, "voice_call", contactId=1)
         deadline = time.monotonic() + 35
         history = set()
         while time.monotonic() < deadline:
-            caller = request(clients[0], "status")["voice"]
-            incoming = request(clients[1], "status")["voice"]
+            caller = request(caller_client, "status")["voice"]
+            incoming = request(receiver_client, "status")["voice"]
             history.add((caller["call_state"], incoming["call_state"], caller["error"], incoming["error"]))
             if incoming["call_state"] == "incoming":
                 break
             time.sleep(.2)
         assert incoming["call_state"] == "incoming", history
         assert incoming["caller_name"] == "Approved voice peer"
-        request(clients[1], "voice_answer", callId=incoming["call_id"])
+        request(receiver_client, "voice_answer", callId=incoming["call_id"])
         connected = [wait_status(client, lambda state: state["voice"]["call_state"] == "connected")["voice"]
                      for client in clients]
         outputs = [False, False]
@@ -584,8 +592,8 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch):
                 break
             time.sleep(.02)
         assert all(outputs), "Both approved peers must receive non-silent PCM"
-        request(clients[1], "voice_presence", foreground=False)
+        request(receiver_client, "voice_presence", foreground=False)
         for client in clients:
             wait_status(client, lambda state: state["voice"]["call_state"] == "idle")
-        request(clients[1], "voice_hangup", callId=incoming["call_id"])
-        assert request(clients[1], "status")["voice"]["call_state"] == "idle"
+        request(receiver_client, "voice_hangup", callId=incoming["call_id"])
+        assert request(receiver_client, "status")["voice"]["call_state"] == "idle"

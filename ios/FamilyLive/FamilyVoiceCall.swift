@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct FamilyVoiceCall: View {
     @ObservedObject var family: FamilyModel
@@ -16,8 +17,10 @@ struct FamilyVoiceCall: View {
                 }
                 if voice.call_state == "connected" {
                     HStack {
-                        Button(family.speakerOn ? "Turn speaker off" : "Use speaker", systemImage: "speaker.wave.2") {
-                            family.toggleSpeaker()
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            Button(family.speakerOn ? "Turn speaker off" : "Use speaker", systemImage: "speaker.wave.2") {
+                                family.toggleSpeaker()
+                            }
                         }
                         Button(voice.muted == true ? "Unmute" : "Mute", systemImage: "mic.slash") {
                             Task { _ = await family.perform("voice_mute", ["muted": voice.muted != true]) }
@@ -30,6 +33,7 @@ struct FamilyVoiceCall: View {
                 }
                 .buttonStyle(.borderedProminent)
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+                if !family.voiceError.isEmpty { Text(family.voiceError).foregroundStyle(.red) }
             }
             .padding()
         }

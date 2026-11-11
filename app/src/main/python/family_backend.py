@@ -1044,8 +1044,17 @@ def request(raw):
             threading.Thread(target=_connect,daemon=True).start()
         elif action=='voice_presence' and _ios_voice:
             if type(p.get('foreground')) is not bool:raise ValueError('Invalid voice availability')
+            resumed=p['foreground'] and not _ios_voice_foreground
             _ios_voice_foreground=p['foreground']
             if not _ios_voice_foreground and _voice and _voice.phase!='idle':_voice.hangup()
+            if resumed and _voice and _voice.phone:
+                with _announce_lock:
+                    primary=_last_announce_primary.get('voice')
+                    if primary:
+                        last=_announced_sessions.get(('voice',primary[0]))
+                        if last and time.monotonic()-last[1]>=60:
+                            _last_announce_primary.pop('voice',None)
+                _announce_available_routes()
             return json.dumps({'ok':True})
         elif action=='voice_resolve':
             _authorized(p)

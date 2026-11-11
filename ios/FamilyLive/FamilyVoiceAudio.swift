@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import UIKit
 
 @MainActor
 final class FamilyVoiceAudio {
@@ -12,12 +13,20 @@ final class FamilyVoiceAudio {
 
     init() { engine.attach(player) }
 
+    var usingBuiltInSpeaker: Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
     func start(callID: String) throws {
         guard self.callID != callID else { return }
         stop()
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            var options: AVAudioSession.CategoryOptions = [.allowBluetooth]
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                options.insert(.defaultToSpeaker)
+            }
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
             try session.setPreferredSampleRate(48_000)
             try session.setPreferredIOBufferDuration(0.02)
             try session.setActive(true)
@@ -139,15 +148,16 @@ private final class VoicePCMPump: @unchecked Sendable {
         lock.unlock()
 
         var output = [UInt8](repeating: 0, count: Self.frameBytes)
+        let canQueuePlayback = scheduled < 3
         let size = callID.withCString { id in
             input.withUnsafeBytes { pcm in
                 output.withUnsafeMutableBufferPointer { received in
                     family_runtime_voice_exchange(id, pcm.bindMemory(to: UInt8.self).baseAddress,
-                                                  pcm.count, received.baseAddress, received.count)
+                                                  pcm.count, received.baseAddress, canQueuePlayback ? received.count : 0)
                 }
             }
         }
-        guard size == Self.frameBytes, scheduled < 3,
+        guard size == Self.frameBytes,
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(size / 2)),
               let channel = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = AVAudioFrameCount(size / 2)
@@ -156,7 +166,7 @@ private final class VoicePCMPump: @unchecked Sendable {
             channel[index] = Float(Int16(bitPattern: sample)) / 32768
         }
         scheduled += 1
-        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
             self?.queue.async { [weak self] in
                 if let self { self.scheduled -= 1 }
             }

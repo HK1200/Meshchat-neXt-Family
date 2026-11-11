@@ -140,7 +140,7 @@ size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
         Py_XDECREF(bytes);
         PyErr_Clear();
     }
-    PyObject *received = id ? PyObject_CallOneArg(voice_pull, id) : NULL;
+    PyObject *received = id && capacity ? PyObject_CallOneArg(voice_pull, id) : NULL;
     if (received && PyBytes_Check(received)) {
         char *bytes;
         Py_ssize_t size;

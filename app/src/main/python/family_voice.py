@@ -1,5 +1,5 @@
 """Approved LXST calls with native Android PCM; no host audio or auto-answer."""
-import threading,time,uuid
+import sys,threading,time,uuid
 
 PCM_BYTES_PER_MS = 96
 PLAYBACK_CHUNK = 20 * PCM_BYTES_PER_MS
@@ -35,6 +35,26 @@ class VoicePlaybackBuffer:
   chunk=bytes(self.pcm[:PLAYBACK_CHUNK])
   del self.pcm[:PLAYBACK_CHUNK]
   return chunk
+
+
+def check_default_codec(profiles):
+ """Check that the bundled codec can run before accepting call signaling."""
+ import numpy as np
+ from types import SimpleNamespace
+
+ profile=profiles.DEFAULT_PROFILE
+ samples=(np.sin(np.arange(48*profiles.get_frame_time(profile))*0.0576)*0.25).astype(np.float32).reshape(-1,1)
+ try:
+  encoder=profiles.get_codec(profile)
+  decoder=profiles.get_codec(profile)
+  pcm_endpoint=SimpleNamespace(channels=1,samplerate=48000)
+  encoder.source=pcm_endpoint
+  decoder.sink=pcm_endpoint
+  decoded=decoder.decode(encoder.encode(samples))
+  if decoded.shape!=samples.shape or not np.all(np.isfinite(decoded)) or not np.any(decoded):
+   raise ValueError('Opus returned invalid audio')
+ except Exception as exc:
+  raise RuntimeError(f'Reticulum voice codec could not start: {exc}') from exc
 
 
 class FamilyVoice:
@@ -77,6 +97,7 @@ class FamilyVoice:
     if not hasattr(LinkSource,"samplerate"):LinkSource.samplerate=48000
     from LXST.Primitives import Telephony
     from RNS.vendor import umsgpack
+    if sys.platform == 'ios':check_default_codec(Telephony.Profiles)
     self._install_audio(Telephony)
     phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self.allowed,wait_time=30)
     phone.destination.set_default_app_data(lambda: umsgpack.packb([self.state.get('device_name','neXt Family'),None,None]))
@@ -152,6 +173,8 @@ class FamilyVoice:
     metrics={};rtt=getattr(getattr(self.phone,'active_call',None),'rtt',None) or self.last_rtt
     if isinstance(rtt,(int,float)) and 0<=rtt<60:metrics['rtt_ms']=rtt*1000
     self.state['callQuality']=(self.state.get('callQuality',[])+[{'service':'reticulum','target':self.target,'context':self.quality_context,'timestamp':time.time(),'failed':bool(self.error),'metrics':metrics}])[-64:];self.save()
+   if self.outgoing and self.phase in ('finding','calling') and not self.error:
+    self.error='The Reticulum call ended before audio connected.'
    self.outgoing=False;self.connected_at=0.
    self.generation+=1;self.phase='idle';self.peer='';self.target='';self.call_id='';self.muted=False;self._gate(False)
    self.pcm.clear()
@@ -162,7 +185,7 @@ class FamilyVoice:
    if not address:raise ValueError('This contact has no approved Reticulum voice address')
    if not self.state.get('voiceEnabled') or not self.phone:raise ValueError(self.error or 'Enable Reticulum calling in guardian settings')
    if self.phase!='idle' or self._dialling or self.phone.active_call:raise ValueError('A Reticulum call is already active')
-   if not self._gate(True):raise ValueError('A SIP call is active')
+   if not self._gate(True):raise ValueError('Another call is active or Family is in the background')
    self.outgoing=True;self.connected_at=0.;self.quality_context=self.route_context(address)
    self.generation+=1;generation=self.generation;self.phase='finding';self._dialling=True;self.target=address;self.call_id=uuid.uuid4().hex;self.name=contact['name'];self.error='';self.sent=0;self.received=0
   def dial():
@@ -216,7 +239,10 @@ class FamilyVoice:
    if call_id!=self.call_id or self.phase!='connected' or not self.allowed(bytes.fromhex(self.peer)) or self.muted or not self.input:return
    data=bytes(data)
    if not data or len(data)>11520 or len(data)%2:return
-   self.sent+=self.input.push(data)
+   try:self.sent+=self.input.push(data)
+   except Exception as exc:
+    self.error=f'Reticulum microphone audio failed: {exc}'[:200]
+    self.hangup(call_id)
  def pull(self,call_id):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.peer or not self.allowed(bytes.fromhex(self.peer)):return b''

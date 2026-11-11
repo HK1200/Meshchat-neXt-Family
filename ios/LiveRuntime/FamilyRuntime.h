@@ -15,7 +15,7 @@ bool family_runtime_start(const char *python_home, const char *modules, const ch
 /* Returns owned UTF-8 JSON, or NULL on a bridge failure. Free with free(). */
 char *family_runtime_request(const char *json);
 
-/* Push and pull bounded 48 kHz signed 16-bit mono PCM for the current call. */
+/* Exchange bounded 48 kHz signed 16-bit mono PCM. Pass zero capacity to push only. */
 size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
                                      size_t input_size, uint8_t *output, size_t capacity);
 

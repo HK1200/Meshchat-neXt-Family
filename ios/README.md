@@ -64,7 +64,7 @@ Open **Guardian settings → Approved rooms** to add a Relay Chat hub and channe
 
 ## Foreground Reticulum calling
 
-Enable **Reticulum calling** in Guardian settings. Add the contact’s 32-character Reticulum voice address in their approval, import it from a Family contact card, or look it up from a known LXMF identity in the contact editor. Calls use LXST and the shared Family microphone processing. The call screen has Answer, Decline, Mute, and Speaker controls. Family reconciles call state when a peer hangs up.
+Enable **Reticulum calling** in Guardian settings. Add the contact’s 32-character Reticulum voice address in their approval, import it from a Family contact card, or look it up from a known LXMF identity in the contact editor. Calls use LXST and the shared Family microphone processing. The call screen has Answer, Decline, and Mute controls. iPad uses its speaker by default and follows the system headset route when a headset is connected. iPhone also has a Speaker control. Family reconciles call state when a peer hangs up.
 
 Calls require Family to remain open. Signed-device testing is needed for microphone routing, loudspeaker levels, and actual call quality. Lock-screen and background calls need a separate CallKit and push integration.
 

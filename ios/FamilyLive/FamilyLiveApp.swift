@@ -1,7 +1,9 @@
 import AVFoundation
+import Combine
 import CoreLocation
 import BackgroundTasks
 import Network
+import OSLog
 import SwiftUI
 import UIKit
 
@@ -15,6 +17,14 @@ struct FamilyLiveApp: App {
     var body: some Scene {
         WindowGroup {
             FamilyHome(family: family)
+                .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)
+                    .receive(on: RunLoop.main)) { notification in
+                    let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                    let reason = rawReason.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
+                    if reason == .newDeviceAvailable || reason == .oldDeviceUnavailable {
+                        family.reconnectVoiceAudio()
+                    }
+                }
                 .task(id: scenePhase) {
                     family.notifications = notifications
                     notifications.openMessage = { [weak family = family] contactID, messageID in
@@ -75,6 +85,10 @@ final class FamilyModel: ObservableObject {
 
     private let client = FamilyClient()
     private let voiceAudio = FamilyVoiceAudio()
+    private let voiceLogger = Logger(subsystem: "org.meshchat.family", category: "Reticulum call")
+    @Published private(set) var voiceError = ""
+    private var failingAudioCallID: String?
+    private var lastVoiceCallID: String?
     private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?
@@ -101,7 +115,7 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
-            reconcileVoiceAudio(updated.voice)
+            updateVoice(updated.voice)
             resolveNotification()
             if notificationsAllowed {
                 await notifications?.publish(updated.messages ?? [:])
@@ -130,6 +144,7 @@ final class FamilyModel: ObservableObject {
 
     func call(_ contact: FamilyContact) async {
         guard await microphoneAllowed() else { return }
+        voiceError = ""
         _ = await perform("voice_call", ["contactId": contact.id])
     }
 
@@ -146,10 +161,17 @@ final class FamilyModel: ObservableObject {
         _ = await perform("voice_hangup", ["callId": id])
     }
 
+    func reconnectVoiceAudio() {
+        guard voiceAudio.callID != nil else { return }
+        voiceAudio.stop()
+        reconcileVoiceAudio(state?.voice)
+    }
+
     func toggleSpeaker() {
         do {
+            guard voiceAudio.callID != nil else { return }
             try voiceAudio.setSpeaker(!speakerOn)
-            speakerOn.toggle()
+            speakerOn = voiceAudio.usingBuiltInSpeaker
         } catch { self.error = error.localizedDescription }
     }
 
@@ -161,6 +183,18 @@ final class FamilyModel: ObservableObject {
         return allowed
     }
 
+    private func updateVoice(_ voice: FamilyVoiceState?) {
+        if let id = voice?.call_id, !id.isEmpty, id != lastVoiceCallID {
+            lastVoiceCallID = id
+            voiceError = ""
+        }
+        if let failure = voice?.error, !failure.isEmpty, failure != voiceError {
+            voiceError = failure
+            voiceLogger.error("Reticulum call failed: \(failure, privacy: .private)")
+        }
+        reconcileVoiceAudio(voice)
+    }
+
     private func reconcileVoiceAudio(_ voice: FamilyVoiceState?) {
         guard UIApplication.shared.applicationState == .active,
               let voice, voice.call_state == "connected", let id = voice.call_id, !id.isEmpty else {
@@ -170,9 +204,14 @@ final class FamilyModel: ObservableObject {
             }
             return
         }
-        do { try voiceAudio.start(callID: id) }
-        catch {
-            self.error = error.localizedDescription
+        guard voiceAudio.callID != id, failingAudioCallID != id else { return }
+        do {
+            try voiceAudio.start(callID: id)
+            speakerOn = voiceAudio.usingBuiltInSpeaker
+        } catch {
+            failingAudioCallID = id
+            voiceError = "Call audio could not start. \(error.localizedDescription)"
+            voiceLogger.error("Native call audio failed: \(error.localizedDescription, privacy: .private)")
             Task { _ = try? await request("voice_hangup", ["callId": id]) }
         }
     }
@@ -318,7 +357,7 @@ final class FamilyModel: ObservableObject {
             let reply = try await request(action, payload)
             if reply.setupComplete != nil {
                 state = reply
-                reconcileVoiceAudio(reply.voice)
+                updateVoice(reply.voice)
             }
             self.error = ""
             return true
@@ -575,6 +614,7 @@ struct FamilyHome: View {
     @State private var password = ""
     @State private var confirmation = ""
     @State private var showGuardian = false
+    @State private var guardianDismissingForCall = false
     @State private var notificationContact: FamilyContact?
     @State private var showNotificationChat = false
     @AppStorage("next-family-appearance") private var appearance = ""
@@ -653,6 +693,7 @@ struct FamilyHome: View {
                     ProgressView("Starting Family")
                 }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+                if !family.voiceError.isEmpty { Text(family.voiceError).foregroundStyle(.red) }
             }
             .navigationTitle(family.state?.deviceName ?? "neXt Family")
             .preferredColorScheme(appearance.isEmpty ? nil : appearance == "night" ? .dark : .light)
@@ -684,13 +725,23 @@ struct FamilyHome: View {
                 notificationContact = contact
                 showNotificationChat = true
             }
+            .onChange(of: family.state?.voice?.active) {
+                if family.state?.voice?.active == true && showGuardian {
+                    guardianDismissingForCall = true
+                    showGuardian = false
+                }
+            }
             .fullScreenCover(isPresented: Binding(
-                get: { family.state?.voice?.active == true }, set: { _ in }
+                get: { family.state?.voice?.active == true && !showGuardian && !guardianDismissingForCall },
+                set: { _ in }
             )) {
                 FamilyVoiceCall(family: family)
                     .interactiveDismissDisabled()
             }
-            .sheet(isPresented: $showGuardian, onDismiss: { Task { await family.lock() } }) {
+            .sheet(isPresented: $showGuardian, onDismiss: {
+                guardianDismissingForCall = false
+                Task { await family.lock() }
+            }) {
                 FamilyGuardian(family: family)
             }
         }
