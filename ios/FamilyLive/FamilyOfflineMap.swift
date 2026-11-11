@@ -84,9 +84,12 @@ struct FamilyOfflineMap: UIViewRepresentable {
         let overlay = OfflineTileOverlay(family: family, layer: layer, pack: pack)
         map.addOverlay(overlay, level: .aboveLabels)
         let first = (family.state?.contacts ?? []).compactMap { family.state?.location?.locations[String($0.id)] }.first
-        let center = CLLocationCoordinate2D(latitude: first?.latitude ?? pack?.center?.lat ?? 47.5,
-                                            longitude: first?.longitude ?? pack?.center?.lon ?? -122)
-        map.setRegion(MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 3, longitudeDelta: 3)), animated: false)
+        let center = CLLocationCoordinate2D(latitude: pack?.center?.lat ?? first?.latitude ?? 47.5,
+                                            longitude: pack?.center?.lon ?? first?.longitude ?? -122)
+        let initialZoom = min(max(9, overlay.minimumZ), overlay.maximumZ)
+        let degrees = min(120, 720 / pow(2, Double(initialZoom)))
+        let span = MKCoordinateSpan(latitudeDelta: degrees / 2, longitudeDelta: degrees)
+        map.setRegion(MKCoordinateRegion(center: center, span: span), animated: false)
         return map
     }
 

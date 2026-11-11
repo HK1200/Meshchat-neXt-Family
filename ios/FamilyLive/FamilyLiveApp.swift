@@ -578,6 +578,18 @@ struct FamilyHome: View {
                         }
                     }
                 } else if let state = family.state {
+                    Section("Approved contacts") {
+                        ForEach(state.contacts ?? []) { contact in
+                            NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
+                        }
+                    }
+                    if let rooms = state.rooms, !rooms.isEmpty {
+                        Section("Approved rooms") {
+                            ForEach(rooms) { room in
+                                NavigationLink(room.name) { FamilyRoomChat(family: family, room: room) }
+                            }
+                        }
+                    }
                     Section("Connection") {
                         Text(state.tcpOnline == true ? "Reticulum TCP connected" : "Reticulum TCP offline")
                         if state.rnode?.enabled == true, let radio = state.rnodeRuntime {
@@ -602,18 +614,6 @@ struct FamilyHome: View {
                         }
                         if let address = state.address, !address.isEmpty {
                             Text(address).font(.caption.monospaced()).textSelection(.enabled)
-                        }
-                    }
-                    Section("Approved contacts") {
-                        ForEach(state.contacts ?? []) { contact in
-                            NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
-                        }
-                    }
-                    if let rooms = state.rooms, !rooms.isEmpty {
-                        Section("Approved rooms") {
-                            ForEach(rooms) { room in
-                                NavigationLink(room.name) { FamilyRoomChat(family: family, room: room) }
-                            }
                         }
                     }
                     if state.location?.mapEnabled == true {
