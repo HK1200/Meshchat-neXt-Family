@@ -33,7 +33,7 @@ _room_names=None
 _location_outbound={}
 _error='Starting Reticulum'
 _connecting=False
-_connect_pending=False
+_connect_pending=None
 _auth_failures=[]
 _sessions={}
 _outbound={}
@@ -57,13 +57,18 @@ def initialize(folder):
         _root=Path(folder);_root.mkdir(parents=True,exist_ok=True)
         p=_root/'state.json'
         existing=p.exists()
-        _state=json.loads(p.read_text()) if existing else {'contacts':[],'messages':[],'peer':{'host':'rmap.world','port':4242,'enabled':False}}
+        _state=json.loads(p.read_text()) if existing else {'contacts':[],'messages':[],'peer':{'host':'rmap.world','port':4343,'enabled':False}}
+        migrate_tcp = 'tcpPeers' not in _state
+        if migrate_tcp:
+            _set_tcp_peers(_legacy_tcp_peers(_state['peer']))
         _state.setdefault('setup_complete',existing)
         _state.setdefault('device_name',DEFAULT_DEVICE_NAME)
         _state.setdefault('preferences',{'announceEnabled':False,'searchEnabled':False,'roomAnnounceEnabled':False})
         if 'password_salt' not in _state:
             _state['password_salt']=secrets.token_hex(16)
             _state['password_hash']='' if not existing else _password(secrets.token_urlsafe(32))
+            _save()
+        elif migrate_tcp:
             _save()
     from family_room_names import RoomNames
     _room_names=RoomNames(_state,_lock,_save)
@@ -195,57 +200,82 @@ def _tcp_interfaces():
 def _online_tcp():
     return next((interface for interface in _tcp_interfaces() if interface.online), None)
 
-def _rmap_endpoint(host, port):
-    return bool(host and host.lower().rstrip('.') == 'rmap.world' and port in (4242, 4343))
+DEFAULT_TCP_PEERS = (
+    ('rmap.world', 4343),
+    ('rmap.world', 4242),
+    ('reticulum.washmesh.net', 7242),
+    ('rns.chimesh.org', 4242),
+)
 
-def _tcp_endpoints(peer):
+
+def _tcp_key(host, port):
+    return host.lower().rstrip('.'), port
+
+
+def _legacy_tcp_peers(peer):
     primary = (peer['host'], peer['port'])
+    uses_default = _tcp_key(*primary) in DEFAULT_TCP_PEERS[:2]
+    endpoints = list(DEFAULT_TCP_PEERS) if uses_default else [primary]
     backup = (peer.get('backupHost'), peer.get('backupPort'))
-    endpoints = [primary]
-    if _rmap_endpoint(*primary):
-        endpoints.extend([('reticulum.washmesh.net', 7242), ('rns.chimesh.org', 4242)])
-        if _rmap_endpoint(*backup):
-            return endpoints
-    if backup[0] and all(
-        (backup[0].lower().rstrip('.'), backup[1]) != (host.lower().rstrip('.'), port)
-        for host, port in endpoints
-    ):
+    if backup[0] and _tcp_key(*backup) not in {_tcp_key(*endpoint) for endpoint in endpoints}:
         endpoints.append(backup)
-    return endpoints
+    saved = {_tcp_key(*endpoint) for endpoint in endpoints}
+    rows = [(host, port, bool(peer['enabled'])) for host, port in endpoints]
+    if not uses_default:
+        rows.extend((host, port, False) for host, port in DEFAULT_TCP_PEERS if (host, port) not in saved)
+    return [
+        {'id': str(index), 'host': host, 'port': port, 'enabled': enabled}
+        for index, (host, port, enabled) in enumerate(rows)
+    ]
 
-def _tcp_connection_status(peer):
-    running = {(interface.target_ip.lower(), interface.target_port): interface
+
+def _configured_tcp_peers():
+    if 'tcpPeers' in _state:
+        return _state['tcpPeers']
+    return _legacy_tcp_peers(_state['peer'])
+
+
+def _set_tcp_peers(peers):
+    _state['tcpPeers'] = peers
+    # The Android boot receiver reads this summary directly from state.json.
+    _state['peer'] = {'host': peers[0]['host'], 'port': peers[0]['port'],
+                      'enabled': any(peer['enabled'] for peer in peers)}
+
+
+def _tcp_connection_status(peers):
+    running = {_tcp_key(interface.target_ip, interface.target_port): interface
                for interface in _tcp_interfaces()}
     rows = []
-    for host, port in _tcp_endpoints(peer):
-        interface = running.get((host.lower(), port))
-        rows.append({'host': host, 'port': port, 'online': bool(peer['enabled'] and interface and interface.online)})
+    for peer in peers:
+        interface = running.get(_tcp_key(peer['host'], peer['port']))
+        rows.append(dict(peer, online=bool(peer['enabled'] and interface and interface.online)))
     return rows
 
-def _connect():
+
+def _connect(*, reconnect=False):
     global _peer,_backup_peers,_error,_connecting,_connect_pending
     with _lock:
         if _connecting:
-            _connect_pending=True;return
+            _connect_pending=bool(_connect_pending or reconnect)
+            return
         _connecting=True
     try:
         if not _rns:return
         import RNS
         from family_tcp import FamilyTCPInterface
         with _lock:
-            peer = dict(_state['peer'])
-        endpoints = _tcp_endpoints(peer) if peer['enabled'] else []
-        requested = {(host.lower(), port) for host, port in endpoints}
+            endpoints = [(peer['host'], peer['port']) for peer in _configured_tcp_peers() if peer['enabled']]
+        requested = {_tcp_key(host, port) for host, port in endpoints}
         retained = {}
         for previous in _tcp_interfaces():
-            endpoint = (previous.target_ip.lower(), previous.target_port)
-            if endpoint in requested and not previous.detached:
+            endpoint = _tcp_key(previous.target_ip, previous.target_port)
+            if not reconnect and endpoint in requested and not previous.detached:
                 retained[endpoint] = previous
                 continue
             if _rooms:_rooms.retire_interface(previous)
             previous.detach()
             if previous in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(previous)
-        existing = [retained.get((host.lower(), port)) for host, port in endpoints]
+        existing = [retained.get(_tcp_key(host, port)) for host, port in endpoints]
         _peer = existing[0] if existing else None
         _backup_peers = tuple(interface for interface in existing[1:] if interface is not None)
         _announce_available_routes()
@@ -272,8 +302,9 @@ def _connect():
         with _lock:
             _connecting=False
             pending=_connect_pending
-            _connect_pending=False
-        if pending:threading.Thread(target=_connect,daemon=True).start()
+            _connect_pending=None
+        if pending is not None:
+            threading.Thread(target=_connect,kwargs={"reconnect":pending},daemon=True).start()
 
 def _online():
     return bool(_online_tcp() or (_radio and _radio.snapshot()['online']))
@@ -714,12 +745,7 @@ def _snapshot():
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
         result['tcpOnline']=bool(_online_tcp())
-        visible_peer = result['peer']
-        if _rmap_endpoint(visible_peer['host'], visible_peer['port']) and _rmap_endpoint(
-            visible_peer.get('backupHost'), visible_peer.get('backupPort')
-        ):
-            visible_peer.update(backupHost='', backupPort=4242)
-        result['tcpConnections'] = _tcp_connection_status(visible_peer)
+        result['tcpConnections'] = _tcp_connection_status(_configured_tcp_peers())
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
         result['meshcore']=_meshcore.snapshot() if _meshcore else {}
         if _meshcore:result['announces']+=result['meshcore']['clientAnnounces']
@@ -754,7 +780,7 @@ def request(raw):
                 if not isinstance(password,str) or not 8<=len(password)<=128:raise ValueError('Use a password of 8–128 characters.')
                 if password!=confirmation:raise ValueError('The passwords do not match.')
                 if type(enabled) is not bool:raise ValueError('Choose whether to enable Reticulum TCP.')
-                _state['password_salt']=secrets.token_hex(16);_state['password_hash']=_password(password);_state['password_changed']=True;_state['setup_complete']=True;_state['peer']['enabled']=enabled;_save()
+                _state['password_salt']=secrets.token_hex(16);_state['password_hash']=_password(password);_state['password_changed']=True;_state['setup_complete']=True;_set_tcp_peers([dict(peer, enabled=enabled) for peer in _configured_tcp_peers()]);_save()
             threading.Thread(target=_start,daemon=True).start()
             return json.dumps({'ok':True,**_snapshot()})
         if action=='radio_batteries':
@@ -970,20 +996,38 @@ def request(raw):
                 _save()
                 if _router:_router.delivery_per_transfer_limit=limit/1000
         elif action=='peer':
-            _authorized(p);host=str(p.get('host','')).strip();port=int(p.get('port',0))
-            if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
+            _authorized(p)
+            host = str(p.get('host', '')).strip()
+            port = p.get('port')
+            enabled = p.get('enabled')
+            if (not re.fullmatch('[A-Za-z0-9.-]{1,253}', host)
+                    or not host.strip('.') or '..' in host
+                    or type(port) is not int or not 1 <= port <= 65535):
+                raise ValueError('Invalid TCP host or port')
+            if type(enabled) is not bool:
+                raise ValueError('Choose whether to enable this TCP peer')
             with _lock:
-                backup_host = str(p.get('backupHost', _state['peer'].get('backupHost', ''))).strip()
-                backup_port = int(p.get('backupPort', 4242)) if backup_host and 'backupHost' in p else _state['peer'].get('backupPort', 4242)
-                if backup_host and (not re.fullmatch('[A-Za-z0-9.-]{1,253}', backup_host) or not 1<=backup_port<=65535):
-                    raise ValueError('Invalid backup TCP host or port')
-                if _rmap_endpoint(host, port) and _rmap_endpoint(backup_host, backup_port):
-                    backup_host, backup_port = '', 4242
-                if backup_host.lower() == host.lower() and backup_port == port:
-                    raise ValueError('Choose a different backup TCP host or port')
-                _state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True)),
-                                'backupHost':backup_host,'backupPort':backup_port}
-                _save()
+                previous_peers = _configured_tcp_peers()
+                peers = list(previous_peers)
+                peer_id = p.get('id')
+                index = next((i for i, peer in enumerate(peers) if peer['id'] == peer_id), None)
+                if peer_id is not None and index is None:
+                    raise ValueError('This TCP peer no longer exists')
+                if any(i != index and _tcp_key(peer['host'], peer['port']) == _tcp_key(host, port)
+                       for i, peer in enumerate(peers)):
+                    raise ValueError('This TCP host and port are already saved')
+                row = {'id': peer_id if peer_id is not None else secrets.token_hex(8),
+                       'host': host, 'port': port, 'enabled': enabled}
+                if index is None:
+                    peers.append(row)
+                else:
+                    peers[index] = row
+                _set_tcp_peers(peers)
+                try:
+                    _save()
+                except OSError:
+                    _set_tcp_peers(previous_peers)
+                    raise
             threading.Thread(target=_connect,daemon=True).start()
         elif action=='voice_resolve':
             _authorized(p)
@@ -1115,4 +1159,4 @@ def set_network_context(context):
         if not context.partition(':')[0].isdigit() or context==_tcp_network_context:return
         reconnect=bool(_tcp_network_context and _state and _state['peer'].get('enabled') and _rns)
         _tcp_network_context=context
-    if reconnect:threading.Thread(target=_connect,daemon=True).start()
+    if reconnect:threading.Thread(target=_connect,kwargs={"reconnect":True},daemon=True).start()
