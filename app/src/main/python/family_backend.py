@@ -225,19 +225,25 @@ def _rmap_endpoint(host, port):
 def _tcp_endpoints(peer):
     primary = (peer['host'], peer['port'])
     backup = (peer.get('backupHost'), peer.get('backupPort'))
-    if _rmap_endpoint(*primary) and (not backup[0] or _rmap_endpoint(*backup)):
-        return [primary, ('reticulum.washmesh.net', 7242), ('rns.chimesh.org', 4242)]
-    return [primary, backup] if backup[0] and (backup[0].lower(), backup[1]) != (primary[0].lower(), primary[1]) else [primary]
+    endpoints = [primary]
+    if _rmap_endpoint(*primary):
+        endpoints.extend([('reticulum.washmesh.net', 7242), ('rns.chimesh.org', 4242)])
+        if _rmap_endpoint(*backup):
+            return endpoints
+    if backup[0] and all(
+        (backup[0].lower().rstrip('.'), backup[1]) != (host.lower().rstrip('.'), port)
+        for host, port in endpoints
+    ):
+        endpoints.append(backup)
+    return endpoints
 
 def _tcp_connection_status(peer):
-    if not peer['enabled']:
-        return []
     running = {(interface.target_ip.lower(), interface.target_port): interface
                for interface in _tcp_interfaces()}
     rows = []
     for host, port in _tcp_endpoints(peer):
         interface = running.get((host.lower(), port))
-        rows.append({'host': host, 'port': port, 'online': bool(interface and interface.online)})
+        rows.append({'host': host, 'port': port, 'online': bool(peer['enabled'] and interface and interface.online)})
     return rows
 
 def _connect():

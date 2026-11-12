@@ -810,9 +810,9 @@ struct FamilyGuardian: View {
                             peerEnabled.toggle()
                         }
                         .accessibilityIdentifier("peer-enabled")
-                        TextField("Host", text: $host).textInputAutocapitalization(.never)
+                        TextField("Primary hostname", text: $host).textInputAutocapitalization(.never)
                             .accessibilityIdentifier("peer-host")
-                        TextField("Port", text: $port).keyboardType(.numberPad)
+                        TextField("Primary port", text: $port).keyboardType(.numberPad)
                             .accessibilityIdentifier("peer-port")
                         Button("Save peer") {
                             Task {
@@ -824,11 +824,11 @@ struct FamilyGuardian: View {
                             Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
                         }
                         ForEach(family.state?.tcpConnections ?? [], id: \.endpoint) { connection in
-                            LabeledContent(connection.endpoint, value: connection.online ? "Connected" : "Offline")
+                            LabeledContent(connection.endpoint, value: family.state?.peer?.enabled == true ? (connection.online ? "Connected" : "Offline") : "Disabled")
                         }
-                        TextField("Backup hostname (optional)", text: $backupHost).textInputAutocapitalization(.never)
-                        TextField("Backup port", text: $backupPort).keyboardType(.numberPad)
-                        Text("With the RMAP preset, a blank backup hostname uses WashMesh and Chicagoland Mesh. Enter a hostname to use your own backup.")
+                        TextField("Additional hostname (optional)", text: $backupHost).textInputAutocapitalization(.never)
+                        TextField("Additional port", text: $backupPort).keyboardType(.numberPad)
+                        Text("RMAP ports 4242 and 4343 include WashMesh and Chicagoland Mesh. An additional peer stays alongside them.")
                             .font(.footnote)
                     }
                     if family.state?.voiceSupported == true {
@@ -910,7 +910,7 @@ struct FamilyGuardian: View {
             port = String(peer.port)
             peerEnabled = peer.enabled
             backupHost = peer.backupHost ?? ""
-            backupPort = String(peer.backupPort ?? 4242)
+            backupPort = backupHost.isEmpty ? "" : String(peer.backupPort ?? 4242)
         }
         mailboxAddress = family.state?.mailbox?.address ?? ""
         #if DEBUG
