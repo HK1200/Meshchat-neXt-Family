@@ -2,6 +2,9 @@
 
 - Show **My contact QR** under **Guardian settings → Contacts**. Scan it on another device to review and approve the Family member's public contact details.
 - Send local or flood MeshCore adverts from the companion settings.
+- Review Android permissions during setup or under **Guardian settings → Security → Permission checkup**.
+- Enable full-screen incoming call alerts to answer or decline approved SIP and Reticulum calls from the Android lock screen. Android's lock-screen notification settings also control when message alerts appear.
+- The Android status bar follows Family’s day and night mode.
 - The one-time guardian transfer remains available in v0.6.21.
 
 ---
