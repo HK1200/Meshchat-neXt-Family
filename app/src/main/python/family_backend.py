@@ -758,6 +758,9 @@ def request(raw):
             elif action=='meshcore_scan':_meshcore.scan()
             elif action=='meshcore_advert':_meshcore.send_advert(p.get('flood'))
             else:_meshcore.refresh_contacts()
+        elif action=='authorize_permissions':
+            if _state.get('setup_complete'):_authorized(p)
+            return json.dumps({'ok':True})
         elif action=='authorize_map_import':
             _authorized(p)
             return json.dumps({'ok':True})

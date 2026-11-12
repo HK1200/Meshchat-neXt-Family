@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private PermissionRequest cameraRequest;
     private volatile String cameraToken="";
     private volatile boolean ownedPermission;
+    private final PermissionCheckup permissionCheckup = new PermissionCheckup(this);
     private boolean ownedDocument;
     private volatile String mapImportStatus="{\"busy\":false}";
     private final java.util.concurrent.ExecutorService lifecycle=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -239,7 +240,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public String mapDownloadStatus() { return activity.mapDownload.status(); }
         @JavascriptInterface public String mapImportStatus(){return activity.mapImportStatus;}
-        @JavascriptInterface public boolean guardianDialogOpen(){return activity.mapImportToken!=null||activity.ownedPermission||activity.fileCallback!=null;}
+        @JavascriptInterface public boolean guardianDialogOpen(){return activity.mapImportToken!=null||activity.ownedPermission||activity.permissionCheckup.isRequestInFlight()||activity.fileCallback!=null;}
         @JavascriptInterface public String tileSource(int z,int x,int y){try{return backend.callAttr("map_source",z,x,y).toString();}catch(Exception e){return "";}}
         @JavascriptInterface public boolean locationPermissionGranted(){return activity.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
         @JavascriptInterface public void requestLocation(String token){try{org.json.JSONObject payload=new org.json.JSONObject().put("token",token);boolean allowed=new org.json.JSONObject(backend.callAttr("request",new org.json.JSONObject().put("action","authorize_location").put("payload",payload).toString()).toString()).optBoolean("ok");if(allowed)activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},14);});}catch(Exception ignored){}}
@@ -254,6 +255,17 @@ public class MainActivity extends Activity {
         @JavascriptInterface public int notificationRoom(){return activity.getIntent().getIntExtra("roomId",0);}
         @JavascriptInterface public int notificationContact(){return activity.getIntent().getIntExtra("contactId",0);}
         @JavascriptInterface public boolean notificationsEnabled(){return android.os.Build.VERSION.SDK_INT<33||activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
+        @JavascriptInterface public void showPermissionCheckup(String token) {
+            try {
+                org.json.JSONObject payload = new org.json.JSONObject().put("token", token);
+                org.json.JSONObject request = new org.json.JSONObject().put("action", "authorize_permissions").put("payload", payload);
+                if (new org.json.JSONObject(backend.callAttr("request", request.toString()).toString()).optBoolean("ok")) {
+                    activity.runOnUiThread(activity.permissionCheckup::show);
+                }
+            } catch (Exception error) {
+                android.util.Log.w("FamilyPermissions", "Could not open permission checkup", error);
+            }
+        }
         @JavascriptInterface public void requestNotifications(){activity.runOnUiThread(()->{if(android.os.Build.VERSION.SDK_INT>=33)activity.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},11);});}
         @JavascriptInterface public String request(String request){
             try{org.json.JSONObject input=new org.json.JSONObject(request);String action=input.optString("action");
@@ -343,7 +355,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause(){
         super.onPause();
         if (!ownedPermission && mapDownload != null) mapDownload.cancelLocation();
-        final boolean lockGuardian=fileCallback==null&&!ownedPermission&&!ownedDocument;
+        final boolean lockGuardian=fileCallback==null&&!ownedPermission&&!ownedDocument&&!permissionCheckup.isRequestInFlight();
         guardianPaused=guardianPaused||lockGuardian;
         if(runtime!=null)lifecycle.execute(()->{try{runtime.callAttr("background",lockGuardian);}catch(Exception ignored){}});
         if(lockGuardian&&web!=null)web.evaluateJavascript("window.dispatchEvent(new Event('family-native-background'))",null);
@@ -468,6 +480,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if(permissionCheckup.onResult(requestCode))return;
         if (requestCode == SAVE_MESSAGE_ATTACHMENT) {
             ownedDocument = false;
             String message = attachmentMessage;
@@ -499,6 +512,7 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(permissionCheckup.onResult(requestCode))return;
         if (requestCode == MAP_LOCATION_PERMISSION) {
             ownedPermission = false;
             if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -514,5 +528,5 @@ public class MainActivity extends Activity {
         if(requestCode==11&&grantResults.length>0&&grantResults[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&web!=null)web.evaluateJavascript("document.getElementById('notification-permission')?.remove();document.getElementById('home-notifications')?.remove()",null);
     }
     @Override public void onBackPressed(){web.evaluateJavascript("(()=>{const gate=document.getElementById('gate');if(gate.open){gate.close();return true;}const back=document.querySelector('#map-back,#offline-back,#connection-back,#back,#discovery-back,#done');if(back){back.click();return true;}return false;})()",result->{if("false".equals(result))moveTaskToBack(true);});}
-    @Override protected void onDestroy(){if(cameraRequest!=null){cameraRequest.deny();cameraRequest=null;}if(fileCallback!=null){fileCallback.onReceiveValue(null);fileCallback=null;}if(web!=null){web.loadUrl("about:blank");web.destroy();web=null;}statusWorker.shutdown();lifecycle.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){permissionCheckup.finish();if(cameraRequest!=null){cameraRequest.deny();cameraRequest=null;}if(fileCallback!=null){fileCallback.onReceiveValue(null);fileCallback=null;}if(web!=null){web.loadUrl("about:blank");web.destroy();web=null;}statusWorker.shutdown();lifecycle.shutdown();super.onDestroy();}
 }
