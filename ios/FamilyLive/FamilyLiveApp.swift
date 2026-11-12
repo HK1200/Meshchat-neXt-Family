@@ -828,7 +828,7 @@ struct FamilyGuardian: View {
                         }
                         TextField("Backup hostname (optional)", text: $backupHost).textInputAutocapitalization(.never)
                         TextField("Backup port", text: $backupPort).keyboardType(.numberPad)
-                        Text("RMAP uses its other port automatically when the backup hostname is blank.")
+                        Text("With the RMAP preset, a blank backup hostname uses WashMesh and Chicagoland Mesh. Enter a hostname to use your own backup.")
                             .font(.footnote)
                     }
                     if family.state?.voiceSupported == true {

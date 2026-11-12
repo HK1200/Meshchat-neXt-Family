@@ -33,7 +33,7 @@ _rooms=None
 _room_error=''
 _destination=None
 _peer=None
-_backup_peer=None
+_backup_peers=()
 _tcp_generation=0
 _radio=None
 _locations=None
@@ -215,7 +215,7 @@ def _start():
         import traceback;traceback.print_exc()
 
 def _tcp_interfaces():
-    return tuple(interface for interface in (_peer, _backup_peer) if interface is not None)
+    return tuple(interface for interface in (_peer, *_backup_peers) if interface is not None)
 
 def _online_tcp():
     return next((interface for interface in _tcp_interfaces() if interface.online), None)
@@ -224,11 +224,11 @@ def _tcp_endpoints(peer):
     primary = (peer['host'], peer['port'])
     backup = (peer.get('backupHost'), peer.get('backupPort'))
     if not backup[0] and primary[0].lower() == 'rmap.world' and primary[1] in (4242, 4343):
-        backup = (primary[0], 4343 if primary[1] == 4242 else 4242)
+        return [primary, ('reticulum.washmesh.net', 7242), ('rns.chimesh.org', 4242)]
     return [primary, backup] if backup[0] and backup != primary else [primary]
 
 def _connect():
-    global _peer,_backup_peer,_error,_connecting,_connect_pending,_tcp_generation
+    global _peer,_backup_peers,_error,_connecting,_connect_pending,_tcp_generation
     with _lock:
         if _connecting:
             _connect_pending=True;return
@@ -247,7 +247,8 @@ def _connect():
                             link.teardown()
             previous.detach()
             if previous in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(previous)
-        _peer = _backup_peer = None
+        _peer = None
+        _backup_peers = ()
         _announce_available_routes()
         with _lock:peer=dict(_state['peer'])
         if peer['enabled']:
@@ -256,7 +257,7 @@ def _connect():
             for index, (host, port) in enumerate(_tcp_endpoints(peer)):
                 try:
                     interface = FamilyTCPInterface(RNS.Transport, {
-                        'name': 'Family TCP' if index == 0 else 'Family TCP backup',
+                        'name': 'Family TCP' if index == 0 else f'Family TCP backup {index}',
                         'target_host': host, 'target_port': port, 'connect_timeout': 8,
                     })
                     _rns._add_interface(interface)
@@ -266,7 +267,7 @@ def _connect():
                 if index == 0:
                     _peer = interface
                 else:
-                    _backup_peer = interface
+                    _backup_peers += (interface,)
                 _announce_available_routes()
             _error = errors[0] if errors and not _tcp_interfaces() else ''
     except Exception as e:_error=str(e)
