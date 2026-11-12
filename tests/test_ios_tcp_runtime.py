@@ -110,7 +110,31 @@ def run_family(folder, pipe):
     try:
         while True:
             action, payload = pipe.recv()
-            if voice_enabled and action == "test_voice_pcm":
+            if voice_enabled and action == "test_drop_first_voice_path_request":
+                import RNS
+
+                target = bytes.fromhex(payload["address"])
+                has_path, request_path = RNS.Transport.has_path, RNS.Transport.request_path
+
+                def defer_target(address, *args, **kwargs):
+                    return address != target and has_path(address, *args, **kwargs)
+
+                first_dropped = False
+
+                def drop_first(address, *args, **kwargs):
+                    nonlocal first_dropped
+                    if address == target:
+                        if not first_dropped:
+                            first_dropped = True
+                            return
+                        RNS.Transport.request_path = staticmethod(request_path)
+                        RNS.Transport.has_path = staticmethod(has_path)
+                    return request_path(address, *args, **kwargs)
+
+                RNS.Transport.has_path = staticmethod(defer_target)
+                RNS.Transport.request_path = staticmethod(drop_first)
+                pipe.send({"ok": True})
+            elif voice_enabled and action == "test_voice_pcm":
                 call_id = payload["callId"]
                 family_backend.voice_push(call_id, bytes.fromhex(payload["pcm"]))
                 pipe.send({"ok": True, "output": family_backend.voice_pull(call_id).hex()})
@@ -583,6 +607,7 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index)
                 rejected = wait_status(receiver_client, lambda state: state["voice"]["lastIncoming"].startswith("Call rejected"))
                 assert rejected["voice"]["call_state"] == "idle"
                 wait_status(caller_client, lambda state: state["voice"]["call_state"] == "idle")
+        request(caller_client, "test_drop_first_voice_path_request", address=addresses[1-caller_index])
         request(caller_client, "voice_call", contactId=1)
         deadline = time.monotonic() + 35
         history = set()

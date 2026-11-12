@@ -265,13 +265,17 @@ class FamilyVoice:
   def dial():
    try:
     import RNS
-    target=bytes.fromhex(address);deadline=time.monotonic()+30
-    if not RNS.Transport.has_path(target):RNS.Transport.request_path(target)
-    while not RNS.Transport.has_path(target):
+    target=bytes.fromhex(address);deadline=time.monotonic()+30;next_request=0
+    while True:
      if generation!=self.generation:return
-     if time.monotonic()>deadline:raise ValueError('No Reticulum voice path is available')
+     identity=RNS.Identity.recall(target) if RNS.Transport.has_path(target) else None
+     if identity:break
+     now=time.monotonic()
+     if now>=deadline:raise ValueError('No Reticulum voice path is available')
+     if now>=next_request:
+      RNS.Transport.request_path(target)
+      next_request=now+2
      time.sleep(.2)
-    identity=RNS.Identity.recall(target)
     if automatic and self.route_context(address).startswith('radio:'):raise ValueError('Radio path is too slow for this voice profile')
     with self.lock:
      if generation!=self.generation:return
