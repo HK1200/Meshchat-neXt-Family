@@ -1,3 +1,10 @@
+# neXt Family v0.6.25
+
+- Show each configured TCP peer once and keep offline peers visible.
+- Changing between RMAP ports 4242 and 4343 keeps WashMesh and Chicago configured and preserves their live connections.
+
+---
+
 # neXt Family v0.6.24
 
 - The default Reticulum TCP setup keeps connections to RMAP, WashMesh, and Chicago available in parallel.
