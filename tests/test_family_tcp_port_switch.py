@@ -22,7 +22,12 @@ def test_rmap_port_switch_shows_each_configured_endpoint(monkeypatch):
         {"host": "rns.chimesh.org", "port": 4242, "online": False},
     ]
     peer.update(backupHost="private.example", backupPort=9000)
-    assert family._tcp_endpoints(peer) == [("RMAP.world", 4343), ("private.example", 9000)]
+    assert family._tcp_endpoints(peer) == [
+        ("RMAP.world", 4343), ("reticulum.washmesh.net", 7242),
+        ("rns.chimesh.org", 4242), ("private.example", 9000),
+    ]
+    peer.update(backupHost="RNS.CHIMESH.ORG.", backupPort=4242, enabled=False)
+    assert len(family._tcp_connection_status(peer)) == 3
 
 
 def test_changing_primary_reuses_backup_interfaces(monkeypatch):
