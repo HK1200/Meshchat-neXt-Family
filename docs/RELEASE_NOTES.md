@@ -1,3 +1,10 @@
+# neXt Family v0.6.24
+
+- The default Reticulum TCP setup keeps connections to RMAP, WashMesh, and Chicago available in parallel.
+- Existing RMAP profiles without a custom backup pick up the two additional peers automatically. Guardian settings shows each connection’s status and accepts a custom backup.
+
+---
+
 # neXt Family v0.6.23
 
 - Keep MeshCore room posting available when the companion clock is far ahead or unreadable.
