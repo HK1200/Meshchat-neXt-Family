@@ -234,12 +234,6 @@ class FamilyVoice:
   with self.lock:
    if self.phase not in ['calling','incoming'] or not self.call_id or not self.allowed(identity.hash):threading.Thread(target=self.hangup,daemon=True).start();return
    call=getattr(self.phone,'active_call',None)
-   if self.gate is not None and getattr(call,'echo_suppressor',None):
-    # Native playback is buffered after the LXST mixer. Feed the reference
-    # from pull() at that boundary instead of feeding it twice.
-    mixer=getattr(self.phone,'receive_mixer',None)
-    if mixer is not None:
-     mixer.reference_outs=[ref for ref in mixer.reference_outs if ref is not call.echo_suppressor]
    self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(call,'rtt',None);self.name=self._contact(identity.hash)['name']
  def _ended(self,identity=None):
   with self.lock:
@@ -324,13 +318,7 @@ class FamilyVoice:
  def pull(self,call_id):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.peer or not self.allowed(bytes.fromhex(self.peer)):return b''
-   pcm=self.pcm.pull()
-   reference=getattr(getattr(self.phone,'active_call',None),'echo_suppressor',None) if self.gate is not None else None
-  if reference:
-   import numpy as np
-   samples=(np.frombuffer(pcm or bytes(PLAYBACK_CHUNK),dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
-   reference.handle_reference(samples,48000)
-  return pcm
+   return self.pcm.pull()
  def set_muted(self,muted):
   with self.lock:
    self.muted=muted
