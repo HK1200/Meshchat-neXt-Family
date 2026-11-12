@@ -648,6 +648,7 @@ struct FamilyHome: View {
                             .accessibilityIdentifier("setup-password")
                         SecureField("Confirm guardian password", text: $confirmation)
                             .accessibilityIdentifier("setup-confirmation")
+                        NavigationLink("Review device permissions") { FamilyPermissionCheckup() }
                         Button("Create guardian access") {
                             Task {
                                 if await family.perform("setup", [
@@ -783,6 +784,7 @@ struct FamilyGuardian: View {
         NavigationStack {
             Form {
                 if family.unlocked {
+                    NavigationLink("Permission checkup") { FamilyPermissionCheckup() }
                     Section("Approved contacts") {
                         NavigationLink("My contact QR") { FamilyOwnContactQR(family: family) }
                         NavigationLink("Add approved contact") { FamilyContactApproval(family: family) }
