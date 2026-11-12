@@ -15,7 +15,15 @@ def main(folder, public, drop_test=False):
     folder.mkdir()
     config = "[reticulum]\nshare_instance = No\n"
     if public:
-        host, port = "rmap.world", 4242
+        host = "rmap.world"
+        for port in (4242, 4343):
+            try:
+                with socket.create_connection((host, port), timeout=5):
+                    break
+            except OSError as error:
+                print(f"{host}:{port} unavailable: {error}", flush=True)
+        else:
+            raise RuntimeError(f"Neither published RMAP TCP port is reachable on {host}")
         config += (
             "enable_transport = No\n[interfaces]\n[[Public Test Peer]]\n"
             f"type = TCPClientInterface\nenabled = Yes\ntarget_host = {host}\ntarget_port = {port}\n"

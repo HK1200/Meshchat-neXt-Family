@@ -33,6 +33,7 @@ _rooms=None
 _room_error=''
 _destination=None
 _peer=None
+_backup_peer=None
 _tcp_generation=0
 _radio=None
 _locations=None
@@ -213,8 +214,21 @@ def _start():
         _error=str(e)
         import traceback;traceback.print_exc()
 
+def _tcp_interfaces():
+    return tuple(interface for interface in (_peer, _backup_peer) if interface is not None)
+
+def _online_tcp():
+    return next((interface for interface in _tcp_interfaces() if interface.online), None)
+
+def _tcp_endpoints(peer):
+    primary = (peer['host'], peer['port'])
+    backup = (peer.get('backupHost'), peer.get('backupPort'))
+    if not backup[0] and primary[0].lower() == 'rmap.world' and primary[1] in (4242, 4343):
+        backup = (primary[0], 4343 if primary[1] == 4242 else 4242)
+    return [primary, backup] if backup[0] and backup != primary else [primary]
+
 def _connect():
-    global _peer,_error,_connecting,_connect_pending,_tcp_generation
+    global _peer,_backup_peer,_error,_connecting,_connect_pending,_tcp_generation
     with _lock:
         if _connecting:
             _connect_pending=True;return
@@ -223,27 +237,38 @@ def _connect():
         if not _rns:return
         import RNS
         from family_tcp import FamilyTCPInterface
-        if _peer:
-            if _rooms:_rooms.retire_interface(_peer)
+        for previous in _tcp_interfaces():
+            if _rooms:_rooms.retire_interface(previous)
             if _router:
                 for cache in (_router.direct_links,_router.backchannel_links):
                     for address,link in cache.copy().items():
-                        if (link.attached_interface is _peer or
-                            (link.status==RNS.Link.PENDING and RNS.Transport.next_hop_interface(address) is _peer)):
+                        if (link.attached_interface is previous or
+                            (link.status==RNS.Link.PENDING and RNS.Transport.next_hop_interface(address) is previous)):
                             link.teardown()
-            _peer.detach()
-            if _peer in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(_peer)
-            _peer=None
-            _announce_available_routes()
+            previous.detach()
+            if previous in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(previous)
+        _peer = _backup_peer = None
+        _announce_available_routes()
         with _lock:peer=dict(_state['peer'])
         if peer['enabled']:
-            interface=FamilyTCPInterface(RNS.Transport,{'name':'Family TCP','target_host':peer['host'],'target_port':peer['port'],'connect_timeout':8})
-            _rns._add_interface(interface)
-            with _lock:
-                _tcp_generation+=1
-                _peer=interface
-            _error=''
-            _announce_available_routes()
+            with _lock:_tcp_generation+=1
+            errors = []
+            for index, (host, port) in enumerate(_tcp_endpoints(peer)):
+                try:
+                    interface = FamilyTCPInterface(RNS.Transport, {
+                        'name': 'Family TCP' if index == 0 else 'Family TCP backup',
+                        'target_host': host, 'target_port': port, 'connect_timeout': 8,
+                    })
+                    _rns._add_interface(interface)
+                except Exception as error:
+                    errors.append(str(error))
+                    continue
+                if index == 0:
+                    _peer = interface
+                else:
+                    _backup_peer = interface
+                _announce_available_routes()
+            _error = errors[0] if errors and not _tcp_interfaces() else ''
     except Exception as e:_error=str(e)
     finally:
         with _lock:
@@ -253,7 +278,7 @@ def _connect():
         if pending:threading.Thread(target=_connect,daemon=True).start()
 
 def _online():
-    return bool((_peer and _peer.online) or (_radio and _radio.snapshot()['online']))
+    return bool(_online_tcp() or (_radio and _radio.snapshot()['online']))
 
 def _contact(peer):
     return next((c for c in _state['contacts'] if c.get('addresses',{}).get('lxmf','').lower()==peer),None)
@@ -619,7 +644,8 @@ def _message_routes(contact,text=None):
 
 def _room_transport_versions():
     versions={}
-    if _peer:versions[id(_peer)]=(bool(_peer.online),getattr(_peer,'family_connection_epoch',0))
+    for interface in _tcp_interfaces():
+        versions[id(interface)]=(bool(interface.online),getattr(interface,'family_connection_epoch',0))
     radio=getattr(_radio,'interface',None) if _radio else None
     if radio:versions[id(radio)]=(bool(radio.online),getattr(getattr(radio,'ble',None),'connected_time',None))
     return versions
@@ -634,7 +660,7 @@ def _announce_available_routes():
             peer_enabled=bool(_state['peer'].get('enabled'))
             radio_enabled=bool((_state.get('rnode') or {}).get('enabled'))
             voice=_voice.phone if _voice and _state.get('voiceEnabled') and not _voice_deferred else None
-        candidates=(_peer if peer_enabled else None,radio if radio_enabled and _radio and _radio.snapshot()['online'] else None)
+        candidates=(_tcp_interfaces() if peer_enabled else ())+(radio if radio_enabled and _radio and _radio.snapshot()['online'] else None,)
         interfaces=[interface for interface in candidates if interface is not None and interface.online and not getattr(interface,'detached',False) and interface in RNS.Transport.interfaces and id(interface) in versions]
         services=[('text',_destination)]
         if voice:services.append(('voice',voice))
@@ -704,7 +730,8 @@ def _configure_mailbox(payload):
 
 def _tcp_session():
     with _lock:
-        return f'{_tcp_generation}:{_peer.family_connection_epoch}' if _peer and _peer.online else None
+        interface = _online_tcp()
+        return f'{_tcp_generation}:{id(interface)}:{interface.family_connection_epoch}' if interface else None
 
 def _sync_mailbox():
     global _mailbox_tcp_session
@@ -739,7 +766,8 @@ def _snapshot():
         result['rnode']=public(_state.get('rnode'))
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
-        result['tcpOnline']=bool(_peer and _peer.online)
+        result['tcpOnline']=bool(_online_tcp())
+        result['tcpConnections']=[{'host':interface.target_ip,'port':interface.target_port,'online':bool(interface.online)} for interface in _tcp_interfaces()]
         if _tcp_only:
             result['mailbox']=_mailbox_snapshot()
             result['tcpSession']=_tcp_session()
@@ -1042,7 +1070,16 @@ def request(raw):
         elif action=='peer':
             _authorized(p);host=str(p.get('host','')).strip();port=int(p.get('port',0))
             if not re.fullmatch('[A-Za-z0-9.-]{1,253}',host) or not 1<=port<=65535:raise ValueError('Invalid TCP host or port')
-            with _lock:_state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True))};_save()
+            with _lock:
+                backup_host = str(p.get('backupHost', _state['peer'].get('backupHost', ''))).strip()
+                backup_port = int(p.get('backupPort', 4242)) if backup_host and 'backupHost' in p else _state['peer'].get('backupPort', 4242)
+                if backup_host and (not re.fullmatch('[A-Za-z0-9.-]{1,253}', backup_host) or not 1<=backup_port<=65535):
+                    raise ValueError('Invalid backup TCP host or port')
+                if backup_host.lower() == host.lower() and backup_port == port:
+                    raise ValueError('Choose a different backup TCP host or port')
+                _state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True)),
+                                'backupHost':backup_host,'backupPort':backup_port}
+                _save()
             threading.Thread(target=_connect,daemon=True).start()
         elif action=='voice_keep_awake' and _ios_voice:
             _authorized(p)
@@ -1150,10 +1187,12 @@ def _voice_route_context(address):
     import RNS
     interface=RNS.Transport.next_hop_interface(bytes.fromhex(address))
     radio=getattr(_radio,'interface',None)
-    if (radio is not None and interface is radio) or (not (_peer and _peer.online) and radio and radio.online):
+    if (radio is not None and interface is radio) or (not _online_tcp() and radio and radio.online):
         c=_state.get('rnode') or {}
         return 'radio:'+':'.join(str(c.get(k,'')) for k in ['endpoint','frequency','bandwidth','sf','cr'])
-    p=_state['peer'];return 'tcp:'+p['host']+':'+str(p['port'])+':'+_network_context
+    tcp = interface if interface in _tcp_interfaces() else _online_tcp()
+    p=_state['peer']
+    return 'tcp:'+(tcp.target_ip if tcp else p['host'])+':'+str(tcp.target_port if tcp else p['port'])+':'+_network_context
 
 def call_routes(sip_json):
     from family_call_quality import rank

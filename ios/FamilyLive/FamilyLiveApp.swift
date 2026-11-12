@@ -410,13 +410,14 @@ final class FamilyModel: ObservableObject {
         _ = try? await request("lock", ["token": current])
     }
 
-    func savePeer(host: String, port: Int, enabled: Bool) async {
+    func savePeer(host: String, port: Int, enabled: Bool, backupHost: String, backupPort: Int) async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), host == "rmap.world", enabled {
             guard await perform("device_name", ["token": token, "name": "Family iOS simulator test"]) else { return }
         }
         #endif
-        _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": enabled])
+        _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": enabled,
+                                   "backupHost": backupHost, "backupPort": backupPort])
     }
 
     func saveRNode(_ config: [String: Any]) async -> Bool {
@@ -773,6 +774,8 @@ struct FamilyGuardian: View {
     @State private var host = "rmap.world"
     @State private var port = "4242"
     @State private var peerEnabled = false
+    @State private var backupHost = ""
+    @State private var backupPort = "4242"
     @FocusState private var editingDeviceName: Bool
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
@@ -811,11 +814,22 @@ struct FamilyGuardian: View {
                             .accessibilityIdentifier("peer-host")
                         TextField("Port", text: $port).keyboardType(.numberPad)
                             .accessibilityIdentifier("peer-port")
-                        Button("Save peer") { Task { await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled) } }
+                        Button("Save peer") {
+                            Task {
+                                await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled,
+                                                      backupHost: backupHost, backupPort: Int(backupPort) ?? 0)
+                            }
+                        }
                         if family.state?.tcpOnline == true {
                             Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
                         }
-
+                        ForEach(family.state?.tcpConnections ?? [], id: \.endpoint) { connection in
+                            LabeledContent(connection.endpoint, value: connection.online ? "Connected" : "Offline")
+                        }
+                        TextField("Backup hostname (optional)", text: $backupHost).textInputAutocapitalization(.never)
+                        TextField("Backup port", text: $backupPort).keyboardType(.numberPad)
+                        Text("RMAP uses its other port automatically when the backup hostname is blank.")
+                            .font(.footnote)
                     }
                     if family.state?.voiceSupported == true {
                         Section("Reticulum calling") {
@@ -894,6 +908,8 @@ struct FamilyGuardian: View {
             host = peer.host
             port = String(peer.port)
             peerEnabled = peer.enabled
+            backupHost = peer.backupHost ?? ""
+            backupPort = String(peer.backupPort ?? 4242)
         }
         mailboxAddress = family.state?.mailbox?.address ?? ""
         #if DEBUG

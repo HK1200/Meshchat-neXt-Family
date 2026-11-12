@@ -32,9 +32,18 @@ struct FamilyMailbox: Decodable, Sendable {
 }
 
 struct FamilyPeer: Decodable, Sendable {
+    let backupHost: String?
+    let backupPort: Int?
     let host: String
     let port: Int
     let enabled: Bool
+}
+
+struct FamilyTCPConnection: Decodable, Sendable {
+    let host: String
+    let port: Int
+    let online: Bool
+    var endpoint: String { "\(host):\(port)" }
 }
 
 struct FamilyDiscoveredClient: Decodable, Identifiable, Sendable {
@@ -175,6 +184,7 @@ struct FamilyReply: Decodable, Sendable {
     var token: String?
     var setupComplete: Bool?
     var tcpOnline: Bool?
+    var tcpConnections: [FamilyTCPConnection]?
     var tcpSession: String?
     var address: String?
     var deviceName: String?
