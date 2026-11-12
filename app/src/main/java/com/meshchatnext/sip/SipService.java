@@ -789,12 +789,15 @@ public final class SipService extends Service {
                         String name=approvedIncomingName(remote);
                         PendingIntent answer=callAction("answer"),decline=callAction("hangup");
                         Notification.Builder builder=notificationBuilder("sip_calls").setSmallIcon(R.drawable.ic_family).setContentTitle("Incoming call").setContentText(name).setContentIntent(open()).setCategory(Notification.CATEGORY_CALL).setOngoing(true).setVisibility(Notification.VISIBILITY_PRIVATE);
+                        org.meshchat.family.preview.FamilyIncomingCallActivity.attach(this, builder, INCOMING, callToken, name, answer, decline);
                         if(Build.VERSION.SDK_INT>=31)builder.setStyle(Notification.CallStyle.forIncomingCall(new Person.Builder().setName(name).setImportant(true).build(),decline,answer));
                         else builder.addAction(new Notification.Action.Builder(null,"Decline",decline).build()).addAction(new Notification.Action.Builder(null,"Answer",answer).build());
                         if(Build.VERSION.SDK_INT>=29)startForeground(INCOMING,builder.build(),ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL);else startForeground(INCOMING,builder.build());
                         foregroundNotificationId=INCOMING;
-                    } else if ("connected".equals(value))
+                    } else if ("connected".equals(value)) {
+                        foreground(audioFocusHeld);
                         getSystemService(NotificationManager.class).cancel(INCOMING);
+                    }
                     break;
                 case "ended":
                     finishRouteQuality(code);

@@ -55,7 +55,7 @@ final class PermissionCheckup {
 
         NotificationManager notifications = activity.getSystemService(NotificationManager.class);
         if (notifications != null) {
-            steps.add(new Step("Notifications", "Show incoming calls and new messages when the app is in the background.",
+            steps.add(new Step("Notifications", "Show incoming calls and new messages when Family is in the background or your phone is locked. Android lock-screen settings control what appears.",
                 notifications::areNotificationsEnabled, () -> {
                     if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS)) {
                         request(Manifest.permission.POST_NOTIFICATIONS);
@@ -64,6 +64,12 @@ final class PermissionCheckup {
                             .putExtra(Settings.EXTRA_APP_PACKAGE, activity.getPackageName()));
                     }
                 }));
+        }
+        if (Build.VERSION.SDK_INT >= 34 && notifications != null) {
+            steps.add(new Step("Full-screen incoming call alerts",
+                "Wake the screen and show Answer and Decline for approved calls when your phone is locked.",
+                notifications::canUseFullScreenIntent,
+                () -> open(packageSettings(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT))));
         }
         runtime("Microphone", "Let the other person hear you during a call.",
             Manifest.permission.RECORD_AUDIO);
