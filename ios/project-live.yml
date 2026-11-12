@@ -8,6 +8,7 @@ targets:
     info:
       path: RuntimeBuild/FamilyLive-Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         BGTaskSchedulerPermittedIdentifiers:
           - org.meshchat.family.ios.live.mailbox
         UIBackgroundModes:
