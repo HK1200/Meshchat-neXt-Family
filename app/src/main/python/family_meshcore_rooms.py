@@ -134,11 +134,20 @@ class MeshCoreRooms:
     with self.lock:
      row=self.record(rid);self._ready()
      if revision!=manager.revision or owner!=manager.owner:raise ValueError('The companion changed before posting')
-    clock=manager.session._payload(await manager.session._client.commands.get_time()).get('time')
-    if type(clock) is not int or not 0<=clock<2**32-1:raise ValueError('Invalid companion clock')
+    # Login uses the companion clock, while text frames carry our timestamp.
+    # Ignore a badly skewed clock instead of blocking the post or setting it backward.
+    try:
+     clock=manager.session._payload(await manager.session._client.commands.get_time()).get('time')
+    except ConnectionError:
+     clock=None
+    now=int(time.time())
+    clock_floor=clock+1 if type(clock) is int and 0<=clock<now+60 else 0
     with self.lock:
-     history=self.state['meshcore_room_messages'].get(str(rid),[]);stamp=max(int(time.time()),clock+1,max((m.get('meshcoreTimestamp',0)+1 for m in history),default=0));record=next(m for m in history if m['id']==mid)
-     if stamp>time.time()+60:raise ValueError('The companion clock is too far ahead')
+     history=self.state['meshcore_room_messages'].get(str(rid),[])
+     previous=max((m.get('meshcoreTimestamp',0) for m in history if m.get('owner')==owner),default=0)
+     stamp=max(now,clock_floor,previous+1)
+     record=next(m for m in history if m['id']==mid)
+     if stamp>now+60:raise ValueError('The previous room send timestamp is ahead. Wait for the clock to catch up before posting again.')
      record['meshcoreTimestamp']=stamp;self.save()
     started=time.time()
     event=await manager.session._client.commands.send_msg(row['key'],text,timestamp=stamp,attempt=0)
