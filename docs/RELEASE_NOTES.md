@@ -1,3 +1,10 @@
+# neXt Family v0.6.23
+
+- Keep MeshCore room posting available when the companion clock is far ahead or unreadable.
+- Install over v0.6.22 to keep your existing setup.
+
+---
+
 # neXt Family v0.6.22
 
 - Show **My contact QR** under **Guardian settings → Contacts**. Scan it on another device to review and approve the Family member's public contact details.
