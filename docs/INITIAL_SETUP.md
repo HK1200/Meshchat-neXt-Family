@@ -5,7 +5,7 @@
 1. On an ARM64 Android 8.0 or later device, open the Family GitHub Releases page and download the latest Family APK.
 2. Open the download. If Android asks, allow installation from the browser or Files app you used, then confirm the install. You can turn that allowance off again afterward.
 3. Open **neXt Family**. On the welcome screen, enter and confirm a guardian password that the family member does not know. Keep it somewhere safe. A fresh install has no preset guardian password.
-4. If you want to try Reticulum over the internet, select **Connect Reticulum through rmap.world:4242**. Otherwise leave it unchecked. Choose **Create guardian access**.
+4. If you want to try Reticulum over the internet, select **Enable Reticulum internet peers**. Otherwise leave it unchecked. Choose **Create guardian access**.
 5. Allow notifications when prompted if you want incoming message alerts and call controls. Grant microphone access when you make or answer your first call. Android may request additional permissions for Bluetooth, camera scanning, or location when you use those features.
 
 [Family GitHub Releases](https://github.com/HK1200/Meshchat-neXt-Family/releases)
@@ -16,7 +16,7 @@ Tap the key icon on the home screen, enter the guardian password, and open **Con
 
 | Connection | How to set it up |
 | --- | --- |
-| Reticulum over the internet | Choose **Configure TCP peer**. Enter the peer hostname and port, enable the peer, and save. The suggested starting point is `rmap.world` on port `4242`. |
+| Reticulum over the internet | Open the TCP peers section in Guardian settings. RMAP `4343`, RMAP backup `4242`, WashMesh `7242`, and Chicagoland Mesh `4242` each have their own status and settings. Select a peer to edit its host, port, or enabled state, or select **Add TCP peer** to enter another server. |
 | Reticulum over LoRa | Configure an **RNode radio**. Choose its supported Bluetooth, USB serial, or Wi-Fi connection and select or enter the device address. Match the frequency, bandwidth, spreading factor, and coding rate to your local network. Set the transmit power to the value appropriate for your hardware and location. New profiles start at 914.875 MHz, 125 kHz, SF8, CR 4/7 and 17 dBm. Edit the values to match your network before enabling and saving. TCP and an RNode can both be enabled. |
 | MeshCore | Use a separate radio running MeshCore companion firmware. For Bluetooth, grant **Allow Bluetooth access**, tap **Find Bluetooth companions**, and select the radio. For USB serial, attach it with a data-capable adapter and grant Android’s USB permission. Enable MeshCore and **Receive messages on this device**, then choose **Save and connect**. |
 | Reticulum calls | Open **Configure Reticulum calls** and enable calling. The contact must have an approved LXST address and a Reticulum path with enough capacity for voice. |

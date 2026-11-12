@@ -410,14 +410,15 @@ final class FamilyModel: ObservableObject {
         _ = try? await request("lock", ["token": current])
     }
 
-    func savePeer(host: String, port: Int, enabled: Bool, backupHost: String, backupPort: Int) async {
+    func savePeer(id: String?, host: String, port: Int, enabled: Bool) async -> Bool {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), host == "rmap.world", enabled {
-            guard await perform("device_name", ["token": token, "name": "Family iOS simulator test"]) else { return }
+            guard await perform("device_name", ["token": token, "name": "Family iOS simulator test"]) else { return false }
         }
         #endif
-        _ = await perform("peer", ["token": token, "host": host, "port": port, "enabled": enabled,
-                                   "backupHost": backupHost, "backupPort": backupPort])
+        var payload: [String: Any] = ["token": token, "host": host, "port": port, "enabled": enabled]
+        if let id { payload["id"] = id }
+        return await perform("peer", payload)
     }
 
     func saveRNode(_ config: [String: Any]) async -> Bool {
@@ -631,6 +632,7 @@ struct FamilyHome: View {
     @ObservedObject var family: FamilyModel
     @State private var password = ""
     @State private var confirmation = ""
+    @State private var enableInternetPeers = false
     @State private var showGuardian = false
     @State private var guardianDismissingForCall = false
     @State private var notificationContact: FamilyContact?
@@ -649,11 +651,12 @@ struct FamilyHome: View {
                             .accessibilityIdentifier("setup-password")
                         SecureField("Confirm guardian password", text: $confirmation)
                             .accessibilityIdentifier("setup-confirmation")
+                        Toggle("Enable Reticulum internet peers", isOn: $enableInternetPeers)
                         NavigationLink("Review device permissions") { FamilyPermissionCheckup() }
                         Button("Create guardian access") {
                             Task {
                                 if await family.perform("setup", [
-                                    "password": password, "confirmation": confirmation, "reticulumEnabled": false
+                                    "password": password, "confirmation": confirmation, "reticulumEnabled": enableInternetPeers
                                 ]) {
                                     password = ""
                                     confirmation = ""
@@ -676,6 +679,11 @@ struct FamilyHome: View {
                     }
                     Section("Connection") {
                         Text(state.tcpOnline == true ? "Reticulum TCP connected" : "Reticulum TCP offline")
+                        DisclosureGroup("TCP peers") {
+                            ForEach(state.tcpConnections ?? []) { connection in
+                                LabeledContent(connection.endpoint, value: connection.status)
+                            }
+                        }
                         if state.rnode?.enabled == true, let radio = state.rnodeRuntime {
                             Text(radio.online ? "Wi-Fi RNode connected" : radio.connecting ? "Connecting to RNode" : "Wi-Fi RNode offline")
                             if let battery = radio.battery {
@@ -772,10 +780,10 @@ struct FamilyGuardian: View {
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
     @State private var host = "rmap.world"
-    @State private var port = "4242"
+    @State private var port = "4343"
     @State private var peerEnabled = false
-    @State private var backupHost = ""
-    @State private var backupPort = "4242"
+    @State private var peerID: String?
+    @State private var savingPeer = false
     @FocusState private var editingDeviceName: Bool
     @State private var mailboxAddress = ""
     @State private var mailboxSaved = false
@@ -805,31 +813,42 @@ struct FamilyGuardian: View {
                         }
                         if deviceNameSaved { Text("Device name saved") }
                     }
-                    Section("Reticulum TCP peer") {
+                    Section("Reticulum TCP peers") {
+                        if family.state?.tcpOnline == true {
+                            Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
+                        }
+                        ForEach(family.state?.tcpConnections ?? []) { connection in
+                            Button {
+                                editPeer(connection)
+                            } label: {
+                                LabeledContent(connection.endpoint, value: connection.status)
+                            }
+                            .accessibilityHint("Edit TCP peer")
+                            .disabled(savingPeer)
+                        }
+                        Button("Add TCP peer") { editPeer(nil) }.disabled(savingPeer)
+                        Text(peerID == nil ? "New TCP peer" : "Edit TCP peer").font(.headline)
+                        TextField("Hostname", text: $host).textInputAutocapitalization(.never)
+                            .autocorrectionDisabled().accessibilityIdentifier("peer-host")
+                        TextField("Port", text: $port).keyboardType(.numberPad)
+                            .accessibilityIdentifier("peer-port")
                         Button(peerEnabled ? "Disable Reticulum TCP peer" : "Enable Reticulum TCP peer") {
                             peerEnabled.toggle()
                         }
                         .accessibilityIdentifier("peer-enabled")
-                        TextField("Primary hostname", text: $host).textInputAutocapitalization(.never)
-                            .accessibilityIdentifier("peer-host")
-                        TextField("Primary port", text: $port).keyboardType(.numberPad)
-                            .accessibilityIdentifier("peer-port")
                         Button("Save peer") {
+                            savingPeer = true
                             Task {
-                                await family.savePeer(host: host, port: Int(port) ?? 0, enabled: peerEnabled,
-                                                      backupHost: backupHost, backupPort: Int(backupPort) ?? 0)
+                                if await family.savePeer(id: peerID, host: host, port: Int(port) ?? 0, enabled: peerEnabled),
+                                   let saved = family.state?.tcpConnections?.first(where: {
+                                       $0.host == host.trimmingCharacters(in: .whitespacesAndNewlines) && $0.port == Int(port)
+                                   }) {
+                                    editPeer(saved)
+                                }
+                                savingPeer = false
                             }
                         }
-                        if family.state?.tcpOnline == true {
-                            Text("Reticulum TCP connected").accessibilityIdentifier("guardian-peer-connected")
-                        }
-                        ForEach(family.state?.tcpConnections ?? [], id: \.endpoint) { connection in
-                            LabeledContent(connection.endpoint, value: family.state?.peer?.enabled == true ? (connection.online ? "Connected" : "Offline") : "Disabled")
-                        }
-                        TextField("Additional hostname (optional)", text: $backupHost).textInputAutocapitalization(.never)
-                        TextField("Additional port", text: $backupPort).keyboardType(.numberPad)
-                        Text("RMAP ports 4242 and 4343 include WashMesh and Chicagoland Mesh. An additional peer stays alongside them.")
-                            .font(.footnote)
+                        .disabled(savingPeer || host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     if family.state?.voiceSupported == true {
                         Section("Reticulum calling") {
@@ -903,15 +922,16 @@ struct FamilyGuardian: View {
             .toolbar { Button("Done") { dismiss() } }
         }
     }
+    private func editPeer(_ peer: FamilyTCPConnection?) {
+        peerID = peer?.id
+        host = peer?.host ?? ""
+        port = peer.map { String($0.port) } ?? "4343"
+        peerEnabled = peer?.enabled ?? true
+    }
+
     private func loadSettings() {
         deviceName = family.state?.deviceName ?? "neXt Family"
-        if let peer = family.state?.peer {
-            host = peer.host
-            port = String(peer.port)
-            peerEnabled = peer.enabled
-            backupHost = peer.backupHost ?? ""
-            backupPort = backupHost.isEmpty ? "" : String(peer.backupPort ?? 4242)
-        }
+        editPeer(family.state?.tcpConnections?.first)
         mailboxAddress = family.state?.mailbox?.address ?? ""
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test") {

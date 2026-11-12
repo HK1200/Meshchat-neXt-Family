@@ -16,7 +16,7 @@ def main(folder, public, drop_test=False):
     config = "[reticulum]\nshare_instance = No\n"
     if public:
         host = "rmap.world"
-        for port in (4242, 4343):
+        for port in (4343, 4242):
             try:
                 with socket.create_connection((host, port), timeout=5):
                     break

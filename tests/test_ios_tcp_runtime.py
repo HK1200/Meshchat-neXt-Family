@@ -188,7 +188,7 @@ def wait_status(pipe, condition, timeout=25):
 def test_tcp_runtime_delivers_only_into_approved_conversations(tmp_path, public_peer):
     with ExitStack() as stack:
         if public_peer:
-            host, port = "rmap.world", 4242
+            host, port = "rmap.world", 4343
         else:
             host = "127.0.0.1"
             with socket.socket() as sock:
