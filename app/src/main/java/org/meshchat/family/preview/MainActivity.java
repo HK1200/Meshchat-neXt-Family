@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            android.view.WindowInsetsController controller = getWindow().getDecorView().getWindowInsetsController();
             if (controller != null) {
                 int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                     | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
