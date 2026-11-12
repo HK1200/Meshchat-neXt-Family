@@ -53,11 +53,24 @@ public class MainActivity extends Activity {
 
     private void setNightMode(boolean night) {
         int color=night ? Color.rgb(25,37,32) : Color.rgb(251,252,247);
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(color));
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
-        getWindow().getDecorView().setSystemUiVisibility(night ? 0 :
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                int lightBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(night ? 0 : lightBars, lightBars);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(night ? 0 :
                 View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        if(web!=null)web.setBackgroundColor(color);
+        }
+        if (web != null) {
+            web.setBackgroundColor(color);
+            if (web.getParent() instanceof View) ((View) web.getParent()).setBackgroundColor(color);
+        }
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleReticulumAnswer(intent);if(intent.getBooleanExtra("openReticulumCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenReticulumCall?.()",null);if(intent.getBooleanExtra("openCall",false)&&web!=null)web.evaluateJavascript("window.familyOpenCall?.()",null);int room=intent.getIntExtra("roomId",0);if(web!=null&&room>0)web.evaluateJavascript("window.familyOpenRoom?.("+room+")",null);int contact=intent.getIntExtra("contactId",0);if(web!=null&&contact>0)web.evaluateJavascript("window.familyOpenContact?.("+contact+")",null);}
     @Override public void onCreate(Bundle state) {
@@ -80,6 +93,8 @@ public class MainActivity extends Activity {
         setContentView(content);
         // Resize the WebView itself so Chromium lays out the page above the keyboard.
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
+        setNightMode((getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES);
         content.setOnApplyWindowInsetsListener((v,insets)->{
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets visible = insets.getInsets(
