@@ -49,7 +49,15 @@ final class FamilyLiveUITests: XCTestCase {
         if enablePeer.label == "Enable Reticulum TCP peer" { enablePeer.tap() }
         XCTAssertEqual(enablePeer.label, "Disable Reticulum TCP peer")
         savePeer.tap()
-        XCTAssertTrue(app.staticTexts["guardian-peer-connected"].waitForExistence(timeout: 25), app.debugDescription)
+        let connected = app.staticTexts["guardian-peer-connected"]
+        // The iPad sheet lazily loads rows below the Save peer button.
+        let peerForm = app.collectionViews.containing(.button, identifier: "Save peer").firstMatch
+        if !connected.exists && peerForm.exists {
+            let start = peerForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            let end = peerForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.60))
+            start.press(forDuration: 0.1, thenDragTo: end)
+        }
+        XCTAssertTrue(connected.waitForExistence(timeout: 25), app.debugDescription)
         let deviceName = "Family simulator device"
         let nameField = app.textFields["device-name"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
