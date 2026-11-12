@@ -41,17 +41,18 @@ struct FamilyPermissionCheckup: View {
             case .notifications: "Show alerts when Family retrieves new messages."
             case .microphone: "Let the other person hear you during a Reticulum call."
             case .camera: "Scan contact and room QR codes."
-            case .location: "Find your region for offline maps and share your location when a guardian enables it."
+            case .location: "Share your location with approved contacts while Family is open, when a guardian enables sharing."
             }
         }
     }
 
-    private enum Access: Equatable { case ask, enabled, settings }
+    private enum Access: Equatable { case ask, enabled, settings, locationServicesOff, locationRestricted }
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @StateObject private var location = PermissionLocation()
     @State private var index = 0
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var locationServicesEnabled: Bool?
     @State private var requesting = false
     private let steps = Step.allCases
 
@@ -67,7 +68,14 @@ struct FamilyPermissionCheckup: View {
                     case .ask:
                         Button("Allow \(step.title.lowercased())") { request(step) }
                             .disabled(requesting)
+                    case .locationServicesOff:
+                        Text("On this device, open Settings → Privacy & Security → Location Services and turn on Location Services. Then return to Family.")
+                    case .locationRestricted:
+                        Text("Location access is restricted on this device. A guardian can check Screen Time or device management settings.")
                     case .settings:
+                        if step == .location {
+                            Text("In Family’s settings, tap Location and choose While Using the App. If Location is missing, check Settings → Privacy & Security → Location Services.")
+                        }
                         Button("Open Family settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                         }
@@ -91,6 +99,11 @@ struct FamilyPermissionCheckup: View {
         .task(id: scenePhase) {
             if scenePhase == .active {
                 notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+                let servicesEnabled = await Task.detached(priority: .userInitiated) {
+                    CLLocationManager.locationServicesEnabled()
+                }.value
+                guard !Task.isCancelled else { return }
+                locationServicesEnabled = servicesEnabled
             }
         }
     }
@@ -116,10 +129,13 @@ struct FamilyPermissionCheckup: View {
             default: return .settings
             }
         case .location:
+            if locationServicesEnabled == false { return .locationServicesOff }
             switch location.status {
             case .authorizedAlways, .authorizedWhenInUse: return .enabled
             case .notDetermined: return .ask
-            default: return .settings
+            case .restricted: return .locationRestricted
+            case .denied: return .settings
+            @unknown default: return .locationRestricted
             }
         }
     }
