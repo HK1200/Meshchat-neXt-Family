@@ -895,6 +895,7 @@ struct FamilyGuardian: View {
                 }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
+            .accessibilityIdentifier("guardian-settings-form")
             .navigationTitle("Guardian settings")
             .onChange(of: family.unlocked, initial: true) {
                 if family.unlocked { loadSettings() }
