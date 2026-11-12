@@ -34,7 +34,6 @@ _room_error=''
 _destination=None
 _peer=None
 _backup_peers=()
-_tcp_generation=0
 _radio=None
 _locations=None
 _maps=None
@@ -220,15 +219,29 @@ def _tcp_interfaces():
 def _online_tcp():
     return next((interface for interface in _tcp_interfaces() if interface.online), None)
 
+def _rmap_endpoint(host, port):
+    return bool(host and host.lower().rstrip('.') == 'rmap.world' and port in (4242, 4343))
+
 def _tcp_endpoints(peer):
     primary = (peer['host'], peer['port'])
     backup = (peer.get('backupHost'), peer.get('backupPort'))
-    if not backup[0] and primary[0].lower() == 'rmap.world' and primary[1] in (4242, 4343):
+    if _rmap_endpoint(*primary) and (not backup[0] or _rmap_endpoint(*backup)):
         return [primary, ('reticulum.washmesh.net', 7242), ('rns.chimesh.org', 4242)]
-    return [primary, backup] if backup[0] and backup != primary else [primary]
+    return [primary, backup] if backup[0] and (backup[0].lower(), backup[1]) != (primary[0].lower(), primary[1]) else [primary]
+
+def _tcp_connection_status(peer):
+    if not peer['enabled']:
+        return []
+    running = {(interface.target_ip.lower(), interface.target_port): interface
+               for interface in _tcp_interfaces()}
+    rows = []
+    for host, port in _tcp_endpoints(peer):
+        interface = running.get((host.lower(), port))
+        rows.append({'host': host, 'port': port, 'online': bool(interface and interface.online)})
+    return rows
 
 def _connect():
-    global _peer,_backup_peers,_error,_connecting,_connect_pending,_tcp_generation
+    global _peer,_backup_peers,_error,_connecting,_connect_pending
     with _lock:
         if _connecting:
             _connect_pending=True;return
@@ -237,7 +250,16 @@ def _connect():
         if not _rns:return
         import RNS
         from family_tcp import FamilyTCPInterface
+        with _lock:
+            peer = dict(_state['peer'])
+        endpoints = _tcp_endpoints(peer) if peer['enabled'] else []
+        requested = {(host.lower(), port) for host, port in endpoints}
+        retained = {}
         for previous in _tcp_interfaces():
+            endpoint = (previous.target_ip.lower(), previous.target_port)
+            if endpoint in requested and not previous.detached:
+                retained[endpoint] = previous
+                continue
             if _rooms:_rooms.retire_interface(previous)
             if _router:
                 for cache in (_router.direct_links,_router.backchannel_links):
@@ -247,29 +269,28 @@ def _connect():
                             link.teardown()
             previous.detach()
             if previous in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(previous)
-        _peer = None
-        _backup_peers = ()
+        existing = [retained.get((host.lower(), port)) for host, port in endpoints]
+        _peer = existing[0] if existing else None
+        _backup_peers = tuple(interface for interface in existing[1:] if interface is not None)
         _announce_available_routes()
-        with _lock:peer=dict(_state['peer'])
-        if peer['enabled']:
-            with _lock:_tcp_generation+=1
-            errors = []
-            for index, (host, port) in enumerate(_tcp_endpoints(peer)):
-                try:
-                    interface = FamilyTCPInterface(RNS.Transport, {
-                        'name': 'Family TCP' if index == 0 else f'Family TCP backup {index}',
-                        'target_host': host, 'target_port': port, 'connect_timeout': 8,
-                    })
-                    _rns._add_interface(interface)
-                except Exception as error:
-                    errors.append(str(error))
-                    continue
-                if index == 0:
-                    _peer = interface
-                else:
-                    _backup_peers += (interface,)
-                _announce_available_routes()
-            _error = errors[0] if errors and not _tcp_interfaces() else ''
+        errors = []
+        for index, (host, port) in enumerate(endpoints):
+            if existing[index] is not None:
+                continue
+            try:
+                interface = FamilyTCPInterface(RNS.Transport, {
+                    'name': 'Family TCP' if index == 0 else f'Family TCP backup {index}',
+                    'target_host': host, 'target_port': port, 'connect_timeout': 8,
+                })
+                _rns._add_interface(interface)
+            except Exception as error:
+                errors.append(str(error))
+                continue
+            existing[index] = interface
+            _peer = existing[0]
+            _backup_peers = tuple(item for item in existing[1:] if item is not None)
+            _announce_available_routes()
+        _error = errors[0] if errors and not _tcp_interfaces() else ''
     except Exception as e:_error=str(e)
     finally:
         with _lock:
@@ -732,7 +753,7 @@ def _configure_mailbox(payload):
 def _tcp_session():
     with _lock:
         interface = _online_tcp()
-        return f'{_tcp_generation}:{id(interface)}:{interface.family_connection_epoch}' if interface else None
+        return f'{id(interface)}:{interface.family_connection_epoch}' if interface else None
 
 def _sync_mailbox():
     global _mailbox_tcp_session
@@ -768,7 +789,12 @@ def _snapshot():
         result['rnodeRuntime']=_radio.snapshot() if _radio else {'online':False,'connecting':False,'error':''}
         result['messageRoutes']={str(c['id']):_message_routes(c) for c in _state['contacts']}
         result['tcpOnline']=bool(_online_tcp())
-        result['tcpConnections']=[{'host':interface.target_ip,'port':interface.target_port,'online':bool(interface.online)} for interface in _tcp_interfaces()]
+        visible_peer = result['peer']
+        if _rmap_endpoint(visible_peer['host'], visible_peer['port']) and _rmap_endpoint(
+            visible_peer.get('backupHost'), visible_peer.get('backupPort')
+        ):
+            visible_peer.update(backupHost='', backupPort=4242)
+        result['tcpConnections'] = _tcp_connection_status(visible_peer)
         if _tcp_only:
             result['mailbox']=_mailbox_snapshot()
             result['tcpSession']=_tcp_session()
@@ -1076,6 +1102,8 @@ def request(raw):
                 backup_port = int(p.get('backupPort', 4242)) if backup_host and 'backupHost' in p else _state['peer'].get('backupPort', 4242)
                 if backup_host and (not re.fullmatch('[A-Za-z0-9.-]{1,253}', backup_host) or not 1<=backup_port<=65535):
                     raise ValueError('Invalid backup TCP host or port')
+                if _rmap_endpoint(host, port) and _rmap_endpoint(backup_host, backup_port):
+                    backup_host, backup_port = '', 4242
                 if backup_host.lower() == host.lower() and backup_port == port:
                     raise ValueError('Choose a different backup TCP host or port')
                 _state['peer']={'host':host,'port':port,'enabled':bool(p.get('enabled',True)),
