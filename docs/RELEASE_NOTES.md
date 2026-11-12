@@ -1,3 +1,11 @@
+# neXt Family v0.6.27
+
+- RMAP 4343 is the preferred TCP peer, alongside RMAP 4242, WashMesh, and Chicagoland Mesh.
+- View, enable, disable, edit, and add TCP peers individually in Guardian settings.
+- Reconnect enabled peers after a network change.
+
+---
+
 # neXt Family v0.6.26
 
 - See each saved Reticulum TCP peer, port, and live status in the configuration form.
