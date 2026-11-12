@@ -1,3 +1,10 @@
+# neXt Family v0.6.26
+
+- See each saved Reticulum TCP peer, port, and live status in the configuration form.
+- An optional additional peer stays alongside the default RMAP, WashMesh, and Chicago peers. Its port field starts blank.
+
+---
+
 # neXt Family v0.6.25
 
 - Show each configured TCP peer once and keep offline peers visible.
