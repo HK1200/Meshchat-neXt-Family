@@ -7,6 +7,10 @@ on:
         description: Run live messaging through rmap.world on both simulators
         type: boolean
         default: false
+      appstore_archive:
+        description: Validate the unsigned AppStore archive with rooms disabled
+        type: boolean
+        default: false
       device_archive:
         description: Validate a Release archive for physical iPhone and iPad
         type: boolean
@@ -29,7 +33,7 @@ permissions:
 
 jobs:
   simulator:
-    if: ${{ !inputs.device_archive && !inputs.testflight }}
+    if: ${{ !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 35
@@ -101,6 +105,19 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
+
+  appstore-archive:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.appstore_archive && !inputs.testflight }}
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build the AppStore archive
+        run: bash ios/archive-device.sh appstore
 
   internal-testflight:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/feature/family-ios' }}

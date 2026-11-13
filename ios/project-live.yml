@@ -1,6 +1,10 @@
 include:
   - project.yml
 name: FamilyLive
+configs:
+  Debug: debug
+  Release: release
+  AppStore: release
 targets:
   FamilyLive:
     type: application
@@ -42,6 +46,9 @@ targets:
           source "$PROJECT_DIR/RuntimeBuild/Python.xcframework/build/utils.sh"
           install_python RuntimeBuild/Python.xcframework staged
     settings:
+      configs:
+        AppStore:
+          GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) FAMILY_APP_STORE=1"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.live
         MARKETING_VERSION: 0.6.27

@@ -881,7 +881,9 @@ struct FamilyGuardian: View {
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
                         NavigationLink("Incoming message size") { FamilyIncomingLimitSettings(family: family) }
                         NavigationLink("Offline maps") { FamilyOfflineMapSettings(family: family) }
-                        NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
+                        if family.state?.roomsEnabled != false {
+                            NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
+                        }
                     }
                     Section("Offline message mailbox") {
                         TextField("LXMF propagation node address", text: $mailboxAddress)

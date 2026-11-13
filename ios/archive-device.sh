@@ -3,7 +3,7 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 mode="${1:-unsigned}"
-case "$mode" in unsigned|testflight) ;; *) exit 2 ;; esac
+case "$mode" in unsigned|appstore|testflight) ;; *) exit 2 ;; esac
 sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
 if [[ "${sdk%%.*}" -lt 26 ]]; then
     echo "Xcode with the iOS 26 SDK or later is required." >&2
@@ -83,9 +83,12 @@ PY
              "PROVISIONING_PROFILE_SPECIFIER=$uuid")
 fi
 
+configuration=Release
+if [[ "$mode" != unsigned ]]; then configuration=AppStore; fi
+
 bash prepare-live.sh
 xcodegen generate --spec project-live.yml
-xcodebuild archive -project FamilyLive.xcodeproj -scheme FamilyLive -configuration Release \
+xcodebuild archive -project FamilyLive.xcodeproj -scheme FamilyLive -configuration "$configuration" \
     -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
     -archivePath "$archive" "CURRENT_PROJECT_VERSION=$build_number" "${signing[@]}"
 app="$archive/Products/Applications/FamilyLive.app"

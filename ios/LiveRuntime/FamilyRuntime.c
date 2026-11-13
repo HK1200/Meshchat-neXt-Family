@@ -1,3 +1,6 @@
+#ifndef FAMILY_APP_STORE
+#define FAMILY_APP_STORE 0
+#endif
 #define PY_SSIZE_T_CLEAN
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -80,7 +83,8 @@ bool family_runtime_start(const char *python_home, const char *modules, const ch
             options = Py_BuildValue("{s:O}", "tcp_only", Py_True);
 #endif
         }
-        if (options) result = PyObject_Call(initialize, args, options);
+        if (options && PyDict_SetItemString(options, "store_build", FAMILY_APP_STORE ? Py_True : Py_False) == 0)
+            result = PyObject_Call(initialize, args, options);
     }
     if (result) {
         PyObject *handler = PyObject_GetAttrString(backend, "request");

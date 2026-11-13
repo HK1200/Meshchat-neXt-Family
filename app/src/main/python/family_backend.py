@@ -30,6 +30,7 @@ _state=None
 _rns=None
 _router=None
 _rooms=None
+_rooms_enabled=True
 _room_error=''
 _destination=None
 _peer=None
@@ -65,10 +66,12 @@ _mailbox_tcp_session=None
 def _save():
     p=_root/'state.json';tmp=p.with_suffix('.tmp');tmp.write_text(json.dumps(_state));os.chmod(tmp,0o600);tmp.replace(p)
 
-def initialize(folder,*,tcp_only=False,ios_voice=False):
+def initialize(folder,*,tcp_only=False,ios_voice=False, store_build=False):
+    global _rooms_enabled
     global _root,_state,_locations,_maps,_meshcore,_room_names,_tcp_only,_ios_voice
     with _lock:
         if _root:return
+        _rooms_enabled = not store_build
         _tcp_only=tcp_only
         _ios_voice=ios_voice
         _root=Path(folder);_root.mkdir(parents=True,exist_ok=True)
@@ -91,7 +94,7 @@ def initialize(folder,*,tcp_only=False,ios_voice=False):
     _room_names=RoomNames(_state,_lock,_save)
     if not _tcp_only:
         from family_meshcore import FamilyMeshCore
-        _meshcore=FamilyMeshCore(_state,_lock,_save)
+        _meshcore=FamilyMeshCore(_state,_lock,_save,rooms_enabled=_rooms_enabled)
     from family_maps import MapStore
     if _tcp_only:_state.setdefault('active_map','apple')
     _maps=MapStore(_root,_state,_lock,_save)
@@ -192,7 +195,8 @@ def _start():
             _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,route_context=_voice_route_context)
         try:
             from family_rooms import FamilyRooms
-            _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
+            if _rooms_enabled:
+                _rooms=FamilyRooms(_root,identity,_state,_lock,_save)
         except Exception as exc:
             _room_error=str(exc)
             import traceback;traceback.print_exc()
@@ -844,16 +848,17 @@ def _snapshot():
         result['incomingDeliveryLimit']=_incoming_limit()
         result['deviceName']=_state.get('device_name',DEFAULT_DEVICE_NAME)
         result['clientLookup']=dict(_client_lookup)
-        if _meshcore:
+        if _meshcore and _meshcore.rooms:
             mc_rooms=_meshcore.rooms.snapshot();room_data['rooms']+=mc_rooms['rooms'];room_data['roomRuntime'].update(mc_rooms['roomRuntime'])
         if _room_names:room_data=_room_names.decorate(room_data)
         result.update(room_data)
+        result['roomsEnabled']=_rooms_enabled
         return result
 
 def background(lock_guardian=True):
     if lock_guardian:_sessions.clear()
     if _rooms:_rooms.close_view()
-    if _meshcore:_meshcore.rooms.close_view()
+    if _meshcore and _meshcore.rooms:_meshcore.rooms.close_view()
 
 def request(raw):
     global _client_lookup,_ios_voice_foreground
@@ -909,12 +914,13 @@ def request(raw):
             token=secrets.token_urlsafe(32);_sessions[token]=time.time()+900;return json.dumps({'ok':True,'token':token})
         if action=='lock':_sessions.pop(p.get('token',''),None);return json.dumps({'ok':True})
         if isinstance(action,str) and action.startswith('room_'):
+            if not _rooms_enabled:raise ValueError('Rooms are unavailable in this edition')
             if action in ['room_save','room_remove','room_discover','room_name']:_authorized(p)
             if action=='room_name':
                 _room_names.set(p.get('roomId'),p.get('participantId'),p.get('name'))
             elif action=='room_close':
                 if _rooms:_rooms.close_view()
-                if _meshcore:_meshcore.rooms.close_view()
+                if _meshcore and _meshcore.rooms:_meshcore.rooms.close_view()
             elif action=='room_discover':
                 if p.get('service')=='meshcore':
                     if not _meshcore:raise ValueError('MeshCore is starting')
@@ -1008,7 +1014,7 @@ def request(raw):
         elif action=='qr_parse':
             _authorized(p)
             from family_cards import parse
-            target=p.get('target','contact')
+            target=p.get('target','contact') if _rooms_enabled else 'contact'
             card=parse(p.get('text'),target)
             return json.dumps({'ok':True,'roomCard' if _tcp_only and target=='room' else 'card':card})
         elif action=='device_name':

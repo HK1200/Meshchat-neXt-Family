@@ -204,6 +204,7 @@ struct FamilyReply: Decodable, Sendable {
     var attachmentPath: String?
     var incomingDeliveryLimit: Int?
     var contacts: [FamilyContact]?
+    var roomsEnabled: Bool?
     var rooms: [FamilyRoom]?
     var roomRuntime: [String: FamilyRoomState]?
     var rrcHubs: [FamilyRoomHub]?

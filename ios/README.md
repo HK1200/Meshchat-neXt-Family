@@ -115,3 +115,5 @@ processing, assign it to an internal tester group and accept the invitation
 in TestFlight on the iPad. Internal TestFlight does not require the iPad's UDID.
 
 [Apple TestFlight guide](https://developer.apple.com/testflight/)
+
+Use the **AppStore** build configuration when archiving Family for the App Store. It disables room access and networking. Local and GitHub builds use Debug or Release and include rooms.
