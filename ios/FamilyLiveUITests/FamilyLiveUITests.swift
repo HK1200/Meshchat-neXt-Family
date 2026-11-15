@@ -60,7 +60,11 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(connected.waitForExistence(timeout: 25), app.debugDescription)
         let deviceName = "Family simulator device"
         let nameField = app.textFields["device-name"]
-        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        // SwiftUI forms on smaller screens may not expose off-screen rows.
+        for _ in 0..<4 where !nameField.isHittable {
+            peerForm.swipeDown()
+        }
+        XCTAssertTrue(nameField.isHittable, app.debugDescription)
         nameField.tap()
         // Clear the existing advertised name using the native text field's value.
         if let value = nameField.value as? String {
@@ -171,7 +175,15 @@ final class FamilyLiveUITests: XCTestCase {
             for _ in 0..<4 where !voice.isHittable { app.swipeUp() }
             XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
             voice.tap()
-            XCTAssertTrue(app.staticTexts["reticulum-voice-ready"].waitForExistence(timeout: 35), app.debugDescription)
+            let ready = app.staticTexts["reticulum-voice-ready"]
+            let callingForm = app.collectionViews["guardian-settings-form"]
+            // Showing the toggle at the bottom does not expose the status row below it.
+            for _ in 0..<2 where !ready.exists {
+                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.56))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
+            XCTAssertTrue(ready.waitForExistence(timeout: 35), app.debugDescription)
             app.buttons["Disable Reticulum calling"].tap()
             XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
             let offlineMaps = app.buttons["Offline maps"]

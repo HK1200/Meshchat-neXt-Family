@@ -54,11 +54,13 @@ print(max(candidates)[1])
 xcodegen generate --spec "$specification"
 mkdir -p RuntimeBuild/results
 result="$PWD/RuntimeBuild/results/$scheme-$device_family-$(uuidgen).xcresult"
+test_status=0
 xcodebuild test -project "$scheme.xcodeproj" -scheme "$scheme" \
     -destination "platform=iOS Simulator,id=$destination" \
-    -derivedDataPath DerivedData -resultBundlePath "$result" -parallel-testing-enabled NO "$signing" "${build_overrides[@]}"
+    -derivedDataPath DerivedData -resultBundlePath "$result" -parallel-testing-enabled NO "$signing" "${build_overrides[@]}" || test_status=$?
 
-if [[ "$store_capture" == 1 ]]; then
+if [[ "$store_capture" == 1 && -d "$result" ]]; then
     xcrun xcresulttool export attachments --path "$result" \
         --output-path "RuntimeBuild/store-screenshots/$device_family"
 fi
+exit "$test_status"
