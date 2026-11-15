@@ -178,6 +178,21 @@ private struct ProbeWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            // Use neXt's built-in compact panes when the iPad viewport is narrow.
+            let compactSidebarDefaults = """
+                if (window.innerWidth < 1024) {
+                    for (const feature of ["app", "messages"]) {
+                        const key = "meshchatnext.sidebar." + feature;
+                        if (localStorage.getItem(key) === null) localStorage.setItem(key, "true");
+                    }
+                }
+                """
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: compactSidebarDefaults, injectionTime: .atDocumentStart,
+                             forMainFrameOnly: true)
+            )
+        }
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.load(URLRequest(url: url))
