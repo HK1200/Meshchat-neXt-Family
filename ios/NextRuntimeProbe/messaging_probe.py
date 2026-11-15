@@ -8,6 +8,25 @@ import LXMF
 import RNS
 
 
+def reply_fields_for(hash_hex, quote):
+    return {
+        LXMF.FIELD_REPLY_TO: bytes.fromhex(hash_hex),
+        LXMF.FIELD_REPLY_QUOTE: quote[:1024].encode("utf-8"),
+    }
+
+
+def decode_reply_fields(fields):
+    if not isinstance(fields, dict):
+        return None, {}
+    reply = fields.get(LXMF.FIELD_REPLY_TO)
+    if not isinstance(reply, bytes) or len(reply) != 32:
+        return None, {}
+    quote = fields.get(LXMF.FIELD_REPLY_QUOTE)
+    if not isinstance(quote, bytes):
+        return reply.hex(), {}
+    return reply.hex(), {"reply_quoted_content": quote.decode("utf-8", errors="replace")[:1024]}
+
+
 class MessagingProbe:
     def __init__(self, peer, workspace, on_receive=None, *, device=False):
         host = peer.get("host", "")
@@ -59,7 +78,7 @@ class MessagingProbe:
         if self.on_receive and message.signature_validated:
             self.on_receive(message)
 
-    def compose(self, content, address):
+    def compose(self, content, address, fields=None):
         deadline = time.monotonic() + 35
         next_request = 0
         while time.monotonic() < deadline:
@@ -77,7 +96,9 @@ class MessagingProbe:
         destination = RNS.Destination(
             identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery",
         )
-        return LXMF.LXMessage(destination, self.source, content, desired_method=LXMF.LXMessage.DIRECT)
+        return LXMF.LXMessage(
+            destination, self.source, content, fields=fields, desired_method=LXMF.LXMessage.DIRECT,
+        )
 
     def send(self, message):
         self.source.announce()

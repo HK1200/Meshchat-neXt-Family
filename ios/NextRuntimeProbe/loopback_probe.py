@@ -15,17 +15,19 @@ os.environ["AIOHTTP_NOSENDFILE"] = "1"
 
 from aiohttp import web
 
-from messaging_probe import MessagingProbe
+from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_for
 
 
 def record(message, state):
+    reply, fields = decode_reply_fields(message.fields or {})
     return {
         "hash": message.hash.hex(),
         "source_hash": message.source_hash.hex(),
         "destination_hash": message.destination_hash.hex(),
         "content": message.content_as_string(),
         "title": "",
-        "fields": {},
+        "fields": fields,
+        "reply_to_hash": reply,
         "state": state,
         "method": "direct",
         "created_at": datetime.fromtimestamp(message.timestamp, timezone.utc).isoformat(),
@@ -100,6 +102,12 @@ class ConversationHistory:
             ORDER BY id {order} LIMIT ?
         """, (peer, after_id, after_id, count))
         return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
+
+    def message_for_reply(self, peer, message_hash):
+        row = self.db.execute(
+            "SELECT payload FROM messages WHERE peer = ? AND hash = ?", (peer, message_hash)
+        ).fetchone()
+        return json.loads(row[0]) if row is not None else None
 
     def delete(self, message_hash):
         with self.db:
@@ -237,10 +245,19 @@ async def serve(ready_file, frontend, fixture, *, device=False):
                 content = draft.get("content")
                 address = draft.get("destination_hash")
                 if (not isinstance(address, str) or address not in contacts or not isinstance(content, str)
-                        or not content.strip() or draft.get("fields") or draft.get("reply_to_hash")):
+                        or not content.strip() or draft.get("fields")):
                     return web.json_response({"message": "Only plain texts to saved LXMF contacts are supported"}, status=400)
+                fields = None
+                reply = draft.get("reply_to_hash")
+                if reply is not None:
+                    if not isinstance(reply, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", reply):
+                        return web.json_response({"message": "Invalid reply message ID"}, status=400)
+                    previous = history.message_for_reply(address, reply.lower())
+                    if previous is None:
+                        return web.json_response({"message": "The quoted message is unavailable in this conversation"}, status=404)
+                    fields = reply_fields_for(reply, previous["content"])
                 try:
-                    message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address))
+                    message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields)
                     message.pack()
                 except TimeoutError as exc:
                     return web.json_response({"message": str(exc)}, status=504)
