@@ -11,11 +11,17 @@ struct ProbeApp: App {
 private struct ProbeScreen: View {
     @State private var url: URL?
     @State private var error: String?
+    @State private var sendRequested = false
 
     var body: some View {
         Group {
             if let url {
-                ProbeWebView(url: url)
+                VStack(spacing: 0) {
+                    Button("Send Reticulum test message") { sendRequested = true }
+                        .disabled(sendRequested)
+                        .padding()
+                    ProbeWebView(url: url, sendRequested: sendRequested)
+                }
             } else if let error {
                 Text(error)
             } else {
@@ -59,6 +65,7 @@ private struct ProbeScreen: View {
 
 private struct ProbeWebView: UIViewRepresentable {
     let url: URL
+    let sendRequested: Bool
 
     func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url) }
 
@@ -72,10 +79,19 @@ private struct ProbeWebView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func updateUIView(_ view: WKWebView, context: Context) {
+        guard sendRequested, !context.coordinator.sent else { return }
+        context.coordinator.sent = true
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 100
+        view.load(request)
+    }
 
     final class NavigationGuard: NSObject, WKNavigationDelegate {
         let url: URL
+        var sent = false
         init(url: URL) { self.url = url }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

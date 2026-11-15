@@ -39,13 +39,11 @@ async def start(messaging=None):
                     error = str(exc)
             headers = {
                 "Cache-Control": "no-store",
-                "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; form-action 'self'",
+                "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
             }
             if "text/html" in request.headers.get("Accept", ""):
                 report = "".join(f"<li>{escape(name)} {escape(str(version))}</li>"
                                  for name, version in runtime.items())
-                if messaging is not None:
-                    report += '<form method="post"><button type="submit">Send Reticulum test message</button></form>'
                 if reply is not None:
                     report += f"<p>Signed echo received</p><p>{escape(reply)}</p>"
                 if error is not None:

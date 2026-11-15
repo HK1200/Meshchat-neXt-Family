@@ -10,7 +10,7 @@ final class ProbeUITests: XCTestCase {
             let label = web.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", module)).firstMatch
             XCTAssertTrue(label.exists, "Missing runtime module: \(module)")
         }
-        let send = web.buttons["Send Reticulum test message"]
+        let send = app.buttons["Send Reticulum test message"]
         XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
         send.tap()
         XCTAssertTrue(web.staticTexts["Signed echo received"].waitForExistence(timeout: 105), app.debugDescription)
