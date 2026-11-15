@@ -22,6 +22,7 @@ private struct ProbeScreen: View {
     @State private var address: String?
     @State private var error: String?
     @State private var starting = false
+    @State private var tcpConnected: Bool?
 
     private var simulator: Bool {
         guard let file = Bundle.main.resourceURL?.appendingPathComponent("staged/peer.json") else { return false }
@@ -47,6 +48,11 @@ private struct ProbeScreen: View {
                         }
                         .padding(.horizontal)
                         Text(address).font(.caption.monospaced()).textSelection(.enabled)
+                        Label(tcpConnected == true ? "Reticulum TCP connected" : "Connecting to Reticulum TCP…",
+                              systemImage: tcpConnected == true ? "link" : "link.badge.plus")
+                            .font(.caption)
+                            .padding(.vertical, 4)
+                            .task(id: url) { await watchConnection(at: url) }
                     }
                     ProbeWebView(url: url)
                 }
@@ -79,9 +85,39 @@ private struct ProbeScreen: View {
             }
         }
         .task {
-            guard simulator, url == nil, error == nil, !starting else { return }
-            starting = true
-            await launch(nil)
+            guard url == nil, error == nil, !starting else { return }
+            if simulator {
+                starting = true
+                await launch(nil)
+            } else if ProcessInfo.processInfo.arguments.contains("--open-saved-conversation"),
+                      let settings {
+                // The USB regression test can reopen the saved conversation without
+                // entering an address or interacting with the setup screen.
+                starting = true
+                await launch(settings)
+            }
+        }
+    }
+
+    private func watchConnection(at url: URL) async {
+        guard let endpoint = URL(string: "/api/v1/preview/reticulum-connection", relativeTo: url) else { return }
+        struct ConnectionStatus: Decodable {
+            let connected: Bool
+        }
+        while !Task.isCancelled {
+            do {
+                var request = URLRequest(url: endpoint)
+                request.timeoutInterval = 2
+                let (data, _) = try await URLSession.shared.data(for: request)
+                tcpConnected = try JSONDecoder().decode(ConnectionStatus.self, from: data).connected
+            } catch {
+                tcpConnected = nil
+            }
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
         }
     }
 

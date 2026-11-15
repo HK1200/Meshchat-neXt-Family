@@ -145,6 +145,11 @@ async def serve(ready_file, frontend, fixture, *, device=False):
     async def api(request):
         path = request.match_info["path"]
         if request.method == "GET":
+            if device and path == "preview/reticulum-connection":
+                return web.json_response(
+                    {"connected": probe.online},
+                    headers={"Cache-Control": "no-store"},
+                )
             if path in responses:
                 return web.json_response(responses[path])
             if path == f"lxmf-messages/conversation/{peer}":
