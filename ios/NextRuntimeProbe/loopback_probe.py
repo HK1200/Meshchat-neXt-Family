@@ -1,10 +1,11 @@
-"""Serve the released neXt frontend with an embedded simulator LXMF backend."""
+"""Serve the released neXt frontend with an embedded LXMF backend."""
 
 import asyncio
 from datetime import datetime, timezone
 import json
 import os
 import secrets
+import sqlite3
 from pathlib import Path
 
 # iPadOS terminates sandboxed apps that call sendfile. Configure aiohttp
@@ -32,14 +33,72 @@ def record(message, state):
     }
 
 
+class ConversationHistory:
+    def __init__(self, path):
+        self.db = sqlite3.connect(path)
+        with self.db:
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY,
+                    hash TEXT NOT NULL UNIQUE,
+                    peer TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+            """)
+            self.db.execute("CREATE INDEX IF NOT EXISTS messages_peer ON messages(peer, id)")
+            # The preview has no persistent outbound queue. A send interrupted
+            # by app termination is left visible as failed.
+            self.db.execute("""
+                UPDATE messages SET state = 'failed' WHERE state = 'sending'
+            """)
+
+    def save(self, peer, row):
+        with self.db:
+            payload = json.dumps({k: v for k, v in row.items() if k not in ("id", "state")})
+            self.db.execute("""
+                INSERT INTO messages(hash, peer, state, payload) VALUES (?, ?, ?, ?)
+                ON CONFLICT(hash) DO UPDATE SET state = excluded.state, payload = excluded.payload
+            """, (row["hash"], peer, row["state"], payload))
+            message_id, = self.db.execute(
+                "SELECT id FROM messages WHERE hash = ?", (row["hash"],)
+            ).fetchone()
+        return {**row, "id": message_id}
+
+    def page(self, peer, query):
+        descending = query.get("order") == "desc"
+        order = "DESC" if descending else "ASC"
+        operator = "<" if descending else ">"
+        count = min(max(int(query.get("count", 100)), 1), 250)
+        after_id = int(query["after_id"]) if "after_id" in query else None
+        rows = self.db.execute(f"""
+            SELECT id, state, payload FROM messages
+            WHERE peer = ? AND (? IS NULL OR id {operator} ?)
+            ORDER BY id {order} LIMIT ?
+        """, (peer, after_id, after_id, count))
+        return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
+
+    def delete(self, peer, message_hash):
+        with self.db:
+            row = self.db.execute("SELECT state FROM messages WHERE peer = ? AND hash = ?",
+                                  (peer, message_hash)).fetchone()
+            if row is None:
+                raise KeyError(message_hash)
+            if row[0] == "sending":
+                raise ValueError("Message is still sending")
+            self.db.execute("DELETE FROM messages WHERE peer = ? AND hash = ?", (peer, message_hash))
+
+    def close(self):
+        self.db.close()
+
+
 async def serve(ready_file, frontend, fixture, *, device=False):
     loop = asyncio.get_running_loop()
-    messages = {}
     clients = set()
     tasks = set()
 
     async def publish(kind, row):
-        messages[row["hash"]] = row
+        row = history.save(peer, row)
         for client in tuple(clients):
             try:
                 await client.send_json({"type": kind, "lxmf_message": row})
@@ -58,6 +117,7 @@ async def serve(ready_file, frontend, fixture, *, device=False):
     probe = MessagingProbe(settings, ready_file.parent, inbound, device=device)
     peer = probe.address.hex()
     own = probe.source.hash.hex()
+    history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3" if device else ":memory:")
     token = secrets.token_urlsafe(32)
     contact = "Test contact" if device else "Simulator Echo"
     conversation = {"destination_hash": peer, "display_name": contact, "unread_count": 0}
@@ -88,10 +148,22 @@ async def serve(ready_file, frontend, fixture, *, device=False):
             if path in responses:
                 return web.json_response(responses[path])
             if path == f"lxmf-messages/conversation/{peer}":
-                return web.json_response({"lxmf_messages": list(messages.values())})
+                try:
+                    return web.json_response({"lxmf_messages": history.page(peer, request.query)})
+                except (ValueError, OverflowError):
+                    raise web.HTTPBadRequest(text="Invalid history pagination")
+        if request.method in ("POST", "DELETE") and request.headers.get("X-CSRF-Token") != token:
+            raise web.HTTPForbidden()
+        if request.method == "DELETE" and path.startswith("lxmf-messages/"):
+            message_hash = path.removeprefix("lxmf-messages/")
+            try:
+                history.delete(peer, message_hash)
+            except KeyError:
+                raise web.HTTPNotFound()
+            except ValueError as exc:
+                return web.json_response({"message": str(exc)}, status=409)
+            return web.json_response({"status": "success"})
         if request.method == "POST":
-            if request.headers.get("X-CSRF-Token") != token:
-                raise web.HTTPForbidden()
             if path == f"lxmf/conversations/{peer}/mark-as-read":
                 return web.json_response({"status": "success"})
             if path == "lxmf-messages/send":
@@ -112,9 +184,12 @@ async def serve(ready_file, frontend, fixture, *, device=False):
 
                 message.register_delivery_callback(lambda updated: state_changed(updated, "delivered"))
                 message.register_failed_callback(lambda updated: state_changed(updated, "failed"))
-                row = record(message, "sending")
-                messages[row["hash"]] = row
-                probe.send(message)
+                row = history.save(peer, record(message, "sending"))
+                try:
+                    probe.send(message)
+                except Exception:
+                    await publish("lxmf_message_state_updated", {**row, "state": "failed"})
+                    return web.json_response({"message": "Could not queue the message"}, status=502)
                 return web.json_response({"lxmf_message": row})
         raise web.HTTPNotFound()
 
@@ -178,6 +253,9 @@ async def serve(ready_file, frontend, fixture, *, device=False):
             await asyncio.Future()
     finally:
         await runner.cleanup()
+        if tasks:
+            await asyncio.gather(*tasks)
+        history.close()
 
 
 def run_for_app(ready_file):
