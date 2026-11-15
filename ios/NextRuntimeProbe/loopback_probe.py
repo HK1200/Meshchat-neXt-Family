@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import os
+import re
 import secrets
 import sqlite3
 from pathlib import Path
@@ -47,11 +48,33 @@ class ConversationHistory:
                 )
             """)
             self.db.execute("CREATE INDEX IF NOT EXISTS messages_peer ON messages(peer, id)")
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS contacts (
+                    id INTEGER PRIMARY KEY,
+                    lxmf_address TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL
+                )
+            """)
             # The preview has no persistent outbound queue. A send interrupted
             # by app termination is left visible as failed.
             self.db.execute("""
                 UPDATE messages SET state = 'failed' WHERE state = 'sending'
             """)
+
+    def ensure_contact(self, address, name):
+        with self.db:
+            self.db.execute(
+                "INSERT INTO contacts(lxmf_address, name) VALUES (?, ?) ON CONFLICT(lxmf_address) DO NOTHING",
+                (address, name),
+            )
+
+    def contacts(self):
+        return {
+            address: {"id": contact_id, "lxmf_address": address, "name": name}
+            for contact_id, address, name in self.db.execute(
+                "SELECT id, lxmf_address, name FROM contacts ORDER BY name COLLATE NOCASE, id"
+            )
+        }
 
     def save(self, peer, row):
         with self.db:
@@ -78,15 +101,15 @@ class ConversationHistory:
         """, (peer, after_id, after_id, count))
         return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
 
-    def delete(self, peer, message_hash):
+    def delete(self, message_hash):
         with self.db:
-            row = self.db.execute("SELECT state FROM messages WHERE peer = ? AND hash = ?",
-                                  (peer, message_hash)).fetchone()
+            row = self.db.execute("SELECT state FROM messages WHERE hash = ?",
+                                  (message_hash,)).fetchone()
             if row is None:
                 raise KeyError(message_hash)
             if row[0] == "sending":
                 raise ValueError("Message is still sending")
-            self.db.execute("DELETE FROM messages WHERE peer = ? AND hash = ?", (peer, message_hash))
+            self.db.execute("DELETE FROM messages WHERE hash = ?", (message_hash,))
 
     def close(self):
         self.db.close()
@@ -98,7 +121,10 @@ async def serve(ready_file, frontend, fixture, *, device=False):
     tasks = set()
 
     async def publish(kind, row):
-        row = history.save(peer, row)
+        address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
+        if address not in contacts:
+            return
+        row = history.save(address, row)
         for client in tuple(clients):
             try:
                 await client.send_json({"type": kind, "lxmf_message": row})
@@ -120,7 +146,8 @@ async def serve(ready_file, frontend, fixture, *, device=False):
     history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3" if device else ":memory:")
     token = secrets.token_urlsafe(32)
     contact = "Test contact" if device else "Simulator Echo"
-    conversation = {"destination_hash": peer, "display_name": contact, "unread_count": 0}
+    history.ensure_contact(peer, contact)
+    contacts = history.contacts()
     display_name = "neXt iOS" if device else "neXt Simulator"
     config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": display_name}
     responses = {
@@ -128,10 +155,8 @@ async def serve(ready_file, frontend, fixture, *, device=False):
         "auth/status": {"auth_enabled": False, "authenticated": True},
         "auth/csrf": {"csrf_token": token},
         "config": {"config": config},
-        "lxmf/conversations": {"conversations": [conversation]},
         "lxmf/conversation-pins": {"pinned_destination_hashes": []},
         "lxmf/folders": {"folders": []},
-        f"destination/{peer}/custom-display-name": {"custom_display_name": None},
     }
 
     @web.middleware
@@ -152,9 +177,27 @@ async def serve(ready_file, frontend, fixture, *, device=False):
                 )
             if path in responses:
                 return web.json_response(responses[path])
-            if path == f"lxmf-messages/conversation/{peer}":
+            if path == "lxmf/conversations":
+                return web.json_response({"conversations": [
+                    {
+                        "destination_hash": address,
+                        "display_name": entry["name"],
+                        "is_contact": True,
+                        "unread_count": 0,
+                    }
+                    for address, entry in contacts.items()
+                ]})
+            if path == "telephone/contacts":
+                return web.json_response({"contacts": list(contacts.values()), "total_count": len(contacts)})
+            if path.startswith("telephone/contacts/check/"):
+                entry = contacts.get(path.rsplit("/", 1)[1])
+                return web.json_response({"is_contact": entry is not None, "contact": entry, "id": entry["id"] if entry else None})
+            if path.startswith("lxmf-messages/conversation/"):
+                address = path.rsplit("/", 1)[1]
+                if address not in contacts:
+                    return web.json_response({"lxmf_messages": []})
                 try:
-                    return web.json_response({"lxmf_messages": history.page(peer, request.query)})
+                    return web.json_response({"lxmf_messages": history.page(address, request.query)})
                 except (ValueError, OverflowError):
                     raise web.HTTPBadRequest(text="Invalid history pagination")
         if request.method in ("POST", "DELETE") and request.headers.get("X-CSRF-Token") != token:
@@ -162,24 +205,42 @@ async def serve(ready_file, frontend, fixture, *, device=False):
         if request.method == "DELETE" and path.startswith("lxmf-messages/"):
             message_hash = path.removeprefix("lxmf-messages/")
             try:
-                history.delete(peer, message_hash)
+                history.delete(message_hash)
             except KeyError:
                 raise web.HTTPNotFound()
             except ValueError as exc:
                 return web.json_response({"message": str(exc)}, status=409)
             return web.json_response({"status": "success"})
         if request.method == "POST":
-            if path == f"lxmf/conversations/{peer}/mark-as-read":
+            if path == "telephone/contacts" and device:
+                body = await request.json()
+                if not isinstance(body, dict):
+                    raise web.HTTPBadRequest(text="Expected a contact object")
+                address = body.get("lxmf_address")
+                name = body.get("name")
+                if (not isinstance(address, str) or not re.fullmatch(r"[a-fA-F0-9]{32}", address)
+                        or address.lower() == own or not isinstance(name, str)
+                        or not name.strip() or len(name.strip()) > 120):
+                    return web.json_response({"message": "Enter a name and a valid LXMF address"}, status=400)
+                if address.lower() in contacts:
+                    return web.json_response({"message": "That LXMF address is already saved"}, status=409)
+                history.ensure_contact(address.lower(), name.strip())
+                contacts.update(history.contacts())
+                return web.json_response({"message": "Contact added"})
+            if path.startswith("lxmf/conversations/") and path.endswith("/mark-as-read"):
                 return web.json_response({"status": "success"})
             if path == "lxmf-messages/send":
                 body = await request.json()
-                draft = body.get("lxmf_message") or {}
+                draft = body.get("lxmf_message") if isinstance(body, dict) else None
+                if not isinstance(draft, dict):
+                    raise web.HTTPBadRequest(text="Expected an LXMF message object")
                 content = draft.get("content")
-                if (draft.get("destination_hash") != peer or not isinstance(content, str)
+                address = draft.get("destination_hash")
+                if (not isinstance(address, str) or address not in contacts or not isinstance(content, str)
                         or not content.strip() or draft.get("fields") or draft.get("reply_to_hash")):
-                    return web.json_response({"message": f"Only plain texts to {contact} are supported"}, status=400)
+                    return web.json_response({"message": "Only plain texts to saved LXMF contacts are supported"}, status=400)
                 try:
-                    message = await asyncio.to_thread(probe.compose, content)
+                    message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address))
                     message.pack()
                 except TimeoutError as exc:
                     return web.json_response({"message": str(exc)}, status=504)
@@ -189,7 +250,7 @@ async def serve(ready_file, frontend, fixture, *, device=False):
 
                 message.register_delivery_callback(lambda updated: state_changed(updated, "delivered"))
                 message.register_failed_callback(lambda updated: state_changed(updated, "failed"))
-                row = history.save(peer, record(message, "sending"))
+                row = history.save(address, record(message, "sending"))
                 try:
                     probe.send(message)
                 except Exception:

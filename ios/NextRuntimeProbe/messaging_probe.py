@@ -56,24 +56,24 @@ class MessagingProbe:
         return any(interface.online for interface in RNS.Transport.interfaces)
 
     def receive(self, message):
-        if self.on_receive and message.signature_validated and message.source_hash == self.address:
+        if self.on_receive and message.signature_validated:
             self.on_receive(message)
 
-    def compose(self, content):
+    def compose(self, content, address):
         deadline = time.monotonic() + 35
         next_request = 0
         while time.monotonic() < deadline:
-            if RNS.Transport.has_path(self.address):
-                identity = RNS.Identity.recall(self.address)
+            if RNS.Transport.has_path(address):
+                identity = RNS.Identity.recall(address)
                 if identity:
                     break
             now = time.monotonic()
             if now >= next_request:
-                RNS.Transport.request_path(self.address)
+                RNS.Transport.request_path(address)
                 next_request = now + 3
             time.sleep(0.2)
         else:
-            raise TimeoutError("Could not find the private Reticulum peer")
+            raise TimeoutError("Could not find a Reticulum path to the contact")
         destination = RNS.Destination(
             identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery",
         )
