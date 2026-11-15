@@ -7,6 +7,10 @@ on:
         description: Run live messaging through rmap.world on both simulators
         type: boolean
         default: false
+      store_screenshots:
+        description: Capture Store-edition screenshots using disposable local test contacts
+        type: boolean
+        default: false
       appstore_archive:
         description: Validate the unsigned AppStore archive with rooms disabled
         type: boolean
@@ -33,7 +37,7 @@ permissions:
 
 jobs:
   simulator:
-    if: ${{ !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight }}
+    if: ${{ !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 35
@@ -85,6 +89,32 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  store-screenshots:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.store_screenshots }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Exercise Family with Store room restrictions and capture screenshots
+        env:
+          FAMILY_STORE_SCREENSHOTS: "1"
+        run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Keep screenshots for listing review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: family-store-screenshots-${{ matrix.device }}
+          path: ios/RuntimeBuild/store-screenshots/${{ matrix.device }}
+          if-no-files-found: error
+          retention-days: 7
+
   device-archive:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.device_archive && !inputs.testflight }}
     runs-on: macos-26
@@ -118,6 +148,23 @@ jobs:
         run: command -v xcodegen || brew install xcodegen
       - name: Build the AppStore archive
         run: bash ios/archive-device.sh appstore
+      - name: Package the unsigned App Store archive
+        run: |
+          archive=ios/RuntimeBuild/FamilyLive.xcarchive
+          zip=ios/RuntimeBuild/neXt-Family-AppStore-unsigned.xcarchive.zip
+          ditto -c -k --keepParent "$archive" "$zip"
+          unzip -tq "$zip"
+          (cd ios/RuntimeBuild && shasum -a 256 "$(basename "$zip")" > AppStore-SHA256SUMS.txt)
+      - name: Keep the unsigned App Store archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: family-appstore-unsigned-archive
+          path: |
+            ios/RuntimeBuild/neXt-Family-AppStore-unsigned.xcarchive.zip
+            ios/RuntimeBuild/AppStore-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   internal-testflight:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/feature/family-ios' }}

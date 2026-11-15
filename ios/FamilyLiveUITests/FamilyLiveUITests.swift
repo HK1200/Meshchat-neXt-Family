@@ -100,7 +100,11 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))
+        #if FAMILY_STORE_SCREENSHOTS
+        XCTAssertFalse(app.staticTexts["relay-chat-ready"].exists)
+        #else
         XCTAssertTrue(app.staticTexts["relay-chat-ready"].waitForExistence(timeout: 15))
+        #endif
         if localTest {
             let enableNotifications = app.buttons["Enable message notifications"]
             if enableNotifications.exists {
@@ -116,6 +120,9 @@ final class FamilyLiveUITests: XCTestCase {
         }
         let contact = app.buttons[contactName]
         XCTAssertTrue(contact.waitForExistence(timeout: 10))
+        #if FAMILY_STORE_SCREENSHOTS
+        captureListingScreen(app, named: "01-approved-contacts")
+        #endif
         contact.tap()
         fill(app.textFields["message-draft"], peer.message)
         app.buttons["Send"].tap()
@@ -135,6 +142,9 @@ final class FamilyLiveUITests: XCTestCase {
             "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
         )
         XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
+        #if FAMILY_STORE_SCREENSHOTS
+        captureListingScreen(app, named: "02-approved-conversation")
+        #endif
         if localTest {
             XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
             XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
@@ -190,4 +200,13 @@ final class FamilyLiveUITests: XCTestCase {
         field.tap()
         field.typeText(value)
     }
+    #if FAMILY_STORE_SCREENSHOTS
+    private func captureListingScreen(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "family-store-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    #endif
+
 }
