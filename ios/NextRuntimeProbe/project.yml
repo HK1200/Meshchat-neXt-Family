@@ -37,6 +37,7 @@ targets:
       - name: Package Python standard library
         script: |
           set -e
+          export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
           source "$PROJECT_DIR/Python.xcframework/build/utils.sh"
           install_python Python.xcframework staged
   NextRuntimeProbeUITests:
