@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 import secrets
-import threading
 import time
 
 import LXMF
@@ -11,7 +10,7 @@ import RNS
 
 
 class MessagingProbe:
-    def __init__(self, fixture, workspace):
+    def __init__(self, fixture, workspace, on_receive=None):
         with fixture.open(encoding="utf-8") as source:
             peer = json.load(source)
         port = peer["port"]
@@ -21,9 +20,7 @@ class MessagingProbe:
         if len(self.address) != RNS.Reticulum.TRUNCATED_HASHLENGTH // 8:
             raise ValueError("Invalid echo peer address")
         self.challenge = peer["message"]
-        self.response = None
-        self.done = threading.Event()
-        self.lock = threading.Lock()
+        self.on_receive = on_receive
         folder = workspace / f"reticulum-{secrets.token_hex(8)}"
         folder.mkdir(mode=0o700)
         (folder / "config").write_text(
@@ -43,37 +40,29 @@ class MessagingProbe:
         self.router.register_delivery_callback(self.receive)
 
     def receive(self, message):
-        if (message.signature_validated and message.source_hash == self.address
-                and message.content_as_string() == "Echo: " + self.challenge):
-            self.response = message.content_as_string()
-            self.done.set()
+        if self.on_receive and message.signature_validated and message.source_hash == self.address:
+            self.on_receive(message)
 
-    def send(self):
-        with self.lock:
-            if self.response is not None:
-                return self.response
-            deadline = time.monotonic() + 35
-            next_request = 0
-            while time.monotonic() < deadline:
-                if RNS.Transport.has_path(self.address):
-                    identity = RNS.Identity.recall(self.address)
-                    if identity:
-                        break
-                now = time.monotonic()
-                if now >= next_request:
-                    RNS.Transport.request_path(self.address)
-                    next_request = now + 3
-                time.sleep(0.2)
-            else:
-                raise TimeoutError("Could not find the private Reticulum peer")
-            destination = RNS.Destination(
-                identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery",
-            )
-            self.source.announce()
-            message = LXMF.LXMessage(
-                destination, self.source, self.challenge, desired_method=LXMF.LXMessage.DIRECT,
-            )
-            self.router.handle_outbound(message)
-            if not self.done.wait(55):
-                raise TimeoutError("No signed echo arrived")
-            return self.response
+    def compose(self, content):
+        deadline = time.monotonic() + 35
+        next_request = 0
+        while time.monotonic() < deadline:
+            if RNS.Transport.has_path(self.address):
+                identity = RNS.Identity.recall(self.address)
+                if identity:
+                    break
+            now = time.monotonic()
+            if now >= next_request:
+                RNS.Transport.request_path(self.address)
+                next_request = now + 3
+            time.sleep(0.2)
+        else:
+            raise TimeoutError("Could not find the private Reticulum peer")
+        destination = RNS.Destination(
+            identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery",
+        )
+        return LXMF.LXMessage(destination, self.source, content, desired_method=LXMF.LXMessage.DIRECT)
+
+    def send(self, message):
+        self.source.announce()
+        self.router.handle_outbound(message)

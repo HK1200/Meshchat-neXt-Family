@@ -8,7 +8,7 @@ on:
         type: boolean
         default: false
       next_runtime_probe:
-        description: Test the separate Meshchat neXt runtime in WebKit on iPhone and iPad
+        description: Test the Meshchat neXt Messages interface on iPhone and iPad
         type: boolean
         default: false
       store_screenshots:

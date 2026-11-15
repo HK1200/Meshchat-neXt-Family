@@ -37,7 +37,11 @@ targets:
   NextRuntimeProbeUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [Tests]
+    sources:
+      - path: Tests
+        excludes: [peer.json]
+      - path: Tests/peer.json
+        buildPhase: resources
     dependencies:
       - target: NextRuntimeProbe
     settings:

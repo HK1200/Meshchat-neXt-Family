@@ -107,4 +107,4 @@ def main(folder, public, drop_test=False):
 
 if __name__ == "__main__":
     public = len(sys.argv) > 2 and sys.argv[2] == "rmap"
-    main(Path(sys.argv[1]), public, drop_test=not public)
+    main(Path(sys.argv[1]), public, drop_test=not public and sys.argv[2:3] != ["local-no-drop"])

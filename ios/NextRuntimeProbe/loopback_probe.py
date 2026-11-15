@@ -1,99 +1,164 @@
-"""Exercise the HTTP and Reticulum imports separately from neXt's desktop startup."""
+"""Serve the released neXt frontend with an embedded simulator LXMF backend."""
 
 import asyncio
-from html import escape
-import importlib
+from datetime import datetime, timezone
 import secrets
-import socket
 from pathlib import Path
 
 from aiohttp import web
 
+from messaging_probe import MessagingProbe
 
-async def start(messaging=None):
-    # Reserve the ephemeral port before passing the listening socket to aiohttp.
-    # Keeping socket ownership here avoids a bind-close-rebind race.
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    runner = None
-    try:
-        listener.bind(("127.0.0.1", 0))
-        host, port = listener.getsockname()
-        authority = f"{host}:{port}"
-        route = f"/{secrets.token_urlsafe(24)}"
-        runtime = {
-            name: getattr(importlib.import_module(name), "__version__", "imported")
-            for name in ("aiohttp", "RNS", "LXMF")
-        }
 
-        async def health(request):
-            reply = None
-            error = None
-            if request.host != authority:
-                raise web.HTTPBadRequest()
-            if request.method == "POST":
-                if messaging is None:
-                    raise web.HTTPMethodNotAllowed("POST", ["GET"])
+def record(message, state):
+    return {
+        "hash": message.hash.hex(),
+        "source_hash": message.source_hash.hex(),
+        "destination_hash": message.destination_hash.hex(),
+        "content": message.content_as_string(),
+        "title": "",
+        "fields": {},
+        "state": state,
+        "method": "direct",
+        "created_at": datetime.fromtimestamp(message.timestamp, timezone.utc).isoformat(),
+        "progress": 100 if state == "delivered" else 0,
+        "is_outbound": state != "received",
+    }
+
+
+async def serve(ready_file, frontend, fixture):
+    loop = asyncio.get_running_loop()
+    messages = {}
+    clients = set()
+    tasks = set()
+
+    async def publish(kind, row):
+        messages[row["hash"]] = row
+        for client in tuple(clients):
+            try:
+                await client.send_json({"type": kind, "lxmf_message": row})
+            except (ConnectionError, RuntimeError):
+                clients.discard(client)
+
+    def schedule(kind, row):
+        task = asyncio.create_task(publish(kind, row))
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+
+    def inbound(message):
+        loop.call_soon_threadsafe(schedule, "lxmf.delivery", record(message, "received"))
+
+    probe = MessagingProbe(fixture, ready_file.parent, inbound)
+    peer = probe.address.hex()
+    own = probe.source.hash.hex()
+    token = secrets.token_urlsafe(32)
+    conversation = {"destination_hash": peer, "display_name": "Simulator Echo", "unread_count": 0}
+    config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": "neXt Simulator"}
+    responses = {
+        "status": {"status": "ok", "network_ready": True, "ui_ready": True},
+        "auth/status": {"auth_enabled": False, "authenticated": True},
+        "auth/csrf": {"csrf_token": token},
+        "config": {"config": config},
+        "lxmf/conversations": {"conversations": [conversation]},
+        "lxmf/conversation-pins": {"pinned_destination_hashes": []},
+        "lxmf/folders": {"folders": []},
+        f"destination/{peer}/custom-display-name": {"custom_display_name": None},
+    }
+
+    @web.middleware
+    async def local_only(request, handler):
+        if request.host != authority:
+            raise web.HTTPBadRequest()
+        if request.headers.get("Origin") not in (None, f"http://{authority}"):
+            raise web.HTTPForbidden()
+        return await handler(request)
+
+    async def api(request):
+        path = request.match_info["path"]
+        if request.method == "GET":
+            if path in responses:
+                return web.json_response(responses[path])
+            if path == f"lxmf-messages/conversation/{peer}":
+                return web.json_response({"lxmf_messages": list(messages.values())})
+        if request.method == "POST":
+            if request.headers.get("X-CSRF-Token") != token:
+                raise web.HTTPForbidden()
+            if path == f"lxmf/conversations/{peer}/mark-as-read":
+                return web.json_response({"status": "success"})
+            if path == "lxmf-messages/send":
+                body = await request.json()
+                draft = body.get("lxmf_message") or {}
+                content = draft.get("content")
+                if (draft.get("destination_hash") != peer or not isinstance(content, str)
+                        or not content.strip() or draft.get("fields") or draft.get("reply_to_hash")):
+                    return web.json_response({"message": "Only plain texts to Simulator Echo are supported"}, status=400)
                 try:
-                    reply = await asyncio.to_thread(messaging.send)
+                    message = await asyncio.to_thread(probe.compose, content)
+                    message.pack()
                 except TimeoutError as exc:
-                    error = str(exc)
-            headers = {
-                "Cache-Control": "no-store",
-                "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
-            }
-            if "text/html" in request.headers.get("Accept", ""):
-                report = "".join(f"<li>{escape(name)} {escape(str(version))}</li>"
-                                 for name, version in runtime.items())
-                if reply is not None:
-                    report += f"<p>Signed echo received</p><p>{escape(reply)}</p>"
-                if error is not None:
-                    report += f"<p>{escape(error)}</p>"
-                return web.Response(
-                    text=f"<!doctype html><html lang='en'><meta charset='utf-8'>"
-                         f"<title>neXt runtime</title><h1>neXt runtime ready</h1><ul>{report}</ul></html>",
-                    content_type="text/html", headers=headers,
-                )
-            result = dict(runtime)
-            if request.method == "POST":
-                result.update(reply=reply, error=error)
-            return web.json_response(result, headers=headers, status=504 if error else 200)
+                    return web.json_response({"message": str(exc)}, status=504)
 
-        app = web.Application()
-        app.router.add_get(route, health)
-        app.router.add_post(route, health)
-        runner = web.AppRunner(app, access_log=None, handle_signals=False)
-        await runner.setup()
-        await web.SockSite(runner, listener).start()
-        return runner, f"http://{authority}{route}"
-    except BaseException:
-        if runner is not None:
-            await runner.cleanup()
-        listener.close()
-        raise
+                def state_changed(updated, state):
+                    loop.call_soon_threadsafe(schedule, "lxmf_message_state_updated", record(updated, state))
 
+                message.register_delivery_callback(lambda updated: state_changed(updated, "delivered"))
+                message.register_failed_callback(lambda updated: state_changed(updated, "failed"))
+                row = record(message, "sending")
+                messages[row["hash"]] = row
+                probe.send(message)
+                return web.json_response({"lxmf_message": row})
+        raise web.HTTPNotFound()
 
-async def serve(ready_file=None, messaging=None):
-    runner, url = await start(messaging)
+    async def websocket(request):
+        client = web.WebSocketResponse()
+        await client.prepare(request)
+        clients.add(client)
+        try:
+            await client.send_json({"type": "config", "config": config})
+            async for event in client:
+                if event.type == web.WSMsgType.TEXT:
+                    try:
+                        data = event.json()
+                    except ValueError:
+                        continue
+                    if isinstance(data, dict) and data.get("type") == "ping":
+                        await client.send_json({"type": "pong"})
+        finally:
+            clients.discard(client)
+        return client
+
+    async def index(request):
+        headers = {
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+        }
+        return web.FileResponse(frontend / "index.html", headers=headers)
+
+    async def disable_service_worker(request):
+        # The embedded host is recreated on each launch and serves its assets locally.
+        raise web.HTTPNotFound()
+
+    app = web.Application(middlewares=[local_only])
+    app.router.add_route("*", "/api/v1/{path:.*}", api)
+    app.router.add_get("/ws", websocket)
+    app.router.add_get("/", index)
+    app.router.add_get("/service-worker.js", disable_service_worker)
+    app.router.add_static("/", frontend)
+    runner = web.AppRunner(app, access_log=None, handle_signals=False)
+    await runner.setup()
     try:
-        if ready_file is None:
-            print(url, flush=True)
-        else:
-            ready = Path(ready_file)
-            staging = ready.with_suffix(".tmp")
-            staging.write_text(url, encoding="utf-8")
-            staging.replace(ready)
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        host, port = runner.addresses[0]
+        authority = f"{host}:{port}"
+        staging = ready_file.with_suffix(".tmp")
+        staging.write_text(f"http://{authority}/#/messages/{peer}", encoding="utf-8")
+        staging.replace(ready_file)
         await asyncio.Future()
     finally:
         await runner.cleanup()
 
 
 def run_for_app(ready_file):
-    from messaging_probe import MessagingProbe
-
-    fixture = Path(__file__).with_name("peer.json")
-    probe = MessagingProbe(fixture, Path(ready_file).parent)
-    asyncio.run(serve(ready_file, probe))
-
-
-if __name__ == "__main__":
-    asyncio.run(serve())
+    resources = Path(__file__).parent
+    asyncio.run(serve(Path(ready_file), resources / "frontend", resources / "peer.json"))
