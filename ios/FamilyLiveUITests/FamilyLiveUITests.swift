@@ -146,9 +146,6 @@ final class FamilyLiveUITests: XCTestCase {
             "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
         )
         XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
-        #if FAMILY_STORE_SCREENSHOTS
-        captureListingScreen(app, named: "02-approved-conversation")
-        #endif
         if localTest {
             XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
             XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
@@ -162,6 +159,19 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
         XCTAssertTrue(app.navigationBars[deviceName].exists)
         XCTAssertTrue(app.buttons[changedAppearance].exists)
+        #if FAMILY_STORE_SCREENSHOTS
+        // Reopen the saved conversation after relaunch so the composer has no focus.
+        app.buttons[contactName].tap()
+        XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        let banner = XCUIApplication(bundleIdentifier: "com.apple.springboard").staticTexts["New Family message"]
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: banner)
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 15), .completed)
+        captureListingScreen(app, named: "02-approved-conversation")
+        let back = app.navigationBars[contactName].buttons.firstMatch
+        XCTAssertTrue(back.exists, app.debugDescription)
+        back.tap()
+        #endif
         XCTAssertTrue(guardian.waitForExistence(timeout: 10))
         if !guardian.isHittable { app.swipeUp() }
         guardian.tap()
