@@ -3,8 +3,13 @@
 import asyncio
 from datetime import datetime, timezone
 import json
+import os
 import secrets
 from pathlib import Path
+
+# iPadOS terminates sandboxed apps that call sendfile. Configure aiohttp
+# before importing it so both the simulator and device use buffered reads.
+os.environ["AIOHTTP_NOSENDFILE"] = "1"
 
 from aiohttp import web
 
