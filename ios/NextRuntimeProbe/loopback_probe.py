@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime, timezone
+import json
 import secrets
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def record(message, state):
     }
 
 
-async def serve(ready_file, frontend, fixture):
+async def serve(ready_file, frontend, fixture, *, device=False):
     loop = asyncio.get_running_loop()
     messages = {}
     clients = set()
@@ -48,12 +49,15 @@ async def serve(ready_file, frontend, fixture):
     def inbound(message):
         loop.call_soon_threadsafe(schedule, "lxmf.delivery", record(message, "received"))
 
-    probe = MessagingProbe(fixture, ready_file.parent, inbound)
+    settings = json.loads(fixture.read_text(encoding="utf-8"))
+    probe = MessagingProbe(settings, ready_file.parent, inbound, device=device)
     peer = probe.address.hex()
     own = probe.source.hash.hex()
     token = secrets.token_urlsafe(32)
-    conversation = {"destination_hash": peer, "display_name": "Simulator Echo", "unread_count": 0}
-    config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": "neXt Simulator"}
+    contact = "Test contact" if device else "Simulator Echo"
+    conversation = {"destination_hash": peer, "display_name": contact, "unread_count": 0}
+    display_name = "neXt iOS" if device else "neXt Simulator"
+    config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": display_name}
     responses = {
         "status": {"status": "ok", "network_ready": True, "ui_ready": True},
         "auth/status": {"auth_enabled": False, "authenticated": True},
@@ -91,7 +95,7 @@ async def serve(ready_file, frontend, fixture):
                 content = draft.get("content")
                 if (draft.get("destination_hash") != peer or not isinstance(content, str)
                         or not content.strip() or draft.get("fields") or draft.get("reply_to_hash")):
-                    return web.json_response({"message": "Only plain texts to Simulator Echo are supported"}, status=400)
+                    return web.json_response({"message": f"Only plain texts to {contact} are supported"}, status=400)
                 try:
                     message = await asyncio.to_thread(probe.compose, content)
                     message.pack()
@@ -153,12 +157,31 @@ async def serve(ready_file, frontend, fixture):
         authority = f"{host}:{port}"
         staging = ready_file.with_suffix(".tmp")
         staging.write_text(f"http://{authority}/#/messages/{peer}", encoding="utf-8")
+        if device:
+            ready_file.with_suffix(".address").write_text(own, encoding="utf-8")
         staging.replace(ready_file)
-        await asyncio.Future()
+        if device:
+            # Announce only after the TCP link comes up, including after reconnect.
+            online = False
+            while True:
+                connected = probe.online
+                if connected and not online:
+                    await asyncio.to_thread(probe.source.announce)
+                online = connected
+                await asyncio.sleep(1)
+        else:
+            await asyncio.Future()
     finally:
         await runner.cleanup()
 
 
 def run_for_app(ready_file):
     resources = Path(__file__).parent
-    asyncio.run(serve(Path(ready_file), resources / "frontend", resources / "peer.json"))
+    ready = Path(ready_file)
+    simulator = resources / "peer.json"
+    fixture = simulator if simulator.is_file() else ready.with_suffix(".json")
+    try:
+        asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator))
+    except Exception as error:
+        ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
+        raise

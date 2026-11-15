@@ -14,6 +14,10 @@ targets:
     info:
       path: ProbeInfo.plist
       properties:
+        CFBundleDisplayName: Meshchat neXt
+        CFBundleShortVersionString: "0.1.19"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
         NSAppTransportSecurity:
           NSExceptionDomains:
             "127.0.0.1":
@@ -23,6 +27,7 @@ targets:
         embed: true
         codeSign: true
     settings:
+      CURRENT_PROJECT_VERSION: "1"
       PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe
       SWIFT_OBJC_BRIDGING_HEADER: App/ProbeRuntime.h
       HEADER_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR)/Python.framework/Headers"
