@@ -330,7 +330,8 @@ final class FamilyModel: ObservableObject {
         await lock()
         await refreshNotificationPermission()
         let deadline = ContinuousClock.now + .seconds(22)
-        var requested = false
+        var requestedSession: String?
+        var requestedAddress: String?
         while !Task.isCancelled && ContinuousClock.now < deadline &&
                 UIApplication.shared.applicationState != .active {
             await refresh()
@@ -338,23 +339,23 @@ final class FamilyModel: ObservableObject {
                 await scheduleMailboxRefresh()
                 return
             }
-            if requested {
-                let status = state?.mailbox?.status
-                if status == "complete" {
-                    recordBackgroundMailboxCheck()
-                    return
-                }
-                if status == "failed" { return }
-            } else if state?.tcpOnline == true {
-                if let status = try? await request("mailbox_sync").mailbox?.status {
-                    requested = status == "syncing"
-                    if status == "complete" {
-                        await refresh()
+            guard !Task.isCancelled, UIApplication.shared.applicationState != .active else { return }
+            if let session = state?.tcpSession, let mailbox = state?.mailbox {
+                if requestedSession == session && requestedAddress == mailbox.address {
+                    if mailbox.status == "complete" {
                         recordBackgroundMailboxCheck()
                         return
                     }
-                    if status == "failed" { return }
+                    if mailbox.status == "failed" { return }
+                } else if let status = try? await request("mailbox_sync").mailbox?.status,
+                          status == "syncing" || status == "complete" {
+                    // Accept completion only after the next snapshot confirms the same connection.
+                    requestedSession = session
+                    requestedAddress = mailbox.address
                 }
+            } else {
+                requestedSession = nil
+                requestedAddress = nil
             }
             do { try await Task.sleep(for: .seconds(1)) }
             catch { return }
