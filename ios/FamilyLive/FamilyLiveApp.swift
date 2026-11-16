@@ -929,6 +929,7 @@ struct FamilyGuardian: View {
                         Button("Save mailbox") { Task { mailboxSaved = await family.saveMailbox(mailboxAddress) } }
                         if mailboxSaved { Text("Mailbox setting saved") }
                         Text("Leave blank to disable. Senders must use this mailbox for offline delivery.")
+                            .font(.caption)
                         if UIApplication.shared.backgroundRefreshStatus != .available {
                             Text("Background App Refresh is unavailable. Family checks the mailbox when you open the app.")
                                 .foregroundStyle(.secondary)
@@ -936,7 +937,6 @@ struct FamilyGuardian: View {
                             Text("Last background check: \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
                                 .foregroundStyle(.secondary)
                         }
-                            .font(.caption)
                     }
                 } else {
                     Group {

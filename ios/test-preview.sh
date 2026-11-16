@@ -57,7 +57,7 @@ result="$PWD/RuntimeBuild/results/$scheme-$device_family-$(uuidgen).xcresult"
 test_status=0
 xcodebuild test -project "$scheme.xcodeproj" -scheme "$scheme" \
     -destination "platform=iOS Simulator,id=$destination" \
-    -derivedDataPath DerivedData -resultBundlePath "$result" -parallel-testing-enabled NO "$signing" "${build_overrides[@]}" || test_status=$?
+    -derivedDataPath DerivedData -resultBundlePath "$result" -parallel-testing-enabled NO "$signing" ${build_overrides[@]+"${build_overrides[@]}"} || test_status=$?
 
 if [[ "$store_capture" == 1 && -d "$result" ]]; then
     xcrun xcresulttool export attachments --path "$result" \
