@@ -45,7 +45,7 @@ struct FamilyLiveApp: App {
                         await family.setVoicePresence(false)
                         await family.suspendLocation()
                         await family.lock()
-                        family.scheduleMailboxRefresh()
+                        await family.scheduleMailboxRefresh()
                     }
                     while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
                         await family.refresh()
@@ -88,6 +88,10 @@ final class FamilyModel: ObservableObject {
     private var pendingNotification: (Int, String)?
     private var nextMailboxCheck = ContinuousClock.now
     static let mailboxRefreshID = "org.meshchat.family.ios.live.mailbox"
+    private static let mailboxBackgroundCheckKey = "family.mailbox.lastBackgroundCheck"
+    @Published private(set) var lastBackgroundMailboxCheck =
+        UserDefaults.standard.object(forKey: FamilyModel.mailboxBackgroundCheckKey) as? Date
+    private var schedulingMailboxRefresh = false
     var finishingSend: Bool { sendTask != .invalid }
 
     private let client = FamilyClient()
@@ -263,12 +267,17 @@ final class FamilyModel: ObservableObject {
     }
 
     func saveMailbox(_ address: String) async -> Bool {
+        let previousAddress = state?.mailbox?.address
         let saved = await perform("mailbox_config", [
             "token": token, "address": address.trimmingCharacters(in: .whitespacesAndNewlines)
         ])
         if saved {
+            if previousAddress != state?.mailbox?.address {
+                lastBackgroundMailboxCheck = nil
+                UserDefaults.standard.removeObject(forKey: Self.mailboxBackgroundCheckKey)
+            }
             nextMailboxCheck = .now
-            scheduleMailboxRefresh()
+            await scheduleMailboxRefresh()
         }
         return saved
     }
@@ -287,35 +296,64 @@ final class FamilyModel: ObservableObject {
         !(state?.mailbox?.address.isEmpty ?? true)
     }
 
-    func scheduleMailboxRefresh() {
+    func scheduleMailboxRefresh(retryIfStateUnknown: Bool = false) async {
         let scheduler = BGTaskScheduler.shared
-        if mailboxEnabled {
-            let request = BGAppRefreshTaskRequest(identifier: Self.mailboxRefreshID)
-            request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-            do { try scheduler.submit(request) }
-            catch { NSLog("Family mailbox background refresh unavailable: %@", error.localizedDescription) }
-        } else {
+        guard mailboxEnabled || (retryIfStateUnknown && state == nil) else {
             scheduler.cancel(taskRequestWithIdentifier: Self.mailboxRefreshID)
+            return
         }
+        guard !schedulingMailboxRefresh else { return }
+        schedulingMailboxRefresh = true
+        defer { schedulingMailboxRefresh = false }
+
+        let pending = await scheduler.pendingTaskRequests()
+        guard !Task.isCancelled,
+              mailboxEnabled || (retryIfStateUnknown && state == nil),
+              !pending.contains(where: { $0.identifier == Self.mailboxRefreshID }) else { return }
+        let request = BGAppRefreshTaskRequest(identifier: Self.mailboxRefreshID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        do { try scheduler.submit(request) }
+        catch { NSLog("Family mailbox background refresh unavailable: %@", error.localizedDescription) }
+    }
+
+    private func recordBackgroundMailboxCheck() {
+        let date = Date()
+        lastBackgroundMailboxCheck = date
+        UserDefaults.standard.set(date, forKey: Self.mailboxBackgroundCheckKey)
     }
 
     func refreshMailboxInBackground(notifications: FamilyNotifications) async {
         self.notifications = notifications
+        // Requeue first so an expired task or a failed cold start cannot stop future refreshes.
+        await scheduleMailboxRefresh(retryIfStateUnknown: true)
+        guard !Task.isCancelled, UIApplication.shared.applicationState != .active else { return }
         await lock()
         await refreshNotificationPermission()
         let deadline = ContinuousClock.now + .seconds(22)
         var requested = false
-        defer { if state != nil { scheduleMailboxRefresh() } }
-        while !Task.isCancelled && ContinuousClock.now < deadline {
+        while !Task.isCancelled && ContinuousClock.now < deadline &&
+                UIApplication.shared.applicationState != .active {
             await refresh()
-            guard mailboxEnabled else { return }
+            if state != nil && !mailboxEnabled {
+                await scheduleMailboxRefresh()
+                return
+            }
             if requested {
                 let status = state?.mailbox?.status
-                if status == "complete" || status == "failed" { return }
+                if status == "complete" {
+                    recordBackgroundMailboxCheck()
+                    return
+                }
+                if status == "failed" { return }
             } else if state?.tcpOnline == true {
                 if let status = try? await request("mailbox_sync").mailbox?.status {
                     requested = status == "syncing"
-                    if status == "complete" || status == "failed" { return }
+                    if status == "complete" {
+                        await refresh()
+                        recordBackgroundMailboxCheck()
+                        return
+                    }
+                    if status == "failed" { return }
                 }
             }
             do { try await Task.sleep(for: .seconds(1)) }
@@ -891,6 +929,13 @@ struct FamilyGuardian: View {
                         Button("Save mailbox") { Task { mailboxSaved = await family.saveMailbox(mailboxAddress) } }
                         if mailboxSaved { Text("Mailbox setting saved") }
                         Text("Leave blank to disable. Senders must use this mailbox for offline delivery.")
+                        if UIApplication.shared.backgroundRefreshStatus != .available {
+                            Text("Background App Refresh is unavailable. Family checks the mailbox when you open the app.")
+                                .foregroundStyle(.secondary)
+                        } else if let lastCheck = family.lastBackgroundMailboxCheck {
+                            Text("Last background check: \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
+                                .foregroundStyle(.secondary)
+                        }
                             .font(.caption)
                     }
                 } else {
