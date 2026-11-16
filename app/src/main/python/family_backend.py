@@ -185,7 +185,7 @@ def _start():
         _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False,delivery_limit=_incoming_limit()/1000)
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
-        _router.register_delivery_callback(_receive)
+        _router.register_delivery_callback(_receive, require_propagation_delivery=_tcp_only)
         if not _tcp_only:
             _meshcore.identity=identity
             from family_voice import FamilyVoice
@@ -472,13 +472,21 @@ def _decode_outbound_attachments(raw):
 def _receive(message):
     peer=message.source_hash.hex()
     with _lock:
-        if not _contact(peer):return
+        contact=_contact(peer)
+        if not contact:return
+        approved_key=contact.get('identityPublicKey')
+    if _tcp_only and approved_key and not message.signature_validated:
+        import RNS,LXMF
+        # The saved guardian-approved key is available even if the path cache was lost.
+        RNS.Identity.remember(None,message.source_hash,bytes.fromhex(approved_key))
+        message=LXMF.LXMessage.unpack_from_bytes(message.packed, original_method=message.method)
+        if not message.signature_validated:return
     if not message.signature_validated:
         import LXMF
         if getattr(message,'unverified_reason',None)!=LXMF.LXMessage.SOURCE_UNKNOWN:return
         key=message.hash.hex()
         with _lock:
-            if key in _pending_inbound or len(_pending_inbound)>=16:return
+            if key in _pending_inbound or len(_pending_inbound)>=16:return False
             _pending_inbound.add(key)
         def resolve():
             try:
@@ -496,7 +504,7 @@ def _receive(message):
             finally:
                 with _lock:_pending_inbound.discard(key)
         threading.Thread(target=resolve,daemon=True).start()
-        return
+        return False
     with _lock:
         contact=_contact(peer)
         if not contact:return
@@ -509,8 +517,7 @@ def _receive(message):
         has_attachment=any(field in fields for field in (LXMF.FIELD_FILE_ATTACHMENTS,LXMF.FIELD_IMAGE))
         if not text.strip() and not has_attachment:return
         if any(m.get('hash')==message.hash.hex() for m in _state['messages']):return
-        if _tcp_only and not contact.get('identityPublicKey'):
-            contact['identityPublicKey']=message.source.identity.get_public_key().hex()
+        learned_key = message.source.identity.get_public_key().hex() if _tcp_only and not contact.get('identityPublicKey') else None
         mid=uuid.uuid4().hex
         row={'id':mid,'hash':message.hash.hex(),'peer':peer,'text':text[:4096],'status':'Received · signature verified','incoming':True,'timestamp':time.time()}
         if items and sum(len(data) for _,data,_ in items)<=_incoming_limit():
@@ -520,8 +527,17 @@ def _receive(message):
                 row['attachmentError']='Attachment could not be saved'
         elif has_attachment:
             row['attachmentError']='Attachment is too large or unsupported'
-        _state['messages'].append(row)
-        _state['messages']=_state['messages'][-500:];_save()
+        previous_messages=_state['messages']
+        _state['messages']=(previous_messages+[row])[-500:]
+        if learned_key:contact['identityPublicKey']=learned_key
+        try:
+            _save()
+        except OSError:
+            _state['messages']=previous_messages
+            if learned_key:contact.pop('identityPublicKey',None)
+            for index in range(len(_attachments(row))):
+                _attachment_file(mid,index,row).unlink(missing_ok=True)
+            raise
 
 def _update(mid,status):
     with _lock:

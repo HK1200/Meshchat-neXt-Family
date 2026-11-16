@@ -235,6 +235,7 @@ class LXMRouter:
         RNS.Transport.register_announce_handler(LXMFPropagationAnnounceHandler(self))
 
         self.__delivery_callback = None
+        self.__require_propagation_delivery = False
 
         try:
             if os.path.isfile(self.storagepath+"/local_deliveries"):
@@ -382,8 +383,9 @@ class LXMRouter:
 
         return delivery_destination
 
-    def register_delivery_callback(self, callback):
+    def register_delivery_callback(self, callback, *, require_propagation_delivery=False):
         self.__delivery_callback = callback
+        self.__require_propagation_delivery = require_propagation_delivery
 
     def set_inbound_stamp_cost(self, destination_hash, stamp_cost):
         if destination_hash in self.delivery_destinations:
@@ -1632,20 +1634,20 @@ class LXMRouter:
             if request_receipt.response != None and len(request_receipt.response) > 0:
                 haves = []
                 for lxmf_data in request_receipt.response:
-                    result = self.lxmf_propagation(lxmf_data, signal_duplicate=LXMRouter.DUPLICATE_SIGNAL)
+                    result = self.lxmf_propagation(
+                        lxmf_data, signal_duplicate=LXMRouter.DUPLICATE_SIGNAL,
+                        require_local_delivery=self.__require_propagation_delivery)
                     if result == LXMRouter.DUPLICATE_SIGNAL: duplicates += 1
-                    haves.append(RNS.Identity.full_hash(lxmf_data))
+                    if result or not self.__require_propagation_delivery:
+                        haves.append(RNS.Identity.full_hash(lxmf_data))
 
                 # Return a list of successfully received messages to the node.
                 # This deletes the messages on the propagation node.
                 # TODO: Add option to keep messages on node.
-                request_receipt.link.request(
-                    LXMPeer.MESSAGE_GET_PATH,
-                    [None, haves],
-                    # response_callback=self.message_syncfinal_response,
-                    failed_callback=self.message_get_failed,
-                    # progress_callback=self.message_get_progress
-                )
+                if haves:
+                    request_receipt.link.request(
+                        LXMPeer.MESSAGE_GET_PATH, [None, haves],
+                        failed_callback=self.message_get_failed)
 
             self.propagation_transfer_state = LXMRouter.PR_COMPLETE
             self.propagation_transfer_progress = 1.0
@@ -1951,7 +1953,7 @@ class LXMRouter:
     ### Message Routing & Delivery ########################
     #######################################################
 
-    def lxmf_delivery(self, lxmf_data, destination_type = None, phy_stats = None, ratchet_id = None, method = None, no_stamp_enforcement=False, allow_duplicate=False):
+    def lxmf_delivery(self, lxmf_data, destination_type = None, phy_stats = None, ratchet_id = None, method = None, no_stamp_enforcement=False, allow_duplicate=False, *, require_callback=False):
         try:
             message = LXMessage.unpack_from_bytes(lxmf_data)
 
@@ -2022,17 +2024,26 @@ class LXMRouter:
 
             if not allow_duplicate and self.has_message(message.hash):
                 RNS.log(str(self)+" ignored already received message from "+RNS.prettyhexrep(message.source_hash), RNS.LOG_DEBUG)
-                return False
-            else:
+                return require_callback
+
+            if not require_callback:
                 with self.delivered_transient_ids_lock:
                     self.locally_delivered_transient_ids[message.hash] = time.time()
 
             if self.__delivery_callback != None and callable(self.__delivery_callback):
-                try: self.__delivery_callback(message)
+                try:
+                    if self.__delivery_callback(message) is False and require_callback:
+                        return False
                 except Exception as e:
                     RNS.log("An error occurred in the external delivery callback for "+str(message), RNS.LOG_ERROR)
                     RNS.trace_exception(e)
+                    if require_callback: return False
+            elif require_callback:
+                return False
 
+            if require_callback:
+                with self.delivered_transient_ids_lock:
+                    self.locally_delivered_transient_ids[message.hash] = time.time()
             return True
 
         except Exception as e:
@@ -2602,7 +2613,7 @@ class LXMRouter:
                             peer.queue_unhandled_message(transient_id)
 
     def lxmf_propagation(self, lxmf_data, signal_local_delivery=None, signal_duplicate=None, allow_duplicate=False, is_paper_message=False,
-                         from_peer=None, stamp_value=None, stamp_data=None):
+                         from_peer=None, stamp_value=None, stamp_data=None, *, require_local_delivery=False):
         if is_paper_message: no_stamp_enforcement = True
         else:                no_stamp_enforcement = False
 
@@ -2621,9 +2632,17 @@ class LXMRouter:
                         decrypted_lxmf_data = delivery_destination.decrypt(encrypted_lxmf_data)
                         if decrypted_lxmf_data != None:
                             delivery_data = lxmf_data[:LXMessage.DESTINATION_LENGTH]+decrypted_lxmf_data
-                            self.lxmf_delivery(delivery_data, delivery_destination.type, ratchet_id=delivery_destination.latest_ratchet_id, method=LXMessage.PROPAGATED, no_stamp_enforcement=no_stamp_enforcement, allow_duplicate=allow_duplicate)
-                            with self.delivered_transient_ids_lock: self.locally_delivered_transient_ids[transient_id] = time.time()
-                            if signal_local_delivery != None: return signal_local_delivery
+                            delivered = self.lxmf_delivery(delivery_data, delivery_destination.type, ratchet_id=delivery_destination.latest_ratchet_id, method=LXMessage.PROPAGATED, no_stamp_enforcement=no_stamp_enforcement, allow_duplicate=allow_duplicate, require_callback=require_local_delivery)
+                            if delivered or not require_local_delivery:
+                                with self.delivered_transient_ids_lock: self.locally_delivered_transient_ids[transient_id] = time.time()
+                                if signal_local_delivery != None: return signal_local_delivery
+                                return True
+                        if require_local_delivery:
+                            with self.processed_transient_ids_lock: self.locally_processed_transient_ids.pop(transient_id, None)
+                            return False
+                    elif require_local_delivery:
+                        with self.processed_transient_ids_lock: self.locally_processed_transient_ids.pop(transient_id, None)
+                        return False
                     else:
                         if self.propagation_node:
                             stamped_data    = lxmf_data+stamp_data
@@ -2642,6 +2661,8 @@ class LXMRouter:
                     return True
 
                 else:
+                    if require_local_delivery and not self.has_message(transient_id):
+                        return False
                     if signal_duplicate != None:
                         return signal_duplicate
 
@@ -2651,6 +2672,9 @@ class LXMRouter:
             return False
 
         except Exception as e:
+            if require_local_delivery and len(lxmf_data) >= LXMessage.LXMF_OVERHEAD:
+                with self.processed_transient_ids_lock:
+                    self.locally_processed_transient_ids.pop(RNS.Identity.full_hash(lxmf_data), None)
             RNS.log("Could not assemble propagated LXMF message from received data", RNS.LOG_DEBUG)
             RNS.log("The contained exception was: "+str(e), RNS.LOG_DEBUG)
             RNS.trace_exception(e)

@@ -110,7 +110,19 @@ def run_family(folder, pipe):
     try:
         while True:
             action, payload = pipe.recv()
-            if voice_enabled and action == "test_drop_first_voice_path_request":
+            if action == "test_fail_next_inbox_save":
+                save = family_backend._save
+                current_count = len(family_backend._state["messages"])
+
+                def fail_once():
+                    if len(family_backend._state["messages"]) > current_count:
+                        family_backend._save = save
+                        raise OSError("simulated unavailable inbox storage")
+                    save()
+
+                family_backend._save = fail_once
+                pipe.send({"ok": True})
+            elif voice_enabled and action == "test_drop_first_voice_path_request":
                 import RNS
 
                 target = bytes.fromhex(payload["address"])
@@ -428,6 +440,10 @@ def test_mailbox_recovers_only_approved_messages_after_restart(tmp_path, monkeyp
         client = start_process(stack, run_family, folder)
         state = wait_status(client, lambda s: s["ready"] and s["tcpOnline"])
         assert state["mailbox"]["address"] == mailbox
+        assert state["messages"]["1"] == []
+        request(client, "test_fail_next_inbox_save")
+        request(client, "mailbox_sync")
+        state = wait_status(client, lambda s: s["mailbox"]["status"] == "complete")
         assert state["messages"]["1"] == []
         request(client, "mailbox_sync")
         state = wait_status(client, lambda s: s["mailbox"]["status"] == "complete")
