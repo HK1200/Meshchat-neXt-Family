@@ -13,6 +13,7 @@
 
 #include "FamilyRuntime.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,9 @@ static PyStatus append_path(PyConfig *config, const char *home, const char *suff
 
 bool family_runtime_start(const char *python_home, const char *modules, const char *state) {
     if (!modules || !state || Py_IsInitialized()) return false;
+
+    /* Keep Python's normal broken-pipe behavior without installing its other signal handlers. */
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) return false;
 
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
