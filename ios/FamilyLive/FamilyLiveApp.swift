@@ -298,11 +298,13 @@ final class FamilyModel: ObservableObject {
 
     func scheduleMailboxRefresh(retryIfStateUnknown: Bool = false) async {
         let scheduler = BGTaskScheduler.shared
-        guard mailboxEnabled || (retryIfStateUnknown && state == nil) else {
+        if state != nil && !mailboxEnabled {
             scheduler.cancel(taskRequestWithIdentifier: Self.mailboxRefreshID)
             return
         }
-        guard !schedulingMailboxRefresh else { return }
+        // On a cold background launch the scene can arrive before the backend loads.
+        // Only a loaded mailbox setting can prove that the pending request should be canceled.
+        guard mailboxEnabled || retryIfStateUnknown, !schedulingMailboxRefresh else { return }
         schedulingMailboxRefresh = true
         defer { schedulingMailboxRefresh = false }
 
