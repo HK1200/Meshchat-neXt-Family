@@ -12,6 +12,7 @@ final class FamilyPushRegistration: ObservableObject {
         let recipient: String
         let mailbox: String
         var revoking = false
+        var mayBeRegistered: Bool? = false
     }
 
     private struct Subscription: Encodable, Equatable {
@@ -170,6 +171,18 @@ final class FamilyPushRegistration: ObservableObject {
 
     func disable() {
         guard var current = enrollment else { return }
+        if current.mayBeRegistered == false {
+            guard save(nil) else {
+                status = "Family couldn’t remove the local push setup."
+                return
+            }
+            UIApplication.shared.unregisterForRemoteNotifications()
+            deviceToken = nil
+            registeredThisLaunch = false
+            lastUpload = nil
+            status = "Off"
+            return
+        }
         current.revoking = true
         guard save(current) else {
             status = "Family couldn’t save the request to turn alerts off."
@@ -183,8 +196,18 @@ final class FamilyPushRegistration: ObservableObject {
     }
 
     private func sync() {
-        guard let enrollment, !busy, Date() >= retryAfter,
-              enrollment.revoking || deviceToken != nil else { return }
+        guard var current = enrollment, !busy, Date() >= retryAfter,
+              current.revoking || deviceToken != nil else { return }
+        if !current.revoking, current.mayBeRegistered == false {
+            // Persist this before the request so a crash cannot skip remote revocation.
+            current.mayBeRegistered = true
+            guard save(current) else {
+                status = "Family couldn’t save the provider registration state."
+                retryAfter = Date().addingTimeInterval(30)
+                return
+            }
+        }
+        let enrollment = current
         let request = Subscription(recipient: enrollment.recipient,
                                    token: enrollment.revoking ? nil : deviceToken,
                                    senders: enrollment.revoking ? [] : senders)
