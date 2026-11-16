@@ -655,11 +655,15 @@ def _send(mid,peer,text,on_failure=None):
         if on_failure is None or not on_failure(status):
             _update(mid,status)
     try:
-        import RNS,LXMF
+        import RNS,LXMF,mailbox_push
         if not _online():raise ValueError('No Reticulum connection is online')
         def permitted():
             with _lock:return _contact(peer) is not None
-        identity=_await_identity(bytes.fromhex(peer),permitted)
+        route=mailbox_push.route_for(_root,peer)
+        mailbox=_state.get('mailbox')
+        if route and mailbox and route.relay!=mailbox:route=None
+        identity=RNS.Identity.recall(bytes.fromhex(peer)) if route else None
+        if identity is None:identity=_await_identity(bytes.fromhex(peer),permitted)
         if identity is None:
             if not permitted():raise ValueError('Contact approval was removed')
             raise ValueError('No path to contact after 60 seconds')
@@ -686,10 +690,15 @@ def _send(mid,peer,text,on_failure=None):
             if files:
                 fields[LXMF.FIELD_FILE_ATTACHMENTS]=files
         method=LXMF.LXMessage.DIRECT if attachments else _delivery_method(bytes.fromhex(peer))
+        if route:method=LXMF.LXMessage.PROPAGATED
         message=TrackedMessage(dest,_destination,text,fields=fields,desired_method=method,include_ticket=True)
         def delivered(m):
             release(m)
-            _update(mid,'Delivered')
+            if m.method==LXMF.LXMessage.PROPAGATED and m.state==LXMF.LXMessage.SENT:
+                _update(mid,'Sent · stored on mailbox')
+                if route and permitted():mailbox_push.queue_accepted_hint(_root,m,route)
+            else:
+                _update(mid,'Delivered')
         def failed(m):
             release(m)
             if m.state!=LXMF.LXMessage.CANCELLED:
@@ -697,7 +706,15 @@ def _send(mid,peer,text,on_failure=None):
         message.register_delivery_callback(delivered)
         message.register_failed_callback(failed)
         # Recheck approval immediately before handing the packet to LXMF.
-        with _lock:
+        with _mailbox_lock, _lock:
+            if route:
+                mailbox=_state.get('mailbox')
+                if mailbox and route.relay!=mailbox:raise ValueError('Offline mailbox changed')
+                relay=bytes.fromhex(route.relay)
+                if (_router.get_outbound_propagation_node()!=relay
+                        and any(pending.method==pending.PROPAGATED for pending in _outbound.values())):
+                    raise ValueError('Another offline mailbox send is still in progress')
+                _router.set_outbound_propagation_node(relay)
             if not _contact(peer):raise ValueError('Contact approval was removed')
             row=next((m for m in _state['messages'] if m['id']==mid),None)
             if row is None:return
@@ -806,6 +823,11 @@ def _configure_mailbox(payload):
             except OSError:
                 _state['mailbox']=previous
                 raise
+            # A queued message must never move to a newly selected mailbox.
+            for mid,message in list(_outbound.items()):
+                if message.method==message.PROPAGATED:
+                    _router.cancel_outbound(message.message_id)
+                    _update(mid,'Not confirmed · Offline mailbox changed')
 
 def _tcp_session():
     with _lock:
@@ -837,7 +859,7 @@ def _snapshot():
         except Exception as exc:room_data['roomError']=str(exc)
     with _lock:
         for mid,message in list(_outbound.items()):
-            if message.state==4:_update(mid,'Sent · awaiting delivery proof')
+            if message.state==4 and message.method!=message.PROPAGATED:_update(mid,'Sent · awaiting delivery proof')
         result={'messagingEnabled':bool(_state['peer'].get('enabled') or (_state.get('rnode') or {}).get('enabled') or (_state.get('meshcore') or {}).get('enabled')),'setupComplete':bool(_state.get('setup_complete')),'ready':_destination is not None,'online':_online(),'connecting':_connecting,'error':_error,'address':_destination.hash.hex() if _destination else '', 'peer':dict(_state['peer']),'contacts':_state['contacts'],'announces':sorted(_announces.values(),key=lambda a:a['seen'],reverse=True),'messages':{}}
         for c in _state['contacts']:
             result['messages'][str(c['id'])]=_conversation_messages(c)

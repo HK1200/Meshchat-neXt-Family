@@ -656,3 +656,174 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index)
             wait_status(client, lambda state: state["voice"]["call_state"] == "idle")
         request(receiver_client, "voice_hangup", callId=incoming["call_id"])
         assert request(receiver_client, "status")["voice"]["call_state"] == "idle"
+
+
+@pytest.mark.parametrize("sender_app", [
+    "family",
+    pytest.param("next", marks=pytest.mark.skipif(
+        not os.getenv("MESHCHAT_NEXT_TEST_PYTHON") or not os.getenv("MESHCHAT_NEXT_TEST_ROOT"),
+        reason="Optional cross-repository test with neXt's Python environment",
+    )),
+])
+def test_send_posts_signed_hint_after_relay_acceptance(tmp_path, monkeypatch, sender_app):
+    """The normal Family send action drives Reticulum and the review provider."""
+    from http.server import HTTPServer
+    import ssl
+    import subprocess
+
+    import RNS
+
+    root = Path(__file__).resolve().parents[1]
+    source = os.environ.get("FAMILY_IOS_TCP_TEST_RUNTIME") or str(root / "app/src/main/python")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(filter(None, (source, os.environ.get("PYTHONPATH")))))
+    monkeypatch.syspath_prepend(str(root / "ios/push-provider"))
+    from provider import Handler, Provider
+
+    cert = tmp_path / "cert.pem"
+    key = tmp_path / "key.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                    "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+                    "-out", str(cert), "-keyout", str(key)], check=True, capture_output=True)
+    monkeypatch.setenv("SSL_CERT_FILE", str(cert))
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    with ExitStack() as stack:
+        relay_folder = tmp_path / "relay"
+        relay = start_process(stack, run_mailbox, relay_folder, port)
+        assert relay.poll(10)
+        mailbox = relay.recv()
+        receiver = RNS.Identity()
+        recipient = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", receiver).hex()
+        if sender_app == "family":
+            folder = tmp_path / "family"
+            client = start_process(stack, run_family, folder)
+            password = "local push test password"
+            request(client, "setup", password=password, confirmation=password, reticulumEnabled=False)
+            token = request(client, "unlock", password=password)["token"]
+            request(client, "peer", token=token, host="127.0.0.1", port=port, enabled=True)
+            wait_status(client, lambda state: state["tcpOnline"] and state["address"])
+            request(client, "contacts", token=token, contacts=[{
+                "id": 1, "name": "Offline approved receiver", "addresses": {"lxmf": recipient},
+                "identityPublicKey": receiver.get_public_key().hex(),
+            }])
+            sender = RNS.Identity.from_file(str(folder / "identity")).get_public_key().hex()
+        else:
+            sender_identity = RNS.Identity()
+            sender_identity.to_file(str(tmp_path / "next-identity"))
+            sender = sender_identity.get_public_key().hex()
+            folder = tmp_path
+        alerts = []
+        with HTTPServer(("127.0.0.1", 0), Handler) as server:
+            server.timeout = 1
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.load_cert_chain(cert, key)
+            server.socket = tls.wrap_socket(server.socket, server_side=True)
+            (folder / "mailbox-push-routes.json").write_text(json.dumps({
+                recipient: {"provider": f"https://localhost:{server.server_port}",
+                            "audience": "private test", "relay": mailbox},
+            }))
+            stopped = threading.Event()
+
+            def receive():
+                server.provider = Provider("private test", relay_folder / "lxmf/messagestore",
+                                           {recipient: {"senders": [sender], "token": "mock-device"}},
+                                           tmp_path / "provider.db", lambda *alert: alerts.append(alert))
+                try:
+                    while not stopped.is_set():
+                        server.handle_request()
+                finally:
+                    server.provider.database.close()
+
+            worker = threading.Thread(target=receive)
+            worker.start()
+            try:
+                if sender_app == "family":
+                    request(client, "send", contactId=1, method="reticulum", text="Private test body")
+                    state = wait_status(client, lambda s: s["messages"]["1"]
+                                        and s["messages"]["1"][0]["status"] == "Sent · stored on mailbox")
+                    assert state["messages"]["1"][0]["text"] == "Private test body"
+                else:
+                    next_root = os.environ["MESHCHAT_NEXT_TEST_ROOT"]
+                    config = tmp_path / "next-rns"
+                    config.mkdir()
+                    (config / "config").write_text(
+                        "[reticulum]\nshare_instance = No\nenable_transport = No\n"
+                        "[interfaces]\n[[Private mailbox client]]\ntype = TCPClientInterface\nenabled = Yes\n"
+                        f"target_host = 127.0.0.1\ntarget_port = {port}\n"
+                    )
+                    proc = subprocess.run(
+                        [os.environ["MESHCHAT_NEXT_TEST_PYTHON"], "-c", """
+import asyncio
+from pathlib import Path
+import sys
+import time
+
+import LXMF
+import RNS
+from meshchatnext.meshchat import ReticulumMeshChat
+
+async def main():
+    folder, mailbox, recipient, key = sys.argv[1:]
+    folder = Path(folder)
+    app = ReticulumMeshChat(
+        identity=RNS.Identity.from_file(str(folder / "next-identity")),
+        storage_dir=str(folder / "next-storage"),
+        reticulum_config_dir=str(folder / "next-rns"),
+        plugins_enabled=False, headless=True,
+    )
+    ctx = app.current_context
+    ctx.message_router.set_outbound_propagation_node(bytes.fromhex(mailbox))
+    Path(ctx.storage_path, "mailbox-push-routes.json").write_bytes(
+        (folder / "mailbox-push-routes.json").read_bytes()
+    )
+    RNS.Identity.remember(None, bytes.fromhex(recipient), bytes.fromhex(key))
+    message = await app.send_message(recipient, "Private test body", delivery_method="propagated")
+    deadline = time.monotonic() + 30
+    while message.state != LXMF.LXMessage.SENT:
+        assert time.monotonic() < deadline, message.state
+        await asyncio.sleep(0.1)
+    await asyncio.sleep(5)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    __import__("os")._exit(0)
+
+asyncio.run(main())
+""", str(tmp_path), mailbox, recipient, receiver.get_public_key().hex()],
+                        cwd=next_root, env={**os.environ, "PYTHONPATH": next_root},
+                        timeout=65, capture_output=True, text=True,
+                    )
+                    assert proc.returncode == 0, proc.stdout + proc.stderr
+                deadline = time.monotonic() + 12
+                while not alerts and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                stored, = (relay_folder / "lxmf/messagestore").iterdir()
+                assert alerts == [("mock-device", stored.name.split("_", 1)[0])]
+                receiver_folder = tmp_path / "recipient"
+                receiver_folder.mkdir()
+                receiver.to_file(str(receiver_folder / "identity"))
+                inbox = start_process(stack, run_family, receiver_folder)
+                password = "local push recipient password"
+                request(inbox, "setup", password=password, confirmation=password, reticulumEnabled=False)
+                guardian_token = request(inbox, "unlock", password=password)["token"]
+                request(inbox, "peer", token=guardian_token, host="127.0.0.1", port=port, enabled=True)
+                wait_status(inbox, lambda state: state["tcpOnline"] and state["address"] == recipient)
+                signed_by = RNS.Identity(create_keys=False)
+                signed_by.load_public_key(bytes.fromhex(sender))
+                sender_address = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", signed_by).hex()
+                request(inbox, "contacts", token=guardian_token, contacts=[{
+                    "id": 1, "name": "Approved sender", "addresses": {"lxmf": sender_address},
+                    "identityPublicKey": sender,
+                }])
+                request(inbox, "mailbox_config", token=guardian_token, address=mailbox)
+                request(inbox, "mailbox_sync")
+                received = wait_status(inbox, lambda state: state["mailbox"]["status"] == "complete")
+                messages = received["messages"]["1"]
+                assert [(row["text"], row["status"]) for row in messages] == [
+                    ("Private test body", "Received · signature verified"),
+                ]
+                assert alerts == [("mock-device", stored.name.split("_", 1)[0])]
+            finally:
+                stopped.set()
+                worker.join(timeout=8)

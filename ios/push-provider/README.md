@@ -36,6 +36,20 @@ A push-enabled signed build needs an Apple profile that permits APNs. Set `FAMIL
 
 ## Send a hint
 
-After LXMF confirms the private relay accepted a propagated message, a compatible sender can POST JSON containing the lowercase-hex `recipient`, LXMF `message.transient_id` as `message`, the complete Reticulum public key as `sender`, integer Unix seconds as `issued`, and the hex Reticulum signature as `signature`. Sign the output of `signed_bytes(hint, audience)` with that sender's identity. The helper defines the protocol's canonical JSON and domain separator. Existing LXMF clients can still send and receive normally. They will not raise a remote alert unless they also send the hint.
+Family and neXt read a sender-local `mailbox-push-routes.json`. In Family, place it in the app's backend state directory (on iPad, `Library/Application Support/FamilyTCP` inside Family's container). In neXt, place it in the sending identity's storage directory beside `database.db`. This is operator-managed configuration.
+
+```json
+{
+  "<recipient LXMF address>": {
+    "provider": "https://alerts.example.org",
+    "audience": "unique-name-for-this-private-provider",
+    "relay": "<recipient's LXMF propagation node address>"
+  }
+}
+```
+
+Both Reticulum addresses use lowercase hex. Provision the approved recipient's verified Reticulum identity before sending to an offline contact. Family sends routed messages through the listed relay. If Family has a mailbox of its own configured, the route must use that same relay. In neXt, select the listed propagation node and use **Propagated** delivery, or allow the standard failure fallback to that node. Other transmission methods keep their existing behavior.
+
+After LXMF confirms transfer to that relay, the client submits a signed hint. It contains the recipient address, the encrypted packet hash, sender public key, timestamp, and signature. Message content and attachments stay in LXMF. Clients retry transient errors briefly, then leave the relay delivery status as-is.
 
 HTTP 204 means the provider accepted the alert or already recorded it. A caller can retry a temporary 429 or 503 within the five-minute hint window. A 404 means the encrypted message is not currently stored. Recipients can use a compatible iPad client to open Family and fetch the mailbox after the generic alert. APNs delivery depends on the network, the iPad notification settings, and Apple. The provider needs valid Apple credentials and a token from a signed, push-enabled build for a live test.
