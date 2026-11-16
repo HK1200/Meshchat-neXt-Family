@@ -58,6 +58,11 @@ class Provider:
                 PRIMARY KEY (recipient, message)
             );
             CREATE INDEX IF NOT EXISTS recipient_time ON alerts (recipient, accepted);
+            CREATE TABLE IF NOT EXISTS registrations (
+                recipient TEXT PRIMARY KEY,
+                token TEXT,
+                senders TEXT NOT NULL
+            );
         """)
 
     def stored(self, recipient, message):
@@ -74,6 +79,43 @@ class Provider:
                 return True
         return False
 
+    def register(self, request, authorization):
+        if (type(request) is not dict or request.keys() != {"recipient", "token", "senders"}
+                or not hex_field(request["recipient"], 16) or type(request["senders"]) is not list
+                or len(request["senders"]) > 256
+                or any(not hex_field(sender, 64) for sender in request["senders"])):
+            return 400
+        token = request["token"]
+        if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{32,512}", token)):
+            return 400
+        recipient = request["recipient"]
+        subscription = self.subscriptions.get(recipient, {})
+        secret_hash = subscription.get("enrollment_hash")
+        prefix = "Bearer "
+        secret = authorization[len(prefix):] if authorization.startswith(prefix) else ""
+        if (not secret_hash or not hex_field(secret, 32)
+                or not hmac.compare_digest(secret_hash, hashlib.sha256(bytes.fromhex(secret)).hexdigest())):
+            return 403
+        with self.database:
+            self.database.execute("""
+                INSERT INTO registrations VALUES (?, ?, ?)
+                ON CONFLICT(recipient) DO UPDATE SET token=excluded.token, senders=excluded.senders
+            """, (recipient, token, json.dumps(request["senders"] if token else [])))
+        return 204
+
+    def subscription(self, recipient):
+        subscription = self.subscriptions.get(recipient)
+        if not subscription:
+            return None
+        if "enrollment_hash" not in subscription:
+            return subscription
+        row = self.database.execute(
+            "SELECT token, senders FROM registrations WHERE recipient = ?", (recipient,)
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return {"token": row[0], "senders": json.loads(row[1])}
+
     def notify(self, hint, now=None):
         now = int(time.time()) if now is None else now
         if (type(hint) is not dict or hint.keys() != HINT_FIELDS
@@ -84,9 +126,6 @@ class Provider:
         if not now - HINT_LIFETIME <= hint["issued"] <= now + 30:
             return 403
         recipient, message, sender = hint["recipient"], hint["message"], hint["sender"]
-        subscription = self.subscriptions.get(recipient)
-        if not subscription or sender not in subscription["senders"]:
-            return 403
         try:
             key = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(sender)[32:])
             key.verify(bytes.fromhex(hint["signature"]), signed_bytes(hint, self.audience))
@@ -96,6 +135,9 @@ class Provider:
         with self.database:
             # Serialize a decision even if multiple provider processes share this state.
             self.database.execute("BEGIN IMMEDIATE")
+            subscription = self.subscription(recipient)
+            if not subscription or sender not in subscription["senders"]:
+                return 403
             if self.database.execute(
                 "SELECT 1 FROM alerts WHERE recipient = ? AND message = ?", (recipient, message)
             ).fetchone():
@@ -189,10 +231,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         status = 404
-        if self.path == "/v1/mailbox-alert":
+        if self.path in ("/v1/mailbox-alert", "/v1/subscription"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 2048:
+                limit = 36_000 if self.path == "/v1/subscription" else 2048
+                if not 0 < length <= limit:
                     raise ValueError("Invalid request length")
                 body = self.rfile.read(length)
                 if len(body) != length:
@@ -202,7 +245,10 @@ class Handler(BaseHTTPRequestHandler):
                 status = 400
             else:
                 try:
-                    status = self.server.provider.notify(hint)
+                    if self.path == "/v1/subscription":
+                        status = self.server.provider.register(hint, self.headers.get("Authorization", ""))
+                    else:
+                        status = self.server.provider.notify(hint)
                 except (OSError, sqlite3.Error):
                     status = 503
         self.send_response(status)
@@ -220,9 +266,11 @@ def main():
     if Path(config["apns"]["key_file"]).stat().st_mode & 0o077:
         raise ValueError("The APNs key file must only be readable by its owner")
     for recipient, subscription in config["subscriptions"].items():
-        if (not hex_field(recipient, 16) or
-                not re.fullmatch(r"[a-f0-9]{32,512}", subscription["token"]) or
-                any(not hex_field(key, 64) for key in subscription["senders"])):
+        valid = (hex_field(subscription.get("enrollment_hash"), 32) if "enrollment_hash" in subscription else
+                 isinstance(subscription.get("token"), str)
+                 and re.fullmatch(r"[a-f0-9]{32,512}", subscription["token"])
+                 and all(hex_field(key, 64) for key in subscription["senders"]))
+        if not hex_field(recipient, 16) or not valid:
             raise ValueError("Invalid subscription")
     if not re.fullmatch(r"[A-Za-z0-9.-]+", config["apns"]["topic"]):
         raise ValueError("Invalid APNs topic")

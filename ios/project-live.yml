@@ -18,7 +18,8 @@ targets:
         UIBackgroundModes:
           - fetch
     sources:
-      - FamilyLive
+      - path: FamilyLive
+        excludes: [FamilyPush.entitlements]
       - LiveRuntime
       - path: RuntimeBuild/offline-tiles
         type: folder

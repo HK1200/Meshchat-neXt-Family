@@ -83,6 +83,12 @@ PY
              "PROVISIONING_PROFILE_SPECIFIER=$uuid")
 fi
 
+if [[ -n "${FAMILY_APNS_ENVIRONMENT:-}" ]]; then
+    case "$FAMILY_APNS_ENVIRONMENT" in development|production) ;; *) exit 2 ;; esac
+    signing+=("CODE_SIGN_ENTITLEMENTS=FamilyLive/FamilyPush.entitlements"
+              "FAMILY_APNS_ENVIRONMENT=$FAMILY_APNS_ENVIRONMENT")
+fi
+
 configuration=Release
 if [[ "$mode" != unsigned ]]; then configuration=AppStore; fi
 

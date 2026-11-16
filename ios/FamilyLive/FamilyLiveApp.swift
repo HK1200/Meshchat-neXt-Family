@@ -126,6 +126,9 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
+            if UIApplication.shared.applicationState == .active {
+                notifications?.push.refresh(updated)
+            }
             updateVoice(updated.voice)
             resolveNotification()
             if notificationsAllowed {
@@ -935,6 +938,9 @@ struct FamilyGuardian: View {
                             NavigationLink("Approved rooms") { FamilyRoomSettings(family: family) }
                         }
                     }
+                    if let push = family.notifications?.push {
+                        FamilyPushSettings(family: family, push: push)
+                    }
                     Section("Offline message mailbox") {
                         TextField("LXMF propagation node address", text: $mailboxAddress)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -1149,6 +1155,44 @@ struct FamilyChat: View {
                     Button("Call", systemImage: "phone") { Task { await family.call(currentContact) } }
                 }
             }
+        }
+    }
+}
+
+
+private struct FamilyPushSettings: View {
+    @ObservedObject var family: FamilyModel
+    @ObservedObject var push: FamilyPushRegistration
+    @State private var provider = ""
+    @State private var code = ""
+
+    var body: some View {
+        Section("Mailbox push alerts") {
+            Text(push.status).accessibilityIdentifier("mailbox-push-status")
+            if push.configured {
+                Button("Retry") { push.retry() }.disabled(push.busy)
+                if !push.stopping {
+                    Button("Turn off push alerts", role: .destructive) { push.disable() }
+                }
+            } else {
+                TextField("HTTPS provider address", text: $provider)
+                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("Provider enrollment code", text: $code)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Enable push alerts") {
+                    Task {
+                        guard family.unlocked else { return }
+                        await push.enable(provider: provider, secret: code, state: family.state) {
+                            family.unlocked
+                        }
+                        if push.configured { code = "" }
+                    }
+                }
+                .accessibilityIdentifier("mailbox-push-enable")
+                .disabled(push.busy || provider.isEmpty || code.isEmpty)
+            }
+            Text("Your private provider receives the Apple device token and approved Reticulum public keys. Alerts show a generic message. Mailbox delivery still works when push is off.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

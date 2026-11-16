@@ -4,7 +4,7 @@ Run this provider alongside a private LXMF propagation node. It reads the mailbo
 
 ## Run locally
 
-Use Python with `cryptography`, curl with HTTP/2 support, and a private directory for the SQLite state. Give the provider read-only access to the relay's LXMF `messagestore`. Start it with `python provider.py /path/to/private-config.json`. It listens on loopback. For delivery over the network, put an HTTPS reverse proxy in front of `POST /v1/mailbox-alert`, with a 2 KiB request limit, request timeouts, and ingress rate limiting. Keep the configuration, SQLite database, and APNs key private.
+Use Python with `cryptography`, curl with HTTP/2 support, and a private directory for the SQLite state. Give the provider read-only access to the relay's LXMF `messagestore`. Start it with `python provider.py /path/to/private-config.json`. It listens on loopback. For delivery over the network, put an HTTPS reverse proxy in front of `POST /v1/mailbox-alert` and `POST /v1/subscription`, with request limits of 2 KiB and 36,000 bytes respectively, request timeouts, and ingress rate limiting. Keep the configuration, SQLite database, and APNs key private.
 
 ```json
 {
@@ -14,8 +14,7 @@ Use Python with `cryptography`, curl with HTTP/2 support, and a private director
   "database": "/path/to/private-state/alerts.sqlite",
   "subscriptions": {
     "<recipient LXMF address in lowercase hex>": {
-      "token": "<APNs device token in lowercase hex>",
-      "senders": ["<guardian-approved 64-byte Reticulum public key in lowercase hex>"]
+      "enrollment_hash": "<SHA-256 of the 32 raw enrollment-code bytes in hex>"
     }
   },
   "apns": {
@@ -29,7 +28,11 @@ Use Python with `cryptography`, curl with HTTP/2 support, and a private director
 }
 ```
 
-An operator adds a subscription only after guardian opt-in and selects the approved sender keys. Restart after changing a token or approval list. To turn alerts off, remove the recipient and restart. Family's mailbox and Reticulum delivery work independently of this provider. The current Family test app does not register APNs tokens or provision subscriptions.
+The operator generates a random 32-byte enrollment code, stores its SHA-256 hash in the recipient's configuration, and gives the guardian the HTTPS provider address and hex code. For example, generate a code locally with `openssl rand -hex 32`. Do not send the code to Apple. The guardian opens **Guardian settings → Mailbox push alerts** after saving their mailbox and chooses **Enable push alerts**. Family stores the code in Keychain and authenticates its token and approved Reticulum key updates with `Authorization: Bearer <code>`. A recipient can have one active token per provider. Removed contacts and token changes are synced when Family is open.
+
+**Turn off push alerts** requests deletion at the provider and confirms once the provider acknowledges it. If either side is offline, the app shows that turn-off is pending and retries when reopened. An operator can also remove or rotate the enrollment record and restart the provider to block further requests. The legacy static subscription format with explicit `token` and `senders` still works for operator-managed deployments.
+
+A push-enabled signed build needs an Apple profile that permits APNs. Set `FAMILY_APNS_ENVIRONMENT=development` for the development profile or `production` for a distribution profile when archiving. The archive script applies the entitlement only when that setting is present. Use the matching APNs environment and exact signed bundle identifier in the provider. Existing personal sideload builds can show the guardian screen and exercise registration failure handling. They still use local notifications and mailbox recovery.
 
 ## Send a hint
 

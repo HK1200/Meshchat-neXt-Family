@@ -3,6 +3,7 @@ import UserNotifications
 
 @MainActor
 final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    let push = FamilyPushRegistration()
     private let center = UNUserNotificationCenter.current()
     private let defaults = UserDefaults.standard
     private let ledgerKey = "family.notifiedMessageIDs"
@@ -38,6 +39,14 @@ final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotifica
     ) -> Bool {
         center.delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+        push.receivedToken(token)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        push.registrationFailed()
     }
 
     nonisolated func userNotificationCenter(

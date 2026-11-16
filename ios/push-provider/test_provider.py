@@ -98,3 +98,36 @@ def test_apns_uses_generic_payload_and_hides_credentials(tmp_path, monkeypatch):
     assert "apns-push-type: alert" in config and "apns-priority: 10" in config
     assert message not in config
     assert json.loads(json.loads(config.split("data = ")[1])) == ALERT
+
+
+def test_guardian_enrollment_token_rotation_and_disable(tmp_path):
+    approved, removed = RNS.Identity(), RNS.Identity()
+    recipient = "ab" * 16
+    secret = "31" * 32
+    subscriptions = {recipient: {"enrollment_hash": sha256(bytes.fromhex(secret)).hexdigest()}}
+    alerts = []
+    database = tmp_path / "provider.db"
+    broker = Provider("test-mailbox", tmp_path, subscriptions, database, lambda *item: alerts.append(item))
+    token = "e1" * 32
+    registration = {"recipient": recipient, "token": token,
+                    "senders": [approved.get_public_key().hex(), removed.get_public_key().hex()]}
+    msg = mailbox_item(tmp_path, recipient, b"mail waiting before its guardian enables push")
+    assert broker.notify(hint_for(approved, recipient, msg), now=1000) == 403
+    assert broker.register(registration, "Bearer " + "32" * 32) == 403
+    assert broker.register(registration, "Bearer " + secret) == 204
+    assert broker.notify(hint_for(approved, recipient, msg), now=1000) == 204
+
+    new_token = "e2" * 32
+    registration["token"] = new_token
+    registration["senders"].pop()
+    assert broker.register(registration, "Bearer " + secret) == 204
+    pending = mailbox_item(tmp_path, recipient, b"mail waiting after updating sender list")
+    assert broker.notify(hint_for(removed, recipient, pending), now=1000) == 403
+    assert broker.notify(hint_for(approved, recipient, pending), now=1000) == 204
+    assert alerts == [(token, msg), (new_token, pending)]
+
+    assert broker.register(dict(registration, token=None, senders=[]), "Bearer " + secret) == 204
+    broker.database.close()
+    broker = Provider("test-mailbox", tmp_path, subscriptions, database, lambda *item: alerts.append(item))
+    assert broker.notify(hint_for(approved, recipient, pending), now=1001) == 403
+    broker.database.close()
