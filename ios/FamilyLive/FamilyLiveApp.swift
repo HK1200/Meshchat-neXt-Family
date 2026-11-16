@@ -360,6 +360,15 @@ final class FamilyModel: ObservableObject {
             do { try await Task.sleep(for: .seconds(1)) }
             catch { return }
         }
+
+        // A sync can save a message during the last polling interval.
+        guard !Task.isCancelled, UIApplication.shared.applicationState != .active else { return }
+        await refresh()
+        if let requestedSession, let requestedAddress,
+           state?.tcpSession == requestedSession, state?.mailbox?.address == requestedAddress,
+           state?.mailbox?.status == "complete" {
+            recordBackgroundMailboxCheck()
+        }
     }
 
     func send(contactID: Int, text: String, files: [FamilyDraftAttachment] = []) async -> Bool {
