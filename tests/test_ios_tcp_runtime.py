@@ -720,10 +720,17 @@ def test_send_posts_signed_hint_after_relay_acceptance(tmp_path, monkeypatch, se
             tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             tls.load_cert_chain(cert, key)
             server.socket = tls.wrap_socket(server.socket, server_side=True)
-            (folder / "mailbox-push-routes.json").write_text(json.dumps({
-                recipient: {"provider": f"https://localhost:{server.server_port}",
-                            "audience": "private test", "relay": mailbox},
-            }))
+            route = {"provider": f"https://localhost:{server.server_port}",
+                     "audience": "private test", "relay": mailbox}
+            if sender_app == "family":
+                request(client, "mailbox_route_set", succeeds=False, contactId=1, route=route)
+                request(client, "mailbox_route_set", succeeds=False, token=token, contactId=2, route=route)
+                request(client, "mailbox_route_set", succeeds=False, token=token, contactId=1,
+                        route={**route, "provider": "http://localhost"})
+                request(client, "mailbox_route_set", token=token, contactId=1, route=route)
+                assert request(client, "mailbox_route_get", token=token, contactId=1)["mailboxRoute"] == route
+            else:
+                (folder / "mailbox-push-routes.json").write_text(json.dumps({recipient: route}))
             stopped = threading.Event()
 
             def receive():
@@ -824,6 +831,9 @@ asyncio.run(main())
                     ("Private test body", "Received · signature verified"),
                 ]
                 assert alerts == [("mock-device", stored.name.split("_", 1)[0])]
+                if sender_app == "family":
+                    request(client, "mailbox_route_set", token=token, contactId=1, route=None)
+                    assert request(client, "mailbox_route_get", token=token, contactId=1)["mailboxRoute"] is None
             finally:
                 stopped.set()
                 worker.join(timeout=8)

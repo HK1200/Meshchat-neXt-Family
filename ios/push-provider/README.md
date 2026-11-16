@@ -36,7 +36,7 @@ A push-enabled signed build needs an Apple profile that permits APNs. Set `FAMIL
 
 ## Send a hint
 
-Family and neXt read a sender-local `mailbox-push-routes.json`. In Family, place it in the app's backend state directory (on iPad, `Library/Application Support/FamilyTCP` inside Family's container). In neXt, place it in the sending identity's storage directory beside `database.db`. This is operator-managed configuration.
+On iPad or iPhone, a guardian can edit an approved Reticulum contact and open **Private mailbox push route** to save or remove its route. Family and neXt also read a sender-local `mailbox-push-routes.json`. In Family, place it in the app's backend state directory (on iPad, `Library/Application Support/FamilyTCP` inside Family's container). In neXt, place it in the sending identity's storage directory beside `database.db`. Use the file for operator-managed setups.
 
 ```json
 {

@@ -269,6 +269,20 @@ final class FamilyModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
+    func loadMailboxRoute(contactID: Int) async throws -> FamilyMailboxRoute? {
+        try await request("mailbox_route_get", ["token": token, "contactId": contactID]).mailboxRoute
+    }
+
+    func saveMailboxRoute(contactID: Int, route: FamilyMailboxRoute?) async throws {
+        let value: Any
+        if let route {
+            value = ["provider": route.provider, "audience": route.audience, "relay": route.relay]
+        } else {
+            value = NSNull()
+        }
+        _ = try await request("mailbox_route_set", ["token": token, "contactId": contactID, "route": value])
+    }
+
     func saveMailbox(_ address: String) async -> Bool {
         let previousAddress = state?.mailbox?.address
         let saved = await perform("mailbox_config", [

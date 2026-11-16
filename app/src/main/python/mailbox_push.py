@@ -22,12 +22,10 @@ class Route:
 _workers = threading.BoundedSemaphore(8)
 
 
-def route_for(profile, recipient):
+def parse_route(entry):
+    if not isinstance(entry, dict):
+        return None
     try:
-        with (profile / "mailbox-push-routes.json").open(encoding="utf-8") as settings:
-            entry = json.load(settings).get(recipient)
-        if not isinstance(entry, dict):
-            return None
         provider, audience, relay = (entry[key] for key in ("provider", "audience", "relay"))
         parts = urlsplit(provider)
         if (parts.scheme != "https" or not parts.hostname or parts.username is not None
@@ -36,7 +34,25 @@ def route_for(profile, recipient):
                 or not 0 < len(audience) <= 128 or not re.fullmatch(r"[a-f0-9]{32}", relay)):
             return None
         return Route(provider.rstrip("/"), audience, relay)
-    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+    except (ValueError, AttributeError, KeyError, TypeError):
+        return None
+
+
+def read_routes(profile):
+    try:
+        with (profile / "mailbox-push-routes.json").open(encoding="utf-8") as settings:
+            routes = json.load(settings)
+    except FileNotFoundError:
+        return {}
+    if not isinstance(routes, dict):
+        raise ValueError("The mailbox push routes file must contain an object.")
+    return routes
+
+
+def route_for(profile, recipient):
+    try:
+        return parse_route(read_routes(profile).get(recipient))
+    except (ValueError, OSError):
         return None
 
 

@@ -14,7 +14,7 @@ ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
     'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
-    'mailbox_config','mailbox_sync','tcp_network_changed',
+    'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
@@ -937,6 +937,32 @@ def request(raw):
             with _lock:reconnect=bool(_rns and _state['peer'].get('enabled'))
             if reconnect:threading.Thread(target=_connect,kwargs={"reconnect":True},daemon=True).start()
             return json.dumps({'ok':True})
+        if action in ('mailbox_route_get','mailbox_route_set'):
+            import mailbox_push
+            _authorized(p)
+            with _lock:
+                contact=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)
+                address=(contact or {}).get('addresses',{}).get('lxmf','').lower()
+                if not address:raise ValueError('Choose an approved Reticulum messaging contact.')
+                routes=mailbox_push.read_routes(_root)
+                if action=='mailbox_route_set':
+                    value=p.get('route')
+                    if value is None:
+                        routes.pop(address,None)
+                    else:
+                        route=mailbox_push.parse_route(value)
+                        if route is None:raise ValueError('Enter an HTTPS provider, audience, and 32-character relay address.')
+                        mailbox=_state.get('mailbox')
+                        if mailbox and route.relay!=mailbox:
+                            raise ValueError('The route must use the same relay as your offline mailbox.')
+                        routes[address]={'provider':route.provider,'audience':route.audience,'relay':route.relay}
+                    path=_root/'mailbox-push-routes.json'
+                    pending=path.with_suffix('.tmp')
+                    pending.write_text(json.dumps(routes))
+                    os.chmod(pending,0o600)
+                    pending.replace(path)
+                route=mailbox_push.parse_route(routes.get(address))
+                return json.dumps({'ok':True,'mailboxRoute':vars(route) if route else None})
         if action in ['mailbox_config','mailbox_sync']:
             if not _tcp_only:raise ValueError('Mailbox sync is only available in the TCP build')
             if action=='mailbox_sync':return json.dumps({'ok':True,'mailbox':_sync_mailbox()})
