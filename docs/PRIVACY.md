@@ -6,4 +6,4 @@ Family stores its contacts, configuration and message history on the Android dev
 
 An internet connection may be used for Reticulum TCP, SIP, map downloads, and update checks. Update checks use this project’s GitHub Releases repository. An offline map stays on the device after it is downloaded or imported.
 
-Report a reproducible problem with the Family version, Android version and affected service. Remove passwords, private keys, contact addresses, message contents and personal locations from logs or screenshots before attaching them. Use GitHub’s private vulnerability reporting if it is enabled for a security issue. [Issue tracker](https://github.com/HK1200/Meshchat-neXt-Family/issues)
+Report a reproducible problem with the Family version, Android version and affected service. Remove passwords, private keys, contact addresses, message contents and personal locations from logs or screenshots before attaching them. Use [private vulnerability reporting](../SECURITY.md) for a security issue. [Issue tracker](https://github.com/HK1200/Meshchat-neXt-Family/issues)

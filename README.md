@@ -20,5 +20,6 @@ Family can show updates on its home screen. **Install now** downloads the APK fr
 
 - [Build instructions](docs/BUILDING.md)
 - [Privacy and reporting](docs/PRIVACY.md)
+- [Report a security vulnerability](SECURITY.md)
 - [Third-party software and map credits](docs/NOTICES.md)
 - [Meshchat neXt](https://github.com/HK1200/Meshchat-neXt)
