@@ -1,0 +1,6 @@
+fec2b9b4f6421fd35b05446aa6600cc46d80a15f6204898660c10c1f19c54f69  app/libs/usb-serial-for-android-3.8.1.aar
+d523468d62d9b603cb3354294d70d4b2feabf2c3f1e43b0c96c9aabf32813708  app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+8829db5d7c7663014a11f61c726aa7e2c22c4eec5d0d19118ba51600079b13f8  app/src/main/jniLibs/arm64-v8a/libffi.so
+9e59bbb753c83bdf8ec6e9ce83f67bdbd306d6e26a3b366763d5a21f3cf8da1c  app/src/main/jniLibs/arm64-v8a/libnext_sip.so
+43724917a612fe1114ffde6a18d2cc4695cea5d073f7e22b3ae53e14e0f2561f  app/src/main/jniLibs/arm64-v8a/libopus.so
+81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f  gradle/wrapper/gradle-wrapper.jar

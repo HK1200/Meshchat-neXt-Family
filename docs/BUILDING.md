@@ -20,3 +20,20 @@ The reproducible repair tool accepts the pinned wheel, matching NumPy wheel, the
 Family v0.6.19 and earlier used `org.meshchat.family.preview`. Android treats `org.meshchat.family` as a separate app and assigns it separate private storage. Installing the new package starts guardian setup. Keep the original app installed if you need its settings, messages, or Reticulum identity. An in-app transfer between the two packages requires a migration feature.
 
 Publish the production APK to a versioned release and upload its `family-update.json` to the `family-stable` release. The manifest must declare `org.meshchat.family` and the versioned tag that hosts the APK. Include the original package's last compatible manifest as `family-update.json` on each release marked Latest during the transition. The new package reads its separate `family-stable` feed. The installer verifies that a downloaded APK matches the installed app ID, version, and signing certificate.
+
+## Bundled Android binaries
+
+Family keeps these inputs in the repository so its offline Android build can use them. Run `sha256sum --check gradle/android-binaries.sha256` from the repository root before building. CI also checks the Gradle wrapper against Gradle's published list. If a binary is updated, verify its source and update its checksum and corresponding notices together.
+
+| File | Verified origin |
+| --- | --- |
+| `gradle-wrapper.jar` | Official Gradle 8.13 wrapper JAR. The JAR and distribution ZIP checksums match the [Gradle release checksums](https://gradle.org/release-checksums/). |
+| `usb-serial-for-android-3.8.1.aar` | Byte-for-byte match to the [JitPack 3.8.1 artifact](https://jitpack.io/com/github/mik3y/usb-serial-for-android/3.8.1/usb-serial-for-android-3.8.1.aar), built from the [USB Serial for Android release](https://github.com/mik3y/usb-serial-for-android/releases/tag/v3.8.1). |
+| `libffi.so` | Byte-for-byte match to `chaquopy/lib/libffi.so` in [Chaquopy's libffi 3.3 build 3 ARM64 wheel](https://chaquo.com/pypi-13.1/chaquopy-libffi/). |
+| `libc++_shared.so` | Byte-for-byte match to the ARM64 shared C++ runtime in [Android NDK r27d](https://github.com/android/ndk/releases/tag/r27d), SDK revision `27.3.13750724`. |
+| `libopus.so` | Byte-for-byte match to the neXt ARM64 Android build of Opus 1.5.2. The library identifies itself as `libopus 1.5.2`. See [neXt's Opus build script](https://github.com/HK1200/Meshchat-neXt/blob/de618055557c72bbea5a84ba34288252c43cc4a5/scripts/android/provision-opus.py). |
+| `libnext_sip.so` | Byte-for-byte match to the neXt ARM64 Android build. The [neXt SIP build script](https://github.com/HK1200/Meshchat-neXt/blob/de618055557c72bbea5a84ba34288252c43cc4a5/scripts/android/build-sip.py) pins Baresip and re 4.12.0, Mbed TLS 3.6.7, Android NDK r27d and Opus 1.5.2. |
+
+The source archive checksums for the SIP dependencies matched the neXt build script. Hash checks identify the input binaries. Build output can also be compared against a fresh reproduction from source.
+
+The Android package bundles their notices under `assets/notices`. See [third-party notices](NOTICES.md).

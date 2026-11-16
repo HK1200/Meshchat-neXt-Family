@@ -22,9 +22,9 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - name: Verify the Gradle wrapper JAR
-        run: |
-          echo "81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: Verify bundled Android build inputs
+        run: sha256sum --check gradle/android-binaries.sha256
       - name: Install test dependencies
         run: python -m pip install --require-hashes -r tests/requirements.lock
       - name: Test Family backend
