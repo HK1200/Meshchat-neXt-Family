@@ -1,4 +1,4 @@
 lxst==0.5.4
 numpy==2.3.4
-pytest==8.4.2
+pytest==9.0.3
 rns==1.5.7
