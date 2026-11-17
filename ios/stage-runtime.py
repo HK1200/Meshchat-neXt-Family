@@ -35,7 +35,7 @@ def standalone_rns(source):
 def tcp_rnode(source):
     start = source.index("        import importlib.util\n", source.index("    def __init__(self, owner, configuration):"))
     end = source.index("        super().__init__()", start)
-    return source[:start] + """        port = configuration.get("port", "")
+    patched = source[:start] + """        port = configuration.get("port", "")
         if not isinstance(port, str) or not port.lower().startswith(("tcp://", "familyble://")):
             raise ValueError("The iOS RNode driver requires TCP or Bluetooth LE")
         serial = None
@@ -44,6 +44,8 @@ def tcp_rnode(source):
             serial.PARITY_NONE = "N"
 
 """ + source[end:]
+    # Upstream detach can run after open_port failed before assigning serial.
+    return patched.replace("            self.serial.close()", "            if self.serial is not None: self.serial.close()")
 
 
 def stage_meshcore(destination, wheels):

@@ -12,6 +12,8 @@ struct FamilyRNodeSettings: View {
     @State private var power = 17
     @State private var saving = false
     @State private var saved = false
+    @FocusState private var editingField: Field?
+    private enum Field: Hashable { case endpoint, frequency, bandwidth }
 
     var body: some View {
         Form {
@@ -22,15 +24,23 @@ struct FamilyRNodeSettings: View {
                         Text("Wi-Fi").tag("tcp")
                         Text("Bluetooth LE").tag("ble")
                     }
-                    if transport == "ble" { FamilyBluetoothPicker(selection: $endpoint) }
-                    TextField(transport == "ble" ? "Bluetooth radio identifier" : "RNode hostname or IPv4 address", text: $endpoint)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if transport == "ble" {
+                        FamilyBluetoothPicker(selection: $endpoint)
+                        if !endpoint.isEmpty { Text("Selected radio: \(endpoint)").font(.caption).textSelection(.enabled) }
+                    } else {
+                        TextField("RNode hostname or IPv4 address", text: $endpoint)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .focused($editingField, equals: .endpoint)
+                    }
                     TextField("Frequency in MHz", text: $frequency).keyboardType(.decimalPad)
+                        .focused($editingField, equals: .frequency)
                     TextField("Bandwidth in kHz", text: $bandwidth).keyboardType(.decimalPad)
+                        .focused($editingField, equals: .bandwidth)
                     Stepper("Spreading factor: \(spreadingFactor)", value: $spreadingFactor, in: 5...12)
                     Stepper("Coding rate: 4/\(codingRate)", value: $codingRate, in: 5...8)
                     Stepper("TX power: \(power) dBm", value: $power, in: 0...30)
                     Button(saved ? "RNode settings saved" : "Save RNode settings") {
+                        editingField = nil
                         saving = true
                         Task {
                             saved = await family.saveRNode([
@@ -52,6 +62,13 @@ struct FamilyRNodeSettings: View {
             }
         }
         .navigationTitle("RNode")
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { editingField = nil }
+            }
+        }
         .onAppear {
             if let radio = family.state?.rnode {
                 enabled = radio.enabled

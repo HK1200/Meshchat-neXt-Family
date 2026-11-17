@@ -66,10 +66,16 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             sessions[id] = session
             peripheral.delegate = self
             central.connect(peripheral)
-            queue.asyncAfter(deadline: .now() + 25) {
+            queue.asyncAfter(deadline: .now() + 180) {
                 if self.sessions[id] === session && !session.ready {
                     self.fail(session, "Bluetooth connection timed out")
                 }
+            }
+            return ["ok": true]
+        }
+        if operation == "close" {
+            if let session = sessions.removeValue(forKey: id) {
+                central.cancelPeripheralConnection(session.peripheral)
             }
             return ["ok": true]
         }
@@ -78,11 +84,6 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             let events = session.events
             session.events.removeAll(keepingCapacity: true)
             return ["events": events]
-        }
-        if operation == "close" {
-            sessions.removeValue(forKey: id)
-            central.cancelPeripheralConnection(session.peripheral)
-            return ["ok": true]
         }
         if operation == "send" {
             guard session.ready, session.chunks.isEmpty, !session.writing,

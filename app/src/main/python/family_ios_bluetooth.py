@@ -75,9 +75,10 @@ class Serial:
         self.buffer = bytearray()
         self.lock = threading.RLock()
         self.is_open = False
+        self.first_write = True
         try:
             self.session.start()
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + 180
             while time.monotonic() < deadline:
                 event = self.session.poll(200)
                 if event and event.kind == "ready":
@@ -116,10 +117,11 @@ class Serial:
             if not self.is_open:
                 raise ConnectionError("Bluetooth radio is closed")
             self.session.send(data)
-            deadline = time.monotonic() + 15
+            deadline = time.monotonic() + (180 if self.first_write else 15)
             while time.monotonic() < deadline:
                 event = self.session.poll(100)
                 if event and event.kind == "written":
+                    self.first_write = False
                     return len(data)
                 self._event(event)
             self.close()

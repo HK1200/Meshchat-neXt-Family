@@ -1,5 +1,8 @@
 """Exercise the native radio boundary without Apple hardware."""
 import asyncio
+import ast
+import runpy
+from zipfile import ZipFile
 import base64
 import importlib.util
 import json
@@ -63,6 +66,24 @@ class RadioBoundaryTests(unittest.TestCase):
         self.assertFalse(radio.is_open)
         self.assertEqual(sum(c["operation"] == "send" for c in self.operations), 1)
         radio.close()
+
+    def test_driver_detach_handles_failed_initial_open(self):
+        root = SOURCE.parents[4]
+        wheel = root / "ios/RuntimeBuild/public/rns-1.5.7-py3-none-any.whl"
+        if not wheel.exists():
+            self.skipTest("Pinned RNode wheel has not been staged")
+        stage = runpy.run_path(str(root / "ios/stage-runtime.py"))
+        with ZipFile(wheel) as archive:
+            source = stage["tcp_rnode"](archive.read("RNS/Interfaces/RNodeInterface.py").decode())
+        driver = next(node for node in ast.parse(source).body if isinstance(node, ast.ClassDef) and node.name == "RNodeInterface")
+        detach = next(node for node in driver.body if isinstance(node, ast.FunctionDef) and node.name == "detach")
+        namespace = {}
+        exec(compile(ast.Module(body=[detach], type_ignores=[]), "RNode-detach", "exec"), namespace)
+        radio = SimpleNamespace(serial=None, use_ble=False, use_tcp=False, detached=False,
+                                disable_external_framebuffer=lambda: None, setRadioState=lambda value: None, leave=lambda: None)
+        namespace["KISS"] = SimpleNamespace(RADIO_STATE_OFF=0)
+        namespace["detach"](radio)
+        self.assertTrue(radio.detached)
 
     def test_radio_identifiers_are_validated(self):
         self.assertEqual(bluetooth.device_id(ADDRESS), ADDRESS.upper())

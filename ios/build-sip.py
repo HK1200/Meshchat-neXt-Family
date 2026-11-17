@@ -55,7 +55,7 @@ def main():
     common = ["-DCMAKE_SYSTEM_NAME=iOS", "-DCMAKE_OSX_SYSROOT=" + sdk,
               "-DCMAKE_OSX_ARCHITECTURES=" + args.arch, "-DCMAKE_OSX_DEPLOYMENT_TARGET=17.0",
               "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
-              "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF"]
+              "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DCMAKE_MACOSX_BUNDLE=OFF", "-DBUILD_SHARED_LIBS=OFF", "-DBUILD_TESTING=OFF"]
     tls = work / "mbedtls-3.6.7"
     mt = output / "mbedtls"
     run("cmake", "-S", tls, "-B", mt, *common, "-DENABLE_TESTING=OFF", "-DENABLE_PROGRAMS=OFF")

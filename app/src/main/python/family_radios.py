@@ -138,7 +138,12 @@ class Radio:
                 try:self.on_ready()
                 except Exception:pass
     def configure(self,config):
-        with self._lock:self.config=dict(config) if config else None
+        with self._lock:
+            previous=self.config
+            self.config=dict(config) if config else None
+        if self.network_only and previous and previous.get('transport')=='ble' and previous!=config:
+            from family_ios_bluetooth import request
+            request('close',id=previous['endpoint'])
         self._pending.set()
     def _worker(self):
         while True:
