@@ -5,7 +5,6 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
-import tarfile
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent
@@ -42,8 +41,8 @@ def main():
         if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
             raise ValueError("SIP source checksum mismatch for " + name)
         if not (work / name).exists():
-            with tarfile.open(archive) as source:
-                source.extractall(work, filter="data")
+            # Archives are accepted only after checking their pinned digest.
+            run("tar", "-xf", archive, "-C", work)
     # Exercise address approval with the macOS host compiler before cross compiling.
     policy_test = work / "sip-policy-test"
     mac_sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()

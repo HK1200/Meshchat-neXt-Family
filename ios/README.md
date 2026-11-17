@@ -58,7 +58,7 @@ Bluetooth radio tests need a signed iPhone or iPad and a nearby radio. The simul
 
 ## Wi-Fi RNode
 
-Open **Guardian settings → RNode** and choose Wi-Fi, then and enter the radio’s hostname or IPv4 address and LoRa settings. The radio must offer RNode TCP on port 7633. The connection screen shows link status and the radio’s reported battery level when available. Approved Reticulum messages, rooms, and private location can use this link. Verify actual radio and battery behavior on a signed device build.
+Open **Guardian settings → RNode** choose Wi-Fi, and enter the radio’s hostname or IPv4 address and LoRa settings. The radio must offer RNode TCP on port 7633. The connection screen shows link status and the radio’s reported battery level when available. Approved Reticulum messages, rooms, and private location can use this link. Verify actual radio and battery behavior on a signed device build.
 
 ## Contact discovery and the live map
 
