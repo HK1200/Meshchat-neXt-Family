@@ -488,6 +488,10 @@ final class FamilyModel: ObservableObject {
         return await perform("peer", payload)
     }
 
+    func saveMeshCore(_ config: [String: Any]) async -> Bool {
+        await perform("meshcore_config", ["token": token, "config": config])
+    }
+
     func saveRNode(_ config: [String: Any]) async -> Bool {
         await perform("rnode", ["token": token, "config": config])
     }
@@ -616,8 +620,8 @@ final class FamilyModel: ObservableObject {
             let result = try await request("qr_parse", ["token": token, "text": text, "target": "contact"])
             guard epoch == guardianEpoch, unlocked else { return nil }
             guard let card = result.card,
-                  card.addresses["lxmf"]?.isEmpty == false || card.addresses["lxst"]?.isEmpty == false else {
-                error = "Choose a contact code with a Reticulum messaging or calling address."
+                  card.addresses["lxmf"]?.isEmpty == false || card.addresses["lxst"]?.isEmpty == false || card.addresses["meshcore"]?.isEmpty == false else {
+                error = "Choose a contact code with a messaging or calling address."
                 return nil
             }
             error = ""
@@ -638,12 +642,18 @@ final class FamilyModel: ObservableObject {
     }
 
     func saveContact(id: Int? = nil, name: String, address: String, voiceAddress: String,
-                     identityPublicKey: String? = nil) async -> Bool {
+                     identityPublicKey: String? = nil, meshcoreAddress: String? = nil) async -> Bool {
         let current = state?.contacts ?? []
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let lxst = voiceAddress.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !lxmf.isEmpty || !lxst.isEmpty else {
-            error = "Enter at least one approved Reticulum address."
+        let existingMesh = id.flatMap { id in current.first { $0.id == id } }?.addresses["meshcore"] ?? ""
+        let mesh = (meshcoreAddress ?? existingMesh).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard mesh.isEmpty || mesh.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
+            error = "MeshCore public keys must contain 64 hexadecimal characters."
+            return false
+        }
+        guard !lxmf.isEmpty || !lxst.isEmpty || !mesh.isEmpty else {
+            error = "Enter at least one approved messaging or calling address."
             return false
         }
         guard [lxmf, lxst].allSatisfy({ $0.isEmpty || $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil }) else {
@@ -659,6 +669,7 @@ final class FamilyModel: ObservableObject {
         let previousKey = addresses["lxmf"]?.lowercased() == lxmf ? previous?.identityPublicKey : nil
         addresses["lxmf"] = lxmf.isEmpty ? nil : lxmf
         addresses["lxst"] = lxst.isEmpty ? nil : lxst
+        addresses["meshcore"] = mesh.isEmpty ? nil : mesh
         let contact = FamilyContact(
             id: id ?? (current.map(\.id).max() ?? 0) + 1,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines), addresses: addresses,
@@ -944,6 +955,7 @@ struct FamilyGuardian: View {
                         }
                     }
                     Section {
+                        NavigationLink("MeshCore companion") { FamilyMeshCoreSettings(family: family) }
                         NavigationLink("RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
                         NavigationLink("Incoming message size") { FamilyIncomingLimitSettings(family: family) }
@@ -1101,7 +1113,10 @@ struct FamilyChat: View {
     }
 
     private var canSend: Bool {
-        currentContact?.addresses["lxmf"] == contact.addresses["lxmf"] && currentContact?.addresses["lxmf"]?.isEmpty == false
+        guard let currentContact else { return false }
+        return ["lxmf", "meshcore"].contains { service in
+            currentContact.addresses[service]?.isEmpty == false && currentContact.addresses[service] == contact.addresses[service]
+        }
     }
 
     private func send() {
@@ -1152,7 +1167,7 @@ struct FamilyChat: View {
                 .confirmationDialog("This attachment may exceed the recipient’s limit", isPresented: $confirmLargeSend) {
                     Button("Send anyway") { send() }
                 }
-                if currentContact?.addresses["lxmf"] == nil { Text("This contact has no approved messaging address.") }
+                if currentContact?.addresses["lxmf"] == nil && currentContact?.addresses["meshcore"] == nil { Text("This contact has no approved messaging address.") }
                 else if !canSend { Text("Contact approval changed. Reopen this conversation.") }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG

@@ -8,6 +8,7 @@ struct FamilyContactApproval: View {
     @State private var name = ""
     @State private var address = ""
     @State private var voiceAddress = ""
+    @State private var meshcoreAddress = ""
     @State private var contactSaved = false
     @State private var importedCard: FamilyContactCard?
     @State private var qrPhoto: PhotosPickerItem?
@@ -23,6 +24,8 @@ struct FamilyContactApproval: View {
                     TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("contact-address")
                     TextField("Reticulum voice address", text: $voiceAddress)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("MeshCore public key", text: $meshcoreAddress)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     NavigationLink("Find messaging client") {
                         FamilyClientDiscovery(family: family) { client in
@@ -52,7 +55,7 @@ struct FamilyContactApproval: View {
                         let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
                             ? importedCard?.identityPublicKey : nil
                         Task {
-                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key)
+                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress)
                         }
                     }
                     .disabled(readingQR)
@@ -95,6 +98,7 @@ struct FamilyContactApproval: View {
         name = card.name ?? ""
         address = card.addresses["lxmf"] ?? ""
         voiceAddress = card.addresses["lxst"] ?? ""
+        meshcoreAddress = card.addresses["meshcore"] ?? ""
         contactSaved = false
     }
 

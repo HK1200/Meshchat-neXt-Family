@@ -4,12 +4,13 @@ from argparse import ArgumentParser
 from hashlib import file_digest
 from pathlib import Path, PurePosixPath
 import shutil
+import json
 from zipfile import ZipFile
 
 
 RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
 FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
-FAMILY_MODULES = ("family_backend.py", "mailbox_push.py", "family_cards.py", "family_radios.py", "family_ios_bluetooth.py", "family_routes.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
+FAMILY_MODULES = ("family_backend.py", "mailbox_push.py", "family_cards.py", "family_radios.py", "family_ios_bluetooth.py", "family_ios_meshcore_crypto.py", "family_meshcore.py", "family_meshcore_rooms.py", "family_meshcore_location.py", "family_routes.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
 
 
 def standalone_rns(source):
@@ -45,7 +46,35 @@ def tcp_rnode(source):
 """ + source[end:]
 
 
-def stage(wheel, destination, cbor_wheel=None):
+def stage_meshcore(destination, wheels):
+    manifest = json.loads((Path(__file__).parent / "meshcore-wheels.json").read_text())
+    for entry in manifest:
+        wheel = wheels / entry["file"]
+        if file_digest(wheel.open("rb"), "sha256").hexdigest() != entry["sha256"]:
+            raise ValueError("MeshCore wheel checksum mismatch")
+        with ZipFile(wheel) as archive:
+            for info in archive.infolist():
+                if info.is_dir():continue
+                relative = PurePosixPath(info.filename)
+                if ".." in relative.parts or relative.is_absolute():raise ValueError("Invalid wheel path")
+                payload = archive.read(info)
+                if info.filename in ("meshcore/meshcore_parser.py", "meshcore/reader.py"):
+                    payload = payload.replace(b"from Crypto.Cipher import AES", b"from family_ios_meshcore_crypto import AES")
+                    payload = payload.replace(b"from Crypto.Hash import HMAC, SHA256", b"from family_ios_meshcore_crypto import HMAC, SHA256")
+                    payload = payload.replace(b"from Crypto.Hash import SHA256", b"from family_ios_meshcore_crypto import SHA256")
+                if info.filename == "meshcore/serial_cx.py":
+                    payload = payload.replace(b"import serial_asyncio_fast as serial_asyncio", b"serial_asyncio = None  # iOS uses the native CoreBluetooth transport")
+                target = destination.joinpath(*relative.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(payload)
+    for name in ("meshcore_session", "meshcore_transport", "meshcore_settings", "meshcore_radio2", "meshcore_identity", "meshcore_store"):
+        relative = Path("meshchatnext/src/backend") / (name + ".py")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(FAMILY_SOURCE / relative, target)
+
+
+def stage(wheel, destination, cbor_wheel=None, meshcore_wheels=None):
     with wheel.open("rb") as stream:
         if file_digest(stream, "sha256").hexdigest() != RNS_SHA256:
             raise ValueError("Expected the pinned rns-1.5.7 wheel")
@@ -65,11 +94,13 @@ def stage(wheel, destination, cbor_wheel=None):
             target.parent.mkdir(parents=True, exist_ok=True)
             replacement = replacements.get(relative.as_posix())
             target.write_bytes(replacement.encode() if replacement is not None else archive.read(entry))
+    if meshcore_wheels is not None:
+        stage_meshcore(destination, meshcore_wheels)
     for module in FAMILY_MODULES:
         shutil.copyfile(FAMILY_SOURCE / module, destination / module)
     shutil.copytree(FAMILY_SOURCE / "LXMF", destination / "LXMF", ignore=shutil.ignore_patterns("__pycache__"))
     telemetry = Path("meshchatnext/src/backend/telemetry_utils.py")
-    (destination / telemetry.parent).mkdir(parents=True)
+    (destination / telemetry.parent).mkdir(parents=True, exist_ok=True)
     shutil.copyfile(FAMILY_SOURCE / telemetry, destination / telemetry)
     for module in ("src/path_utils.py", "src/backend/constants.py", "src/backend/path_utils.py", "src/backend/traffic_stats.py"):
         path = Path("meshchatnext") / module
@@ -92,5 +123,6 @@ if __name__ == "__main__":
     parser.add_argument("rns_wheel", type=Path)
     parser.add_argument("destination", type=Path, help="New directory for staged modules")
     parser.add_argument("--cbor-wheel", type=Path)
+    parser.add_argument("--meshcore-wheels", type=Path)
     args = parser.parse_args()
-    stage(args.rns_wheel, args.destination, args.cbor_wheel)
+    stage(args.rns_wheel, args.destination, args.cbor_wheel, args.meshcore_wheels)

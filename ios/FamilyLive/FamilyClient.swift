@@ -186,6 +186,21 @@ struct FamilyMailboxRoute: Codable, Sendable {
     let relay: String
 }
 
+struct FamilyMeshCoreState: Decodable, Sendable {
+    struct Config: Decodable, Sendable {
+        let enabled: Bool
+        let receive: Bool
+        let target: String
+    }
+    struct Battery: Decodable, Sendable { let voltage_mv: Int }
+    let enabled: Bool
+    let connected: Bool
+    let name: String
+    let error: String
+    let config: Config?
+    let battery: Battery?
+}
+
 struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
@@ -197,6 +212,7 @@ struct FamilyReply: Decodable, Sendable {
     var address: String?
     var deviceName: String?
     var peer: FamilyPeer?
+    var meshcore: FamilyMeshCoreState?
     var rnode: FamilyRNode?
     var rnodeRuntime: FamilyRNodeRuntime?
     var voiceSupported: Bool?

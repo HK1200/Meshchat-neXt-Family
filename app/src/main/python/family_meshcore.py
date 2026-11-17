@@ -1,4 +1,5 @@
 """Opt-in MeshCore companion and approved direct messaging, separate from RNS."""
+import sys
 import asyncio,concurrent.futures,hashlib,math,re,threading,time,uuid
 
 def key(value):
@@ -8,8 +9,12 @@ def key(value):
 def validate_config(raw):
     if not isinstance(raw,dict) or type(raw.get('enabled')) is not bool or type(raw.get('receive',False)) is not bool:raise ValueError('Invalid MeshCore settings')
     kind=raw.get('transport');target=str(raw.get('target','')).strip()
+    if sys.platform=='ios' and kind!='ble':raise ValueError('Choose Bluetooth LE on iOS')
     if kind=='ble':
-        if not re.fullmatch(r'(?:[a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}',target):raise ValueError('Select a Bluetooth companion address')
+        if sys.platform=='ios':
+            from family_ios_bluetooth import device_id
+            target=device_id(target)
+        elif not re.fullmatch(r'(?:[a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}',target):raise ValueError('Select a Bluetooth companion address')
     elif kind=='usb':
         if not re.fullmatch(r'/dev/bus/usb/\d{3}/\d{3}',target):raise ValueError('Select an attached USB companion')
     else:raise ValueError('Choose Bluetooth or USB for MeshCore')
@@ -87,7 +92,10 @@ class FamilyMeshCore:
             if self.session_factory:self.session=self.session_factory()
             else:
                 from meshchatnext.src.backend.meshcore_transport import AndroidConnection
-                self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
+                if sys.platform=='ios':
+                    from family_ios_bluetooth import NativeSession
+                    self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,native_factory=NativeSession,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
+                else:self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
             try:
                 await self.session.connect(config['transport'],config['target'],context=self.context or _context)
                 identity=await self.session.read_identity();owner=key(identity['public_key'])

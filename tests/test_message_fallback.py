@@ -17,12 +17,13 @@ COMPANION_KEY = "ef" * 32
 
 
 @pytest.fixture
-def backend(monkeypatch):
+def backend(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(PYTHON))
     spec = importlib.util.spec_from_file_location("fallback_backend", PYTHON / "family_backend.py")
     module = importlib.util.module_from_spec(spec)
     with patch.object(signal, "signal", signal.signal):
         spec.loader.exec_module(module)
+    module._root = tmp_path
     module._state = {
         "setup_complete": True,
         "contacts": [{"id": 1, "name": "Test contact", "addresses": {

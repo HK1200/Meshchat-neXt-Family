@@ -1,4 +1,5 @@
 """Exercise the native radio boundary without Apple hardware."""
+import asyncio
 import base64
 import importlib.util
 import json
@@ -67,6 +68,35 @@ class RadioBoundaryTests(unittest.TestCase):
         self.assertEqual(bluetooth.device_id(ADDRESS), ADDRESS.upper())
         with self.assertRaises(ValueError):
             bluetooth.device_id("AA:BB:CC:DD:EE:FF")
+
+
+class MeshCoreTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_transport_connects_sends_and_dispatches_notifications(self):
+        transport_path = SOURCE.parent / "meshchatnext/src/backend/meshcore_transport.py"
+        spec = importlib.util.spec_from_file_location("ios_test_meshcore_transport", transport_path)
+        transport = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(transport)
+        fixture = RadioBoundaryTests()
+        fixture.setUp()
+        connection = transport.AndroidConnection("ble", ADDRESS, native_factory=bluetooth.NativeSession)
+        received = []
+        ready = asyncio.Event()
+        class Reader:
+            async def handle_rx(self, packet):
+                received.append(packet)
+                ready.set()
+        connection.set_reader(Reader())
+        try:
+            await connection.connect()
+            self.assertTrue(connection.is_connected)
+            await connection.send(b"private command")
+            await asyncio.wait_for(ready.wait(), 2)
+            self.assertEqual(received, [b"\xc0\x01"])
+            self.assertEqual(sum(c["operation"] == "send" for c in fixture.operations), 1)
+        finally:
+            await connection.disconnect()
+            fixture.doCleanups()
+        self.assertFalse(connection.is_connected)
 
 
 if __name__ == "__main__":

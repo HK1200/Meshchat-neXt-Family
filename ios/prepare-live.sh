@@ -36,9 +36,14 @@ python3 -c 'import json; print("\n".join(" ".join((w["url"], w["sha256"], w["fil
 while read -r url digest filename; do
     fetch "$url" "$digest" "RuntimeBuild/voice-wheels/$filename"
 done
+mkdir -p RuntimeBuild/meshcore-wheels
+python3 -c 'import json; print("\n".join(" ".join((w["url"], w["sha256"], w["file"])) for w in json.load(open("meshcore-wheels.json"))))' | \
+while read -r url digest filename; do
+    fetch "$url" "$digest" "RuntimeBuild/meshcore-wheels/$filename"
+done
 stage="$(mktemp -d "$PWD/RuntimeBuild/staging.XXXXXXXX")"
 trap 'rm -rf -- "$stage"' EXIT
-python3 stage-runtime.py "$wheel" "$stage/staged" --cbor-wheel "$cbor"
+python3 stage-runtime.py "$wheel" "$stage/staged" --cbor-wheel "$cbor" --meshcore-wheels RuntimeBuild/meshcore-wheels
 if [[ -d RuntimeBuild/staged ]]; then rm -rf RuntimeBuild/staged; fi
 mv -- "$stage/staged" RuntimeBuild/staged
 python3 pack-offline-tiles.py ../app/src/main/assets "$stage/offline-tiles"

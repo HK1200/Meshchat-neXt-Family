@@ -16,7 +16,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
-    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
     'incoming_delivery_limit','attachment_read',
@@ -92,7 +92,7 @@ def initialize(folder,*,tcp_only=False,ios_voice=False, store_build=False):
             _save()
     from family_room_names import RoomNames
     _room_names=RoomNames(_state,_lock,_save)
-    if not _tcp_only:
+    if not _tcp_only or _ios_voice:
         from family_meshcore import FamilyMeshCore
         _meshcore=FamilyMeshCore(_state,_lock,_save,rooms_enabled=_rooms_enabled)
     from family_maps import MapStore
@@ -186,8 +186,8 @@ def _start():
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive, require_propagation_delivery=_tcp_only)
+        if _meshcore:_meshcore.identity=identity
         if not _tcp_only:
-            _meshcore.identity=identity
             from family_voice import FamilyVoice
             _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
         elif _ios_voice:
