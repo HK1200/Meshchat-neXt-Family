@@ -57,6 +57,11 @@ class RadioBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ConnectionError, "permission denied"):
             bluetooth.Serial("familyble://" + ADDRESS)
         self.assertEqual(self.operations[-1]["operation"], "close")
+        self.assertEqual(bluetooth.last_error(ADDRESS), "permission denied")
+        self.events = [{"type": "ready"}]
+        radio = bluetooth.Serial("familyble://" + ADDRESS)
+        self.assertEqual(bluetooth.last_error(ADDRESS), "")
+        radio.close()
 
     def test_disconnect_during_write_fails_without_replay(self):
         radio = bluetooth.Serial("familyble://" + ADDRESS)

@@ -616,7 +616,14 @@ final class FamilyModel: ObservableObject {
         let epoch = guardianEpoch
         let reply = try await request("contact_card", ["token": token])
         guard epoch == guardianEpoch, unlocked else { return nil }
-        return reply.contactCardText
+        guard let text = reply.contactCardText else { return nil }
+        guard let account = FamilySIP.shared.account, account.enabled,
+              let address = FamilySIPAddress("sip:\(account.user)@\(account.host):\(account.port)") else { return text }
+        guard var card = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return text }
+        var addresses = card["addresses"] as? [String: String] ?? [:]
+        addresses["sip"] = address.uri
+        card["addresses"] = addresses
+        return String(data: try JSONSerialization.data(withJSONObject: card, options: [.sortedKeys]), encoding: .utf8)
     }
 
     func readContactCard(_ text: String) async -> FamilyContactCard? {
@@ -625,7 +632,7 @@ final class FamilyModel: ObservableObject {
             let result = try await request("qr_parse", ["token": token, "text": text, "target": "contact"])
             guard epoch == guardianEpoch, unlocked else { return nil }
             guard let card = result.card,
-                  card.addresses["lxmf"]?.isEmpty == false || card.addresses["lxst"]?.isEmpty == false || card.addresses["meshcore"]?.isEmpty == false else {
+                  card.addresses["lxmf"]?.isEmpty == false || card.addresses["lxst"]?.isEmpty == false || card.addresses["meshcore"]?.isEmpty == false || card.addresses["sip"]?.isEmpty == false else {
                 error = "Choose a contact code with a messaging or calling address."
                 return nil
             }

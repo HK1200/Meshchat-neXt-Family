@@ -7,12 +7,24 @@ import time
 from types import SimpleNamespace
 import uuid
 
+_errors = {}
+_error_lock = threading.RLock()
+
+
+def last_error(target):
+    with _error_lock:
+        return _errors.get(target.upper(), "")
+
 
 def request(operation, **values):
     from _family_bluetooth import request as native_request
     result = json.loads(native_request(json.dumps(dict(operation=operation, **values))))
     if result.get("error"):
+        if values.get("id"):
+            with _error_lock:_errors[values["id"].upper()] = str(result["error"])
         raise ConnectionError(result["error"])
+    if operation == "open":
+        with _error_lock:_errors.pop(values["id"].upper(), None)
     return result
 
 
@@ -48,6 +60,10 @@ class NativeSession:
                     self.events.extend(request("poll", id=self.address).get("events", []))
                 if self.events:
                     event = self.events.popleft()
+                    if event["type"] == "error":
+                        with _error_lock:_errors[self.address] = event.get("detail", "Bluetooth connection failed")
+                    elif event["type"] == "ready":
+                        with _error_lock:_errors.pop(self.address, None)
                     return SimpleNamespace(kind=event["type"], data=base64.b64decode(event.get("data", "")), detail=event.get("detail", ""))
             if time.monotonic() >= deadline:
                 return None

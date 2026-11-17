@@ -209,12 +209,16 @@ class Radio:
             interface=self.interface;enabled=bool(self.config and self.config['enabled']);current=getattr(self,'applied',self.config)==self.config
             online = bool(enabled and current and interface and interface.online)
             battery = None
+            native_error = ''
+            if enabled and not online and self.network_only and self.config.get('transport')=='ble':
+                from family_ios_bluetooth import last_error
+                native_error = last_error(self.config['endpoint'])
             if online and hasattr(interface, 'get_battery_state_string'):
                 state = interface.get_battery_state_string()
                 percent = interface.get_battery_percent()
                 if state in ('charging', 'charged', 'discharging') and type(percent) in (int, float) and 0 <= percent <= 100:
                     battery = {'percent': percent, 'state': state}
-            return {'online':online,'battery':battery,'error':self.error or ('; '.join(str(e.get('description','Radio error')) for e in getattr(interface,'hw_errors',[])) if enabled and interface else '') or (getattr(getattr(interface,'ble',None),'last_error','') if enabled and interface and not interface.online else ''),
+            return {'online':online,'battery':battery,'error':self.error or native_error or ('; '.join(str(e.get('description','Radio error')) for e in getattr(interface,'hw_errors',[])) if enabled and interface else '') or (getattr(getattr(interface,'ble',None),'last_error','') if enabled and interface and not interface.online else ''),
                     'connecting':bool(enabled and not self.error and (not interface or not interface.online)),
                     'reported':({k:getattr(interface,attribute,None) for k,attribute in [('frequencyHz','r_frequency'),('bandwidthHz','r_bandwidth'),('powerDbm','r_txpower'),('sf','r_sf'),('cr','r_cr')]} if interface else None),
                     'readyToTransmit':getattr(interface,'interface_ready',False) if interface else False,
