@@ -194,7 +194,14 @@ final class FamilyLiveUITests: XCTestCase {
                 start.press(forDuration: 0.05, thenDragTo: end)
             }
             XCTAssertTrue(ready.waitForExistence(timeout: 35), app.debugDescription)
-            app.buttons["Disable Reticulum calling"].tap()
+            let disableVoice = app.buttons["Disable Reticulum calling"]
+            for _ in 0..<4 where !disableVoice.isHittable {
+                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
+                start.press(forDuration: 0.05, thenDragTo: end)
+            }
+            XCTAssertTrue(disableVoice.waitForExistence(timeout: 10) && disableVoice.isHittable, app.debugDescription)
+            disableVoice.tap()
             XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
             let offlineMaps = app.buttons["Offline maps"]
             let guardianForm = app.collectionViews["guardian-settings-form"]
