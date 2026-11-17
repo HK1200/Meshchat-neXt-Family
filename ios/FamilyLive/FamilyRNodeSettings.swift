@@ -4,6 +4,7 @@ struct FamilyRNodeSettings: View {
     @ObservedObject var family: FamilyModel
     @State private var enabled = false
     @State private var endpoint = ""
+    @State private var transport = "tcp"
     @State private var frequency = "914.875"
     @State private var bandwidth = "125"
     @State private var spreadingFactor = 8
@@ -16,8 +17,13 @@ struct FamilyRNodeSettings: View {
         Form {
             if family.unlocked {
                 Section {
-                    Toggle("Enable Wi-Fi RNode", isOn: $enabled)
-                    TextField("RNode hostname or IPv4 address", text: $endpoint)
+                    Toggle("Enable RNode", isOn: $enabled)
+                    Picker("Connection", selection: $transport) {
+                        Text("Wi-Fi").tag("tcp")
+                        Text("Bluetooth LE").tag("ble")
+                    }
+                    if transport == "ble" { FamilyBluetoothPicker(selection: $endpoint) }
+                    TextField(transport == "ble" ? "Bluetooth radio identifier" : "RNode hostname or IPv4 address", text: $endpoint)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Frequency in MHz", text: $frequency).keyboardType(.decimalPad)
                     TextField("Bandwidth in kHz", text: $bandwidth).keyboardType(.decimalPad)
@@ -28,7 +34,7 @@ struct FamilyRNodeSettings: View {
                         saving = true
                         Task {
                             saved = await family.saveRNode([
-                                "enabled": enabled, "transport": "tcp", "endpoint": endpoint,
+                                "enabled": enabled, "transport": transport, "endpoint": endpoint,
                                 "frequency": frequency, "bandwidth": bandwidth,
                                 "sf": spreadingFactor, "cr": codingRate, "power": power
                             ])
@@ -41,14 +47,15 @@ struct FamilyRNodeSettings: View {
                     }
                     if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 } footer: {
-                    Text("Enter the radio’s network address. RNode listens on TCP port 7633.")
+                    Text(transport == "ble" ? "Select the identifier of your Bluetooth LE RNode. Keep the radio nearby and disconnect it from other apps." : "Enter the radio’s network address. RNode listens on TCP port 7633.")
                 }
             }
         }
-        .navigationTitle("Wi-Fi RNode")
+        .navigationTitle("RNode")
         .onAppear {
             if let radio = family.state?.rnode {
                 enabled = radio.enabled
+                transport = radio.transport ?? "tcp"
                 endpoint = radio.endpoint
                 frequency = String(radio.frequency)
                 bandwidth = String(radio.bandwidth)

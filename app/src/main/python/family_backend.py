@@ -16,7 +16,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
-    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
     'incoming_delivery_limit','attachment_read',
@@ -1010,6 +1010,13 @@ def request(raw):
                     if service!='reticulum':raise ValueError('Only Relay Chat messages support this retry')
                     adapter.retry(p.get('roomId'),p.get('seq'))
                 else:raise ValueError('Unsupported room action')
+        elif action=='ios_bluetooth':
+            _authorized(p)
+            if not _tcp_only:raise ValueError('iOS Bluetooth is only available on iOS')
+            from family_ios_bluetooth import request as bluetooth_request
+            operation=p.get('operation')
+            if operation not in ('scan','devices'):raise ValueError('Unsupported Bluetooth operation')
+            return json.dumps({'ok':True,'bluetooth':bluetooth_request(operation)})
         elif action in ['meshcore_config','meshcore_scan','meshcore_contacts']:
             _authorized(p)
             if not _meshcore:raise ValueError('MeshCore is starting')
@@ -1181,7 +1188,7 @@ def request(raw):
             _authorized(p)
             from family_radios import validate
             config=validate(p.get('config')) if p.get('config') is not None else None
-            if _tcp_only and config and config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
+            if _tcp_only and config and config['transport'] not in ('tcp','ble'):raise ValueError('Choose Bluetooth LE or Wi-Fi RNode for iOS')
             with _lock:_state['rnode']=config;_save()
             if _radio:_radio.configure(config)
         elif action=='incoming_delivery_limit':

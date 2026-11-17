@@ -13,6 +13,10 @@ extern "C" {
 typedef int32_t (*FamilyHTTPSPost)(const char *url, const uint8_t *body, size_t length);
 void family_runtime_set_https_post(FamilyHTTPSPost post);
 
+/* JSON radio operations return owned UTF-8 JSON, freed by the bridge. */
+typedef char *(*FamilyBluetoothRequest)(const char *request);
+void family_runtime_set_bluetooth(FamilyBluetoothRequest request);
+
 /* Start once before serving requests. NULL python_home uses the default stdlib. */
 bool family_runtime_start(const char *python_home, const char *modules, const char *state);
 

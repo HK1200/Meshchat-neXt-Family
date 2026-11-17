@@ -132,6 +132,7 @@ struct FamilyRoomListing: Decodable, Sendable {
 struct FamilyRNode: Decodable, Sendable {
     let enabled: Bool
     let endpoint: String
+    let transport: String?
     let frequency: Double
     let bandwidth: Double
     let sf: Int
@@ -251,6 +252,10 @@ actor FamilyClient {
             family_runtime_set_https_post { url, body, length in
                 guard let url, let body else { return 400 }
                 return FamilyNativeHTTPS.post(String(cString: url), body: Data(bytes: body, count: length))
+            }
+            family_runtime_set_bluetooth { request in
+                guard let request else { return nil }
+                return strdup(FamilyBluetooth.shared.request(String(cString: request)))
             }
             started = family_runtime_start(home, modules, folder.path)
             guard started else { throw BridgeError.unavailable }

@@ -56,7 +56,11 @@ def validate(raw):
     if transport=='usb':
         if not re.fullmatch(r'/dev/bus/usb/\d{3}/\d{3}',endpoint):raise ValueError('Choose a detected USB device')
     elif transport in ['ble','classic']:
-        if not re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}',endpoint):raise ValueError('Select the Bluetooth RNode address')
+        import sys
+        if sys.platform == 'ios' and transport == 'ble':
+            from family_ios_bluetooth import device_id
+            endpoint = device_id(endpoint)
+        elif not re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}',endpoint):raise ValueError('Select the Bluetooth RNode address')
     elif not re.fullmatch(r'[A-Za-z0-9.-]{1,253}',endpoint):raise ValueError('Enter the RNode hostname or IPv4 address without a port')
     def number(key,low,high,scale=1):
         value=float(raw.get(key,''))*scale
@@ -185,10 +189,10 @@ class Radio:
             except Exception as exc:
                 with self._lock:self.error=str(exc)
     def _open_network_radio(self,rns,config):
-        if config['transport']!='tcp':raise ValueError('Choose a Wi-Fi RNode for iOS')
+        if config['transport'] not in ('tcp', 'ble'):raise ValueError('Choose Bluetooth LE or Wi-Fi RNode for iOS')
         from RNS.Interfaces.RNodeInterface import RNodeInterface
         interface=RNodeInterface(rns.Transport,{
-            'name':'Family Wi-Fi RNode','port':'tcp://'+config['endpoint'],
+            'name':'Family RNode','port':('familyble://' if config['transport']=='ble' else 'tcp://')+config['endpoint'],
             'frequency':config['frequency'],'bandwidth':config['bandwidth'],'txpower':config['power'],
             'spreadingfactor':config['sf'],'codingrate':config['cr'],'flow_control':False,
         })

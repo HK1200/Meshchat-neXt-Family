@@ -752,7 +752,7 @@ struct FamilyHome: View {
                             }
                         }
                         if state.rnode?.enabled == true, let radio = state.rnodeRuntime {
-                            Text(radio.online ? "Wi-Fi RNode connected" : radio.connecting ? "Connecting to RNode" : "Wi-Fi RNode offline")
+                            Text(radio.online ? "RNode connected" : radio.connecting ? "Connecting to RNode" : "RNode offline")
                             if let battery = radio.battery {
                                 let level = Int((battery.percent / 25).rounded()) * 25
                                 Label("RNode battery: \(Int(battery.percent))%", systemImage: battery.state == "charging" ? "battery.100.bolt" : "battery.\(level)")
@@ -944,7 +944,7 @@ struct FamilyGuardian: View {
                         }
                     }
                     Section {
-                        NavigationLink("Wi-Fi RNode") { FamilyRNodeSettings(family: family) }
+                        NavigationLink("RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
                         NavigationLink("Incoming message size") { FamilyIncomingLimitSettings(family: family) }
                         NavigationLink("Offline maps") { FamilyOfflineMapSettings(family: family) }

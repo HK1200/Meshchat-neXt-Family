@@ -55,6 +55,34 @@ static PyObject *init_https(void) {
     return PyModule_Create(&https_module);
 }
 
+static FamilyBluetoothRequest bluetooth_request;
+
+void family_runtime_set_bluetooth(FamilyBluetoothRequest request) {
+    if (!Py_IsInitialized()) bluetooth_request = request;
+}
+
+static PyObject *bluetooth_call(PyObject *self, PyObject *args) {
+    const char *request;
+    if (!PyArg_ParseTuple(args, "s", &request)) return NULL;
+    char *reply;
+    Py_BEGIN_ALLOW_THREADS
+    reply = bluetooth_request(request);
+    Py_END_ALLOW_THREADS
+    if (!reply) return PyErr_NoMemory();
+    PyObject *result = PyUnicode_FromString(reply);
+    free(reply);
+    return result;
+}
+
+static PyMethodDef bluetooth_methods[] = {
+    {"request", bluetooth_call, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef bluetooth_module = {
+    PyModuleDef_HEAD_INIT, "_family_bluetooth", NULL, -1, bluetooth_methods
+};
+static PyObject *init_bluetooth(void) { return PyModule_Create(&bluetooth_module); }
+
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS
 #define STRINGIFY_VALUE(value) #value
 #define STRINGIFY(value) STRINGIFY_VALUE(value)
@@ -77,6 +105,8 @@ static PyStatus append_path(PyConfig *config, const char *home, const char *suff
 bool family_runtime_start(const char *python_home, const char *modules, const char *state) {
     if (!modules || !state || Py_IsInitialized()) return false;
     if (https_post && PyImport_AppendInittab("_family_native_https", init_https) != 0) return false;
+
+    if (bluetooth_request && PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return false;
 
     /* Keep Python's normal broken-pipe behavior without installing its other signal handlers. */
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) return false;
