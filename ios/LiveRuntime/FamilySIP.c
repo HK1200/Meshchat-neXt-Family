@@ -204,10 +204,12 @@ close:
     libre_close();
 finish:
     if (err) event("engine_failed", NULL, err);
-    event("stopped", NULL, err);
+    FamilySIPEvent finished = listener;
     pthread_mutex_lock(&lock);
     listener = NULL;
     running = false;
     pthread_mutex_unlock(&lock);
+    /* The callback may immediately start the replacement account. */
+    if (finished) finished("stopped", "", err);
     return err;
 }

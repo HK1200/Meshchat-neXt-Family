@@ -18,6 +18,7 @@ final class FamilySIP: ObservableObject {
     private var contacts: [FamilyContact] = []
     private var running = false
     private var registered = false
+    private var activeAccount: FamilySIPAccount?
     private var reticulumBusy = false
     private var incomingPeer = ""
     private var retryAfter = Date.distantPast
@@ -93,6 +94,7 @@ final class FamilySIP: ObservableObject {
     private func start() {
         guard !running, let account, account.enabled else { return }
         running = true
+        activeAccount = account
         status = "Connecting SIP"
         DispatchQueue.global(qos: .userInitiated).async {
             account.user.withCString { user in
@@ -174,7 +176,7 @@ final class FamilySIP: ObservableObject {
     private func receive(_ state: String, peer: String, code: Int32) {
         switch state {
         case "ready":
-            if account?.enabled != true { family_sip_command(9, nil) }
+            if account?.enabled != true || account != activeAccount { family_sip_command(9, nil) }
         case "registering": status = "Registering SIP"
         case "registered": registered = true; status = "SIP connected"
         case "registration_failed": registered = false; status = "SIP registration failed (\(code))"
@@ -194,6 +196,7 @@ final class FamilySIP: ObservableObject {
         case "engine_failed": error = "SIP could not start (\(code))"
         case "stopped":
             running = false
+            activeAccount = nil
             retryAfter = Date().addingTimeInterval(code == 0 ? 0 : 15)
             registered = false
             finishCall()
