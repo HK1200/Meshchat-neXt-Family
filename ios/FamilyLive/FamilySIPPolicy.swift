@@ -18,7 +18,8 @@ struct FamilySIPAddress: Equatable, Sendable {
     func matches(_ incoming: FamilySIPAddress, providerHost: String, providerPort: Int, resolvedHosts: Set<String>) -> Bool {
         if self == incoming { return true }
         return user == incoming.user && host == providerHost.lowercased() && port == providerPort &&
-            incoming.port == port && resolvedHosts.contains(incoming.host)
+            (incoming.port == port || incoming.port == 5060) &&
+            (incoming.host == providerHost.lowercased() || resolvedHosts.contains(incoming.host))
     }
 
     init?(_ raw: String, defaultHost: String = "premium.hamsoverip.com", defaultPort: Int = 5160) {

@@ -12,5 +12,6 @@ let incoming = FamilySIPAddress("sip:400471@192.0.2.20:5160")!
 assert(extensionAddress.matches(incoming, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: resolved))
 assert(!extensionAddress.matches(incoming, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: []))
 assert(!extensionAddress.matches(FamilySIPAddress("sip:other@192.0.2.20:5160")!, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: resolved))
-assert(!extensionAddress.matches(FamilySIPAddress("sip:400471@192.0.2.20:5060")!, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: resolved))
+assert(extensionAddress.matches(FamilySIPAddress("sip:400471@192.0.2.20:5060")!, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: resolved))
+assert(!extensionAddress.matches(FamilySIPAddress("sip:400471@192.0.2.20:9999")!, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: resolved))
 print("SIP address and provider-IP approval checks passed")

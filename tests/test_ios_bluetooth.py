@@ -85,6 +85,38 @@ class RadioBoundaryTests(unittest.TestCase):
         namespace["detach"](radio)
         self.assertTrue(radio.detached)
 
+    def test_native_detection_waits_for_pairing_and_reprobes(self):
+        root = SOURCE.parents[4]
+        wheel = root / "ios/RuntimeBuild/public/rns-1.5.7-py3-none-any.whl"
+        if not wheel.exists():self.skipTest("Pinned RNode wheel has not been staged")
+        stage = runpy.run_path(str(root / "ios/stage-runtime.py"))
+        with ZipFile(wheel) as archive:
+            source = stage["tcp_rnode"](archive.read("RNS/Interfaces/RNodeInterface.py").decode())
+        driver = next(node for node in ast.parse(source).body if isinstance(node, ast.ClassDef) and node.name == "RNodeInterface")
+        configure = next(node for node in driver.body if isinstance(node, ast.FunctionDef) and node.name == "configure_device")
+        clock = SimpleNamespace(value=0.0)
+        def tick(duration):clock.value += duration
+        radio = SimpleNamespace(port="familyble://" + ADDRESS, use_tcp=False, use_ble=False,
+                                detached=False, detected=False, serial=SimpleNamespace(is_open=True, close=lambda: self.fail("Pairing was cut off")),
+                                platform=0, online=False, readLoop=lambda: None,
+                                reset_radio_state=lambda: None, initRadio=lambda: None,
+                                validateRadioState=lambda: True)
+        probes = []
+        def detect():
+            probes.append(clock.value)
+            radio.detected = len(probes) >= 2
+        radio.detect = detect
+        namespace = {"sleep": lambda duration: None,
+                     "time": SimpleNamespace(time=lambda: clock.value, sleep=tick),
+                     "threading": SimpleNamespace(Thread=lambda **options: SimpleNamespace(start=lambda: None)),
+                     "KISS": SimpleNamespace(PLATFORM_ESP32=1, PLATFORM_NRF52=2),
+                     "RNS": SimpleNamespace(log=lambda *args: None, LOG_VERBOSE=0, LOG_ERROR=0)}
+        exec(compile(ast.Module(body=[configure], type_ignores=[]), "RNode-configure", "exec"), namespace)
+        namespace["configure_device"](radio)
+        self.assertTrue(radio.online)
+        self.assertEqual(len(probes), 2)
+        self.assertGreaterEqual(clock.value, 3)
+
     def test_radio_identifiers_are_validated(self):
         self.assertEqual(bluetooth.device_id(ADDRESS), ADDRESS.upper())
         with self.assertRaises(ValueError):

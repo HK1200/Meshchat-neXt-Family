@@ -44,6 +44,25 @@ def tcp_rnode(source):
             serial.PARITY_NONE = "N"
 
 """ + source[end:]
+    # The native BLE stream uses the serial parser, but pairing and detection
+    # need Bluetooth timing rather than the wired driver's 200 ms allowance.
+    wired_wait = "        else:\n            sleep(0.2)\n        \n        if not self.detected:"
+    native_wait = """        elif self.port and self.port.startswith("familyble://"):
+            deadline = time.time() + 180
+            next_probe = time.time() + 3
+            while not self.detected and not self.detached and self.serial.is_open and time.time() < deadline:
+                time.sleep(0.1)
+                if time.time() >= next_probe:
+                    self.detect()
+                    next_probe = time.time() + 3
+        else:
+            sleep(0.2)
+
+        if not self.detected:"""
+    if patched.count(wired_wait) != 1:
+        raise ValueError("Pinned RNode detection timing changed")
+    patched = patched.replace(wired_wait, native_wait)
+    patched = patched.replace("        if self.use_ble: sleep(1.00)", "        if self.use_ble or (self.port and self.port.startswith('familyble://')): sleep(1.00)")
     # Upstream detach can run after open_port failed before assigning serial.
     return patched.replace("            self.serial.close()", "            if self.serial is not None: self.serial.close()")
 
