@@ -10,6 +10,8 @@ struct FamilyContactApproval: View {
     @State private var voiceAddress = ""
     @State private var meshcoreAddress = ""
     @State private var sipAddress = ""
+    @State private var photo: String?
+    @State private var photoLoading = false
     @State private var contactSaved = false
     @State private var importedCard: FamilyContactCard?
     @State private var qrPhoto: PhotosPickerItem?
@@ -19,6 +21,7 @@ struct FamilyContactApproval: View {
     var body: some View {
         Form {
             if family.unlocked {
+                FamilyContactPhotoEditor(name: name, photo: $photo, loading: $photoLoading)
                 Section("Approve contact") {
                     TextField("Contact name", text: $name)
                         .accessibilityIdentifier("contact-name")
@@ -58,10 +61,13 @@ struct FamilyContactApproval: View {
                         let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
                             ? importedCard?.identityPublicKey : nil
                         Task {
-                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress)
+                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress, photo: photo, replacePhoto: true)
                         }
                     }
-                    .disabled(readingQR)
+                    .disabled(readingQR || photoLoading)
+                    .onChange(of: photo) { contactSaved = false }
+                    .onChange(of: meshcoreAddress) { contactSaved = false }
+                    .onChange(of: sipAddress) { contactSaved = false }
                     .onChange(of: name) { contactSaved = false }
                     .onChange(of: address) { contactSaved = false }
                     .onChange(of: voiceAddress) { contactSaved = false }

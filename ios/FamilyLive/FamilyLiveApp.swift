@@ -653,8 +653,17 @@ final class FamilyModel: ObservableObject {
         }
     }
 
-    func saveContact(id: Int? = nil, name: String, address: String, voiceAddress: String,
-                     identityPublicKey: String? = nil, meshcoreAddress: String? = nil, sipAddress: String? = nil) async -> Bool {
+    func saveContact(
+        id: Int? = nil,
+        name: String,
+        address: String,
+        voiceAddress: String,
+        identityPublicKey: String? = nil,
+        meshcoreAddress: String? = nil,
+        sipAddress: String? = nil,
+        photo: String? = nil,
+        replacePhoto: Bool = false
+    ) async -> Bool {
         let current = state?.contacts ?? []
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let lxst = voiceAddress.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -690,7 +699,8 @@ final class FamilyModel: ObservableObject {
         let contact = FamilyContact(
             id: id ?? (current.map(\.id).max() ?? 0) + 1,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines), addresses: addresses,
-            identityPublicKey: identityPublicKey ?? previousKey
+            identityPublicKey: identityPublicKey ?? previousKey,
+            photo: replacePhoto ? photo : previous?.photo
         )
         var updated = current
         if let index = updated.firstIndex(where: { $0.id == contact.id }) { updated[index] = contact }
@@ -763,7 +773,14 @@ struct FamilyHome: View {
                 } else if let state = family.state {
                     Section("Approved contacts") {
                         ForEach(state.contacts ?? []) { contact in
-                            NavigationLink(contact.name) { FamilyChat(family: family, contact: contact) }
+                            NavigationLink {
+                                FamilyChat(family: family, contact: contact)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    FamilyContactAvatar(name: contact.name, photo: contact.photo)
+                                    Text(contact.name)
+                                }
+                            }
                         }
                     }
                     if let rooms = state.rooms, !rooms.isEmpty {

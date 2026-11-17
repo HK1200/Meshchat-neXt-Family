@@ -5,6 +5,7 @@ struct FamilyContact: Codable, Identifiable, Sendable {
     let name: String
     let addresses: [String: String]
     var identityPublicKey: String?
+    var photo: String?
 }
 
 struct FamilyMessageAttachment: Decodable, Sendable {

@@ -9,12 +9,15 @@ struct FamilyContactEditor: View {
     @State private var voiceAddress = ""
     @State private var meshcoreAddress = ""
     @State private var sipAddress = ""
+    @State private var photo: String?
+    @State private var photoLoading = false
     @State private var busy = false
     @State private var confirmRemoval = false
 
     var body: some View {
         Form {
             if family.unlocked {
+                FamilyContactPhotoEditor(name: name, photo: $photo, loading: $photoLoading)
                 TextField("Contact name", text: $name)
                 TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("Reticulum voice address", text: $voiceAddress)
@@ -36,11 +39,11 @@ struct FamilyContactEditor: View {
                 Button("Save contact") {
                     busy = true
                     Task {
-                        if await family.saveContact(id: contact.id, name: name, address: address, voiceAddress: voiceAddress, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress) { dismiss() }
+                        if await family.saveContact(id: contact.id, name: name, address: address, voiceAddress: voiceAddress, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress, photo: photo, replacePhoto: true) { dismiss() }
                         busy = false
                     }
                 }
-                .disabled(busy || name.isEmpty || (address.isEmpty && voiceAddress.isEmpty && meshcoreAddress.isEmpty && sipAddress.isEmpty))
+                .disabled(busy || photoLoading || name.isEmpty || (address.isEmpty && voiceAddress.isEmpty && meshcoreAddress.isEmpty && sipAddress.isEmpty))
                 Button("Remove contact approval", role: .destructive) { confirmRemoval = true }.disabled(busy)
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
@@ -52,6 +55,7 @@ struct FamilyContactEditor: View {
             voiceAddress = contact.addresses["lxst"] ?? ""
             meshcoreAddress = contact.addresses["meshcore"] ?? ""
             sipAddress = contact.addresses["sip"] ?? ""
+            photo = contact.photo
         }
         .confirmationDialog("Remove approval for \(contact.name)?", isPresented: $confirmRemoval, titleVisibility: .visible) {
             Button("Remove contact approval", role: .destructive) {
