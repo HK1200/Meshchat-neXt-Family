@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import hmac
+import json
 from pathlib import Path
 import platform
 import re
@@ -99,6 +100,12 @@ def main():
                "-framework", "Security", "-framework", "SystemConfiguration", "-lresolv", "-lz", "-o", str(executable)]
     subprocess.run(command, check=True)
     subprocess.run(["codesign", "--force", "--sign", "-", str(executable)], check=True)
+    inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"], text=True))
+    device = next(device for devices in inventory["devices"].values() for device in devices if device["udid"] == args.simulator)
+    booted_here = device["state"] != "Booted"
+    if booted_here:
+        subprocess.run(["xcrun", "simctl", "boot", args.simulator], check=True)
+    subprocess.run(["xcrun", "simctl", "bootstatus", args.simulator, "-b"], check=True, timeout=180)
     registrar = Registrar()
     try:
         # Capture output so the private test password never appears in a command log.
@@ -109,6 +116,8 @@ def main():
         print("Native SIP registration authenticated, then unregistered cleanly")
     finally:
         registrar.close()
+        if booted_here:
+            subprocess.run(["xcrun", "simctl", "shutdown", args.simulator], check=False)
 
 
 if __name__ == "__main__":
