@@ -116,6 +116,7 @@ final class FamilyModel: ObservableObject {
         let previous = lastNetworkPath
         lastNetworkPath = path
         guard let previous, previous != path, path.status == .satisfied, state?.setupComplete == true else { return }
+        FamilySIP.shared.networkChanged()
         _ = try? await request("tcp_network_changed")
     }
 
@@ -126,10 +127,13 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
+            FamilySIP.shared.reconcile(updated)
             if UIApplication.shared.applicationState == .active {
                 notifications?.push.refresh(updated)
             }
-            updateVoice(updated.voice)
+            if FamilySIP.shared.active, let voice = updated.voice, voice.call_state == "incoming", let id = voice.call_id {
+                _ = try? await request("voice_hangup", ["callId": id])
+            } else { updateVoice(updated.voice) }
             resolveNotification()
             if notificationsAllowed {
                 await notifications?.publish(updated.messages ?? [:])
@@ -161,6 +165,7 @@ final class FamilyModel: ObservableObject {
     }
 
     func call(_ contact: FamilyContact) async {
+        guard !FamilySIP.shared.active else { error = "End the SIP call first."; return }
         guard await microphoneAllowed() else { return }
         voiceError = ""
         _ = await perform("voice_call", ["contactId": contact.id])
@@ -642,7 +647,7 @@ final class FamilyModel: ObservableObject {
     }
 
     func saveContact(id: Int? = nil, name: String, address: String, voiceAddress: String,
-                     identityPublicKey: String? = nil, meshcoreAddress: String? = nil) async -> Bool {
+                     identityPublicKey: String? = nil, meshcoreAddress: String? = nil, sipAddress: String? = nil) async -> Bool {
         let current = state?.contacts ?? []
         let lxmf = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let lxst = voiceAddress.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -652,7 +657,11 @@ final class FamilyModel: ObservableObject {
             error = "MeshCore public keys must contain 64 hexadecimal characters."
             return false
         }
-        guard !lxmf.isEmpty || !lxst.isEmpty || !mesh.isEmpty else {
+        let previousSIP = id.flatMap { id in current.first { $0.id == id } }?.addresses["sip"] ?? ""
+        let rawSIP = (sipAddress ?? previousSIP).trimmingCharacters(in: .whitespacesAndNewlines)
+        let sip = FamilySIPAddress(rawSIP, defaultHost: FamilySIP.shared.account?.host ?? "premium.hamsoverip.com", defaultPort: FamilySIP.shared.account?.port ?? 5160)
+        guard rawSIP.isEmpty || sip != nil else { error = "Enter a SIP extension or user@provider address."; return false }
+        guard !lxmf.isEmpty || !lxst.isEmpty || !mesh.isEmpty || sip != nil else {
             error = "Enter at least one approved messaging or calling address."
             return false
         }
@@ -670,6 +679,7 @@ final class FamilyModel: ObservableObject {
         addresses["lxmf"] = lxmf.isEmpty ? nil : lxmf
         addresses["lxst"] = lxst.isEmpty ? nil : lxst
         addresses["meshcore"] = mesh.isEmpty ? nil : mesh
+        addresses["sip"] = sip?.uri
         let contact = FamilyContact(
             id: id ?? (current.map(\.id).max() ?? 0) + 1,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines), addresses: addresses,
@@ -708,6 +718,7 @@ final class FamilyModel: ObservableObject {
 
 struct FamilyHome: View {
     @ObservedObject var family: FamilyModel
+    @ObservedObject private var sip = FamilySIP.shared
     @State private var password = ""
     @State private var confirmation = ""
     @State private var enableInternetPeers = false
@@ -830,18 +841,20 @@ struct FamilyHome: View {
                 notificationContact = contact
                 showNotificationChat = true
             }
-            .onChange(of: family.state?.voice?.active) {
-                if family.state?.voice?.active == true && showGuardian {
+            .onChange(of: family.state?.voice?.active == true || sip.active) {
+                if (family.state?.voice?.active == true || sip.active) && showGuardian {
                     guardianDismissingForCall = true
                     showGuardian = false
                 }
             }
             .fullScreenCover(isPresented: Binding(
-                get: { family.state?.voice?.active == true && !showGuardian && !guardianDismissingForCall },
+                get: { (family.state?.voice?.active == true || sip.active) && !showGuardian && !guardianDismissingForCall },
                 set: { _ in }
             )) {
-                FamilyVoiceCall(family: family)
-                    .interactiveDismissDisabled()
+                Group {
+                    if sip.active { FamilySIPCall() }
+                    else { FamilyVoiceCall(family: family) }
+                }.interactiveDismissDisabled()
             }
             .sheet(isPresented: $showGuardian, onDismiss: {
                 guardianDismissingForCall = false
@@ -955,6 +968,7 @@ struct FamilyGuardian: View {
                         }
                     }
                     Section {
+                        NavigationLink("SIP calling") { FamilySIPSettings(family: family) }
                         NavigationLink("MeshCore companion") { FamilyMeshCoreSettings(family: family) }
                         NavigationLink("RNode") { FamilyRNodeSettings(family: family) }
                         NavigationLink("Location sharing") { FamilyLocationSettings(family: family) }
@@ -1102,6 +1116,7 @@ struct FamilyClientDiscovery: View {
 
 struct FamilyChat: View {
     @ObservedObject var family: FamilyModel
+    @ObservedObject private var sip = FamilySIP.shared
     let contact: FamilyContact
     @State private var draft = ""
     @State private var submitting = false
@@ -1142,6 +1157,13 @@ struct FamilyChat: View {
 
     var body: some View {
         Form {
+            if let approved = currentContact, approved.addresses["sip"]?.isEmpty == false {
+                Section {
+                    Button("Call \(approved.name) using SIP", systemImage: "phone.fill") {
+                        Task { await sip.call(approved) }
+                    }.disabled(sip.active || family.state?.voice?.active == true)
+                }
+            }
             Section("Messages") {
                 ForEach(family.state?.messages?[String(contact.id)] ?? []) { message in
                     VStack(alignment: .leading) {

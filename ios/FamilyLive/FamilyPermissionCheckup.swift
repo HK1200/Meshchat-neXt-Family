@@ -39,7 +39,7 @@ struct FamilyPermissionCheckup: View {
         var reason: String {
             switch self {
             case .notifications: "Show alerts when Family retrieves new messages."
-            case .microphone: "Let the other person hear you during a Reticulum call."
+            case .microphone: "Let approved contacts hear you during voice calls."
             case .camera: "Scan contact and room QR codes."
             case .location: "Share your location with approved contacts while Family is open, when a guardian enables sharing."
             }

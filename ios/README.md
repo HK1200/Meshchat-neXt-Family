@@ -48,9 +48,17 @@ To exercise the same messaging test through RMAP (port `4343` first, then `4242`
 
 Approved Reticulum conversations can attach files from Files and photos from the photo library. Low, Medium, and High reduce the photo to 320, 640, or 1280 pixels on its longest edge and send it as JPEG. Original keeps the selected image bytes. Direct messages allow up to 9.95 MB of attachments. Guardians can set the incoming message size in Guardian settings. Tap a received attachment to preview or share it.
 
+## Bluetooth radios
+
+In **Guardian settings → RNode**, choose Bluetooth LE, tap **Find Bluetooth radios**, and select the RNode by name. Save the confirmed frequency, bandwidth, spreading factor, coding rate, and power. Wi-Fi RNode remains available in the same menu. Bluetooth Classic serial radios require a Bluetooth LE capable firmware or a Wi-Fi connection on iOS.
+
+In **Guardian settings → MeshCore companion**, scan and select the companion, enable approved private-message reception, and save. Approve clients listed by the companion or import a contact QR code. A full MeshCore key can also be added to an existing approved contact. The selected companion’s public key is checked again on reconnect. RNode and MeshCore use separate native Bluetooth sessions.
+
+Bluetooth radio tests need a signed iPhone or iPad and a nearby radio. The simulator checks the runtime and interface, while local transport tests verify lifecycle and packet handoff through a mocked native radio.
+
 ## Wi-Fi RNode
 
-Open **Guardian settings → Wi-Fi RNode** and enter the radio’s hostname or IPv4 address and LoRa settings. The radio must offer RNode TCP on port 7633. The connection screen shows link status and the radio’s reported battery level when available. Approved Reticulum messages, rooms, and private location can use this link. Verify actual radio and battery behavior on a signed device build.
+Open **Guardian settings → RNode** and choose Wi-Fi, then and enter the radio’s hostname or IPv4 address and LoRa settings. The radio must offer RNode TCP on port 7633. The connection screen shows link status and the radio’s reported battery level when available. Approved Reticulum messages, rooms, and private location can use this link. Verify actual radio and battery behavior on a signed device build.
 
 ## Contact discovery and the live map
 
@@ -61,6 +69,14 @@ Open **Guardian settings → Location sharing** to choose which approved contact
 ## Reticulum Relay Chat
 
 Open **Guardian settings → Approved rooms** to add a Relay Chat hub and channel. You can enter the hub address, import a room QR code, or choose a discovered hub and list its channels. Family saves the room password and rejoins approved rooms after reconnecting. Set a room to read only to disable posting. The home screen lists approved rooms separately from private conversations.
+
+## Foreground SIP calling
+
+Open **Guardian settings → SIP calling**, enter the provider account and password, and save. The initial provider fields use Hams Over IP at `premium.hamsoverip.com:5160` and can be edited. Credentials stay in the device Keychain. Add a SIP extension or full address to each approved contact. The chat has a **Call using SIP** action for that contact. Incoming calls are accepted only for a matching approved address. Provider hostnames are resolved again so approved callers can match the provider’s current IP addresses.
+
+The native engine uses the same pinned Baresip and re sources as Android, with Apple’s voice-processing AudioUnit driver. iPad defaults to its speaker and follows connected headsets. The call screen includes Answer, Decline, End call, and Mute. SIP and Reticulum share the microphone and allow one call at a time. SIP registration currently requires the app to remain open. Background incoming calls require the later CallKit and push work.
+
+The Xcode build runs the SIP address-policy tests before cross-compiling the native engine. Registration, two-way audio, and hangup still need live device validation.
 
 ## Foreground Reticulum calling
 
@@ -76,7 +92,7 @@ If Family is sending a message when iOS moves it to the background, it requests 
 
 To receive messages sent while Family is offline, open **Guardian settings → Offline message mailbox** and enter a trusted LXMF propagation node's 32-character address. The sender needs to use the same mailbox in propagated delivery mode. Exchange a direct message from each contact first so Family can keep the contact's verified public key. Family checks the mailbox on return to the app and requests periodic iOS Background App Refresh. iOS controls whether and when those background checks run. Leave the mailbox field blank and save to disable it.
 
-Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Bluetooth radio transport, SIP, and distribution are separate iOS milestones. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
+Timely alerts during suspension still need a push provider that can detect new relay mail and send generic alerts through Apple Push Notification service. The relay can hold encrypted messages until Family checks for them. The workflow also compiles an unsigned arm64 device build to check the embedded runtime before signing. Use a signed build on a physical iPad to check the lock screen, Background App Refresh, and eventual Apple push delivery. Live Bluetooth radio verification, SIP call verification, and distribution remain separate device checks. Validate camera scanning and GPS on a signed physical-device build. Android APK installation runs only on Android. Signed iOS beta updates use TestFlight.
 
 [Python embedding on iOS](https://docs.python.org/3.14/using/ios.html) · [Apple device and simulator testing](https://developer.apple.com/documentation/xcode/building-and-running-an-app) · [iOS background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time) · [Apple push notifications](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server)
 

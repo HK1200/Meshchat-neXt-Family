@@ -9,6 +9,7 @@ struct FamilyContactApproval: View {
     @State private var address = ""
     @State private var voiceAddress = ""
     @State private var meshcoreAddress = ""
+    @State private var sipAddress = ""
     @State private var contactSaved = false
     @State private var importedCard: FamilyContactCard?
     @State private var qrPhoto: PhotosPickerItem?
@@ -25,7 +26,9 @@ struct FamilyContactApproval: View {
                         .accessibilityIdentifier("contact-address")
                     TextField("Reticulum voice address", text: $voiceAddress)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("MeshCore public key", text: $meshcoreAddress)
+                    TextField("SIP extension or address", text: $sipAddress)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("MeshCore public key", text: $meshcoreAddress)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     NavigationLink("Find messaging client") {
                         FamilyClientDiscovery(family: family) { client in
@@ -55,7 +58,7 @@ struct FamilyContactApproval: View {
                         let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
                             ? importedCard?.identityPublicKey : nil
                         Task {
-                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress)
+                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress)
                         }
                     }
                     .disabled(readingQR)
@@ -99,6 +102,7 @@ struct FamilyContactApproval: View {
         address = card.addresses["lxmf"] ?? ""
         voiceAddress = card.addresses["lxst"] ?? ""
         meshcoreAddress = card.addresses["meshcore"] ?? ""
+        sipAddress = card.addresses["sip"] ?? ""
         contactSaved = false
     }
 
