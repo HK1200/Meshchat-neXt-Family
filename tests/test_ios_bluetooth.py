@@ -44,6 +44,7 @@ class RadioBoundaryTests(unittest.TestCase):
     def test_serial_write_preserves_interleaved_receive_bytes(self):
         radio = bluetooth.Serial("familyble://" + ADDRESS)
         self.assertTrue(radio.is_open)
+        self.assertTrue(next(c for c in self.operations if c["operation"] == "open")["stream"])
         self.assertEqual(radio.write(b"\xc0\x00hello\xc0"), 8)
         self.assertEqual(radio.in_waiting, 2)
         self.assertEqual(radio.read(1), b"\xc0")
@@ -147,6 +148,7 @@ class MeshCoreTransportTests(unittest.IsolatedAsyncioTestCase):
         try:
             await connection.connect()
             self.assertTrue(connection.is_connected)
+            self.assertFalse(next(c for c in fixture.operations if c["operation"] == "open")["stream"])
             await connection.send(b"private command")
             await asyncio.wait_for(ready.wait(), 2)
             self.assertEqual(received, [b"\xc0\x01"])

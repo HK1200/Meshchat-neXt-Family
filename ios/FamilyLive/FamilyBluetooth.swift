@@ -14,12 +14,16 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
 
     private final class Session {
         let peripheral: CBPeripheral
+        let stream: Bool
         var writer: CBCharacteristic?
         var events: [[String: Any]] = []
         var chunks: [Data] = []
         var writing = false
         var ready = false
-        init(_ peripheral: CBPeripheral) { self.peripheral = peripheral }
+        init(_ peripheral: CBPeripheral, stream: Bool) {
+            self.peripheral = peripheral
+            self.stream = stream
+        }
     }
 
     override private init() {
@@ -62,7 +66,7 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 return ["error": "Radio was not found. Scan again nearby."]
             }
             guard peripheral.state == .disconnected else { return ["error": "Radio is disconnecting. Try again shortly."] }
-            let session = Session(peripheral)
+            let session = Session(peripheral, stream: request["stream"] as? Bool ?? false)
             sessions[id] = session
             peripheral.delegate = self
             central.connect(peripheral)
@@ -93,7 +97,13 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
                 return ["error": "Radio is unavailable or a write is already pending"]
             }
             let type: CBCharacteristicWriteType = writer.properties.contains(.write) ? .withResponse : .withoutResponse
-            let size = session.peripheral.maximumWriteValueLength(for: type)
+            // MeshCore commands are single GATT frames. RNode KISS is a byte stream.
+            // Stay within the negotiated ATT payload instead of relying on long writes.
+            let size = min(session.peripheral.maximumWriteValueLength(for: type),
+                           session.peripheral.maximumWriteValueLength(for: .withoutResponse))
+            if !session.stream && payload.count > size {
+                return ["error": "MeshCore command exceeds this radio’s negotiated Bluetooth frame size"]
+            }
             guard size > 0 else { return ["error": "Radio has no writable Bluetooth payload"] }
             for offset in stride(from: 0, to: payload.count, by: size) {
                 session.chunks.append(payload.subdata(in: offset..<min(offset + size, payload.count)))

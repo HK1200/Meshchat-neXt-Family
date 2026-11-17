@@ -36,10 +36,11 @@ def device_id(value):
 
 
 class NativeSession:
-    def __init__(self, kind, target, **options):
+    def __init__(self, kind, target, stream=False, **options):
         if kind != "ble":
             raise ValueError("iOS radio transport requires Bluetooth LE")
         self.address = device_id(target)
+        self.stream = stream
         self.events = deque()
         self.closed = False
         self.opened = False
@@ -47,7 +48,7 @@ class NativeSession:
 
     def start(self):
         with self.lock:
-            request("open", id=self.address)
+            request("open", id=self.address, stream=self.stream)
             self.opened = True
 
     def poll(self, milliseconds):
@@ -87,7 +88,7 @@ class NativeSession:
 class Serial:
     """Serial byte stream used by Reticulum's existing RNode KISS parser."""
     def __init__(self, port, **options):
-        self.session = NativeSession("ble", port.removeprefix("familyble://"))
+        self.session = NativeSession("ble", port.removeprefix("familyble://"), stream=True)
         self.buffer = bytearray()
         self.lock = threading.RLock()
         self.is_open = False
