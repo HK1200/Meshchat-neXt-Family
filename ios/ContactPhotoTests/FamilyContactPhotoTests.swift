@@ -21,19 +21,19 @@ final class FamilyContactPhotoTests: XCTestCase {
         let gps: [CFString: Any] = [kCGImagePropertyGPSLatitude: 0.0, kCGImagePropertyGPSLongitude: 0.0,
                                   kCGImagePropertyGPSLatitudeRef: "N", kCGImagePropertyGPSLongitudeRef: "E"]
         CGImageDestinationAddImage(destination, fixture.cgImage!, [kCGImagePropertyGPSDictionary: gps] as CFDictionary)
-        assert(CGImageDestinationFinalize(destination))
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
         let original = CGImageSourceCreateWithData(tagged as CFData, nil)!
         let originalProperties = CGImageSourceCopyPropertiesAtIndex(original, 0, nil)! as NSDictionary
-        assert(originalProperties[kCGImagePropertyGPSDictionary] != nil)
-        
+        XCTAssertTrue(originalProperties[kCGImagePropertyGPSDictionary] != nil)
+
         let encoded = try FamilyContactPhotoCodec.encode(tagged as Data)
-        assert(encoded.hasPrefix("data:image/png;base64,"))
+        XCTAssertTrue(encoded.hasPrefix("data:image/png;base64,"))
         let payload = Data(base64Encoded: String(encoded.split(separator: ",", maxSplits: 1)[1]))!
         let result = CGImageSourceCreateWithData(payload as CFData, nil)!
         let properties = CGImageSourceCopyPropertiesAtIndex(result, 0, nil)! as NSDictionary
-        assert((properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue == 256)
-        assert((properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue == 256)
-        assert(properties[kCGImagePropertyGPSDictionary] == nil)
+        XCTAssertTrue((properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue == 256)
+        XCTAssertTrue((properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue == 256)
+        XCTAssertTrue(properties[kCGImagePropertyGPSDictionary] == nil)
         let image = CGImageSourceCreateImageAtIndex(result, 0, nil)!
         for x in [1, 128, 254] {
             let pixel = image.cropping(to: CGRect(x: CGFloat(x), y: 128, width: 1, height: 1))!
@@ -43,12 +43,12 @@ final class FamilyContactPhotoTests: XCTestCase {
                                         space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
                 context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
             }
-            assert(bytes[1] > 180 && bytes[0] < 70 && bytes[2] < 70, "Profile photo was not center cropped")
+            XCTAssertTrue(bytes[1] > 180 && bytes[0] < 70 && bytes[2] < 70, "Profile photo was not center cropped")
         }
         for invalid in [Data("not an image".utf8), Data(count: 5 * 1024 * 1024 + 1)] {
             do {
                 _ = try FamilyContactPhotoCodec.encode(invalid)
-                fatalError("Invalid or oversized photo accepted")
+                XCTFail("Invalid or oversized photo accepted")
             } catch {}
         }
         print("Contact photos center-cropped to 256 pixels, GPS removed, invalid and oversized inputs rejected")
