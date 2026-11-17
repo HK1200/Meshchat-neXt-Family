@@ -23,6 +23,8 @@ targets:
       - path: FamilyLive
         excludes: [FamilyPush.entitlements]
       - LiveRuntime
+      - path: SIP-NOTICES.txt
+        buildPhase: resources
       - path: RuntimeBuild/offline-tiles
         type: folder
         buildPhase: resources

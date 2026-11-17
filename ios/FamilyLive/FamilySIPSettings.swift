@@ -22,6 +22,13 @@ struct FamilySIPSettings: View {
                     _ = sip.save(FamilySIPAccount(enabled: enabled, user: user.trimmingCharacters(in: .whitespacesAndNewlines),
                         host: host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), port: Int(port) ?? 0, password: password))
                 }
+                NavigationLink("SIP open-source licenses") {
+                    ScrollView {
+                        Text((Bundle.main.url(forResource: "SIP-NOTICES", withExtension: "txt")
+                            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }) ?? "License file unavailable")
+                            .font(.footnote).textSelection(.enabled).padding()
+                    }.navigationTitle("SIP licenses")
+                }
                 Text(sip.status)
                 if !sip.error.isEmpty { Text(sip.error).foregroundStyle(.red) }
                 Text("Add a SIP address to each approved contact to allow calls. Incoming SIP calls currently require Family to stay open.")
