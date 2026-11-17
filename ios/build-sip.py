@@ -64,6 +64,16 @@ def main():
     tls_flags = ["-DUSE_OPENSSL=OFF", "-DUSE_MBEDTLS=ON", "-DMBEDTLS_INCLUDE_DIR=" + str(tls / "include"),
                  "-DMBEDTLS_LIBRARY=" + ";".join(map(str, tls_libraries)), "-DCMAKE_C_FLAGS=-I" + str(tls / "include")]
     re_source = work / "re-4.12.0"
+    # Apple selects native AES/HMAC but omits the TLS-unavailable API stubs.
+    # The UDP-only engine still links the optional account-certificate helper.
+    cmake_file = re_source / "CMakeLists.txt"
+    cmake_source = cmake_file.read_text()
+    apple_backend = "    src/aes/apple/aes.c\n    src/hmac/apple/hmac.c\n"
+    complete_backend = apple_backend + "    src/tls/stub.c\n"
+    if complete_backend not in cmake_source:
+        if cmake_source.count(apple_backend) != 1:
+            raise ValueError("Pinned re Apple backend changed")
+        cmake_file.write_text(cmake_source.replace(apple_backend, complete_backend))
     re_build = output / "re"
     run("cmake", "-S", re_source, "-B", re_build, *common, *tls_flags,
         "-DLIBRE_BUILD_SHARED=OFF", "-DLIBRE_BUILD_STATIC=ON", "-DUSE_PCP=OFF", "-DUSE_BFCP=OFF", "-DUSE_RTMP=OFF")
