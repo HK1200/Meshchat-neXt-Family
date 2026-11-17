@@ -63,4 +63,7 @@ if [[ "$store_capture" == 1 && -d "$result" ]]; then
     xcrun xcresulttool export attachments --path "$result" \
         --output-path "RuntimeBuild/store-screenshots/$device_family"
 fi
+if [[ "$test_status" == 0 && "$scheme" == FamilyLive && "$store_capture" == 0 ]]; then
+    python3 test-sip-registration.py "$destination" || test_status=$?
+fi
 exit "$test_status"
