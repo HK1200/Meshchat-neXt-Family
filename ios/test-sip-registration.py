@@ -100,6 +100,11 @@ def main():
                "-framework", "Security", "-framework", "SystemConfiguration", "-lresolv", "-lz", "-o", str(executable)]
     subprocess.run(command, check=True)
     subprocess.run(["codesign", "--force", "--sign", "-", str(executable)], check=True)
+    photo_test = directory / "contact-photo-test"
+    subprocess.run(["xcrun", "--sdk", "iphonesimulator", "swiftc", "-target", arch + "-apple-ios17.0-simulator", "-sdk", sdk,
+                    str(ROOT / "FamilyLive/FamilyContactPhotoCodec.swift"), str(ROOT / "ContactPhotoTests/main.swift"),
+                    "-o", str(photo_test)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", str(photo_test)], check=True)
     inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"], text=True))
     device = next(device for devices in inventory["devices"].values() for device in devices if device["udid"] == args.simulator)
     booted_here = device["state"] != "Booted"
@@ -114,6 +119,11 @@ def main():
         if result.returncode or not registrar.authenticated or not registrar.unregistered:
             raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
         print("Native SIP registration authenticated, then unregistered cleanly")
+        photo_result = subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(photo_test)],
+                                      capture_output=True, text=True, timeout=40)
+        if photo_result.returncode:
+            raise RuntimeError("Native contact-photo checks failed: " + photo_result.stdout + photo_result.stderr)
+        print(photo_result.stdout.strip())
     finally:
         registrar.close()
         if booted_here:
