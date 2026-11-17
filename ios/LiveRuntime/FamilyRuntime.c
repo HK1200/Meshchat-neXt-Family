@@ -22,6 +22,39 @@ static PyObject *request_handler;
 static PyObject *voice_push;
 static PyObject *voice_pull;
 
+static FamilyHTTPSPost https_post;
+
+void family_runtime_set_https_post(FamilyHTTPSPost post) {
+    if (!Py_IsInitialized()) https_post = post;
+}
+
+static PyObject *post_hint(PyObject *self, PyObject *args) {
+    const char *url;
+    const uint8_t *body;
+    Py_ssize_t size;
+    if (!PyArg_ParseTuple(args, "sy#", &url, &body, &size)) return NULL;
+    if (size < 1 || size > 2048) return PyLong_FromLong(400);
+
+    int32_t status;
+    Py_BEGIN_ALLOW_THREADS
+    status = https_post(url, body, (size_t)size);
+    Py_END_ALLOW_THREADS
+    return PyLong_FromLong(status);
+}
+
+static PyMethodDef https_methods[] = {
+    {"post", post_hint, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef https_module = {
+    PyModuleDef_HEAD_INIT, "_family_native_https", NULL, -1, https_methods
+};
+
+static PyObject *init_https(void) {
+    return PyModule_Create(&https_module);
+}
+
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS
 #define STRINGIFY_VALUE(value) #value
 #define STRINGIFY(value) STRINGIFY_VALUE(value)
@@ -43,6 +76,7 @@ static PyStatus append_path(PyConfig *config, const char *home, const char *suff
 
 bool family_runtime_start(const char *python_home, const char *modules, const char *state) {
     if (!modules || !state || Py_IsInitialized()) return false;
+    if (https_post && PyImport_AppendInittab("_family_native_https", init_https) != 0) return false;
 
     /* Keep Python's normal broken-pipe behavior without installing its other signal handlers. */
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) return false;

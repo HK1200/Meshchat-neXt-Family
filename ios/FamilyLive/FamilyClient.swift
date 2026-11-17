@@ -248,6 +248,10 @@ actor FamilyClient {
             #endif
             let home = resources.appendingPathComponent("python").path
             let modules = resources.appendingPathComponent("staged").path
+            family_runtime_set_https_post { url, body, length in
+                guard let url, let body else { return 400 }
+                return FamilyNativeHTTPS.post(String(cString: url), body: Data(bytes: body, count: length))
+            }
             started = family_runtime_start(home, modules, folder.path)
             guard started else { throw BridgeError.unavailable }
         }

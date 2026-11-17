@@ -9,6 +9,10 @@
 extern "C" {
 #endif
 
+/* Install before starting Python. Called only by a background hint sender. */
+typedef int32_t (*FamilyHTTPSPost)(const char *url, const uint8_t *body, size_t length);
+void family_runtime_set_https_post(FamilyHTTPSPost post);
+
 /* Start once before serving requests. NULL python_home uses the default stdlib. */
 bool family_runtime_start(const char *python_home, const char *modules, const char *state);
 
