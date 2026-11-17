@@ -84,6 +84,19 @@ targets:
         OTHER_LDFLAGS: "$(inherited) -lFamilySIP -lresolv -lz -framework AudioToolbox -framework CoreAudio -framework Security -framework SystemConfiguration"
         CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+  FamilyContactPhotoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: ContactPhotoTests
+    dependencies:
+      - target: FamilyLive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.contactphotos.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/FamilyLive.app/FamilyLive"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_VERSION: "5.0"
   FamilyLiveUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -109,3 +122,4 @@ schemes:
     test:
       targets:
         - FamilyLiveUITests
+        - FamilyContactPhotoTests
