@@ -7,6 +7,10 @@ struct FamilyContact: Codable, Identifiable, Sendable {
     var identityPublicKey: String?
     var photo: String?
 
+    var canShareLocation: Bool {
+        ["lxmf", "meshcore"].contains { addresses[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+    }
+
     var saveValue: [String: Any] {
         var value: [String: Any] = ["id": id, "name": name, "addresses": addresses]
         value["identityPublicKey"] = identityPublicKey

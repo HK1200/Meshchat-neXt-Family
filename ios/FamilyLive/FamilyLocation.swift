@@ -106,12 +106,12 @@ struct FamilyLocationSettings: View {
     @State private var saved = false
 
     private var eligibleContacts: [FamilyContact] {
-        (family.state?.contacts ?? []).filter { $0.addresses["lxmf"]?.isEmpty == false }
+        (family.state?.contacts ?? []).filter { $0.canShareLocation }
     }
 
     private var sharingRequirement: String? {
         guard let location = family.state?.location else { return nil }
-        if eligibleContacts.isEmpty { return "Add an approved contact with a Reticulum messaging address to share your location." }
+        if eligibleContacts.isEmpty { return "Add an approved contact with a Reticulum or MeshCore messaging address to share your location." }
         if !mapEnabled { return "Turn on the Family map to share your location." }
         if recipients.isEmpty { return "Turn on at least one contact above and save the location policy." }
         if recipients != Set(location.contactIds) || mapEnabled != location.mapEnabled

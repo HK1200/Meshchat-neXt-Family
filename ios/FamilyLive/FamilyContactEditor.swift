@@ -13,6 +13,8 @@ struct FamilyContactEditor: View {
     @State private var photoLoading = false
     @State private var busy = false
     @State private var confirmRemoval = false
+    @State private var importingCode = false
+    @State private var importedCard: FamilyContactCard?
 
     var body: some View {
         Form {
@@ -26,6 +28,16 @@ struct FamilyContactEditor: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("MeshCore public key", text: $meshcoreAddress)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Scan or import service QR code", systemImage: "qrcode.viewfinder") { importingCode = true }
+                    .disabled(busy)
+                NavigationLink("Find messaging client") {
+                    FamilyClientDiscovery(family: family) { client in
+                        address = client.address
+                        importedCard = nil
+                    }
+                }
+                Text("Import fills the services in the code. Other services, the name, and the photo stay unchanged. Review the addresses before saving.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 if contact.addresses["lxmf"]?.isEmpty == false {
                     NavigationLink("Private mailbox push route") {
                         FamilyMailboxRouteEditor(family: family, contactID: contact.id)
@@ -39,7 +51,7 @@ struct FamilyContactEditor: View {
                 Button("Save contact") {
                     busy = true
                     Task {
-                        if await family.saveContact(id: contact.id, name: name, address: address, voiceAddress: voiceAddress, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress, photo: photo, replacePhoto: true) { dismiss() }
+                        if await family.saveContact(id: contact.id, name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: importedCard?.addresses["lxmf"]?.lowercased() == address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ? importedCard?.identityPublicKey : nil, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress, photo: photo, replacePhoto: true) { dismiss() }
                         busy = false
                     }
                 }
@@ -49,6 +61,18 @@ struct FamilyContactEditor: View {
             }
         }
         .navigationTitle("Edit contact")
+        .sheet(isPresented: $importingCode) {
+            FamilyContactCodeImport(family: family) { card in
+                importedCard = card
+                let merged = FamilyContactAddressMerge.apply(card.addresses, to: [
+                    "lxmf": address, "lxst": voiceAddress, "meshcore": meshcoreAddress, "sip": sipAddress
+                ])
+                address = merged["lxmf"] ?? ""
+                voiceAddress = merged["lxst"] ?? ""
+                meshcoreAddress = merged["meshcore"] ?? ""
+                sipAddress = merged["sip"] ?? ""
+            }
+        }
         .onAppear {
             name = contact.name
             address = contact.addresses["lxmf"] ?? ""
