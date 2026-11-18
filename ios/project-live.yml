@@ -19,6 +19,7 @@ targets:
           - fetch
           - bluetooth-central
           - audio
+          - voip
     sources:
       - path: FamilyLive
         excludes: [FamilyPush.entitlements]

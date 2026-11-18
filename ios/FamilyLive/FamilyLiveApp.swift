@@ -12,6 +12,7 @@ import UIKit
 struct FamilyLiveApp: App {
     @UIApplicationDelegateAdaptor(FamilyNotifications.self) private var notifications
     @StateObject private var family = FamilyModel()
+    @ObservedObject private var systemCalls = FamilySystemCalls.shared
     @Environment(\.scenePhase) private var scenePhase
 
     private var keepScreenAwake: Bool {
@@ -30,8 +31,16 @@ struct FamilyLiveApp: App {
                     let reason = rawReason.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
                     if reason == .newDeviceAvailable || reason == .oldDeviceUnavailable {
                         family.reconnectVoiceAudio()
+                        FamilySIP.shared.routeChanged()
                     }
                 }
+                .onChange(of: systemCalls.audioReady) { family.systemAudioChanged() }
+                .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+                    .receive(on: RunLoop.main)) { notification in
+                    family.audioInterruption(notification)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.mediaServicesWereResetNotification)
+                    .receive(on: RunLoop.main)) { _ in family.audioServicesReset() }
                 .task(id: scenePhase) {
                     family.notifications = notifications
                     notifications.openMessage = { [weak family = family] contactID, messageID in
@@ -47,7 +56,7 @@ struct FamilyLiveApp: App {
                         await family.lock()
                         await family.scheduleMailboxRefresh()
                     }
-                    while !Task.isCancelled && (scenePhase == .active || family.finishingSend) {
+                    while !Task.isCancelled && (scenePhase == .active || family.finishingSend || family.hasCallInProgress) {
                         await family.refresh()
                         if scenePhase == .active {
                             await family.checkMailboxIfDue()
@@ -100,6 +109,10 @@ final class FamilyModel: ObservableObject {
     @Published private(set) var voiceError = ""
     private var failingAudioCallID: String?
     private var lastVoiceCallID: String?
+    private var voiceInterrupted = false
+    private var requestedVoiceSpeaker: Bool?
+    private var presenceGeneration = 0
+    var hasCallInProgress: Bool { state?.voice?.active == true || FamilySIP.shared.active }
     private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?
@@ -149,11 +162,27 @@ final class FamilyModel: ObservableObject {
     }
 
     func setVoicePresence(_ active: Bool) async {
-        if !active {
+        presenceGeneration += 1
+        var payload: [String: Any] = ["foreground": active, "generation": presenceGeneration]
+        if !active, let voice = state?.voice, let key = voiceKey(voice),
+           FamilySystemCalls.shared.contains(key) || (voice.call_state == "connected" && voiceAudio.callID == key.id) {
+            payload["preserveCallId"] = key.id
+        } else if !active {
             voiceAudio.stop()
             speakerOn = false
         }
-        _ = try? await request("voice_presence", ["foreground": active])
+        FamilySIP.shared.setForeground(active)
+        _ = try? await request("voice_presence", payload)
+    }
+
+    func configureSystemCallControls(_ enabled: Bool) {
+        guard !hasCallInProgress else { error = "End the current call before changing call controls."; return }
+        if !FamilySystemCalls.shared.setEnabled(enabled) { error = FamilySystemCalls.shared.error }
+    }
+
+    private func voiceKey(_ voice: FamilyVoiceState?) -> FamilySystemCallKey? {
+        guard let id = voice?.call_id, !id.isEmpty else { return nil }
+        return FamilySystemCallKey(service: .reticulum, id: id)
     }
 
     func configureVoiceKeepAwake(_ enabled: Bool) async {
@@ -166,35 +195,98 @@ final class FamilyModel: ObservableObject {
 
     func call(_ contact: FamilyContact) async {
         guard !FamilySIP.shared.active else { error = "End the SIP call first."; return }
-        guard await microphoneAllowed() else { return }
+        guard await microphoneAllowed(), !FamilySIP.shared.active else { return }
         voiceError = ""
         _ = await perform("voice_call", ["contactId": contact.id])
     }
 
     func answerCall() async {
-        guard let voice = state?.voice, voice.call_state == "incoming", let id = voice.call_id,
-              await microphoneAllowed() else { return }
-        _ = await perform("voice_answer", ["callId": id])
+        guard let voice = state?.voice, voice.call_state == "incoming", let key = voiceKey(voice) else { return }
+        if FamilySystemCalls.shared.owns(key) { await FamilySystemCalls.shared.requestAnswer(key) }
+        else if await prepareVoiceAudio(key.id) { _ = await answerVoiceDirect(key.id) }
     }
 
     func endCall() async {
-        voiceAudio.stop()
-        speakerOn = false
-        guard let voice = state?.voice, voice.active, let id = voice.call_id else { return }
+        guard let key = voiceKey(state?.voice) else { return }
+        if FamilySystemCalls.shared.owns(key) { await FamilySystemCalls.shared.requestEnd(key) }
+        else { await endVoiceDirect(key.id) }
+    }
+
+    func toggleVoiceMute() async {
+        guard let voice = state?.voice, let key = voiceKey(voice) else { return }
+        let muted = voice.muted != true
+        if FamilySystemCalls.shared.owns(key) { await FamilySystemCalls.shared.requestMute(key, muted: muted) }
+        else { _ = await muteVoiceDirect(key.id, muted: muted) }
+    }
+
+    private func prepareVoiceAudio(_ id: String) async -> Bool {
+        guard await microphoneAllowed(), state?.voice?.call_id == id, !FamilySIP.shared.active else { return false }
+        do { try FamilyCallAudioSession.configure(); return true }
+        catch { self.error = error.localizedDescription; return false }
+    }
+
+    private func answerVoiceDirect(_ id: String) async -> Bool {
+        guard state?.voice?.call_id == id, state?.voice?.call_state == "incoming", !FamilySIP.shared.active else { return false }
+        return await perform("voice_answer", ["callId": id])
+    }
+
+    private func endVoiceDirect(_ id: String) async {
+        if voiceAudio.callID == id { voiceAudio.stop(); speakerOn = false }
         _ = await perform("voice_hangup", ["callId": id])
     }
 
-    var voiceCaptureStatus: String { voiceAudio.captureStatus }
+    private func muteVoiceDirect(_ id: String, muted: Bool) async -> Bool {
+        guard state?.voice?.call_id == id, state?.voice?.active == true else { return false }
+        return await perform("voice_mute", ["callId": id, "muted": muted])
+    }
+
+    var voiceCaptureStatus: String { voiceInterrupted ? "Audio paused by iOS" : voiceAudio.captureStatus }
+
+    func systemAudioChanged() {
+        if FamilySystemCalls.shared.audioReady { voiceInterrupted = false }
+        reconcileVoiceAudio(state?.voice)
+        FamilySIP.shared.systemAudioChanged()
+    }
+
+    func audioInterruption(_ notification: Notification) {
+        guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        if type == .began {
+            FamilySystemCalls.shared.systemAudioDeactivated()
+            voiceInterrupted = true
+            voiceAudio.stop()
+            speakerOn = false
+            FamilySIP.shared.interruptionBegan()
+        } else {
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let resume = AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)
+            Task {
+                if resume { voiceInterrupted = false; reconcileVoiceAudio(state?.voice) }
+                else if let key = voiceKey(state?.voice), !FamilySystemCalls.shared.owns(key) { await endVoiceDirect(key.id) }
+                await FamilySIP.shared.interruptionEnded(shouldResume: resume)
+            }
+        }
+    }
+
+    func audioServicesReset() {
+        voiceAudio.resetMediaServices()
+        speakerOn = false
+        FamilySystemCalls.shared.systemReset()
+        if let key = voiceKey(state?.voice) { Task { await endVoiceDirect(key.id) } }
+        FamilySIP.shared.mediaServicesReset()
+        voiceError = "Audio services restarted. Please call again."
+    }
 
     func reconnectVoiceAudio() {
-        guard voiceAudio.callID != nil else { return }
+        guard state?.voice?.call_state == "connected", !voiceInterrupted else { return }
         voiceAudio.stop()
         reconcileVoiceAudio(state?.voice)
     }
 
     func toggleSpeaker() {
         do {
-            guard voiceAudio.callID != nil else { return }
+            guard voiceAudio.callID != nil, !FamilyCallAudioSession.hasExternalOutput else { return }
+            requestedVoiceSpeaker = !speakerOn
             try voiceAudio.setSpeaker(!speakerOn)
             speakerOn = voiceAudio.usingBuiltInSpeaker
         } catch { self.error = error.localizedDescription }
@@ -210,31 +302,67 @@ final class FamilyModel: ObservableObject {
 
     private func updateVoice(_ voice: FamilyVoiceState?) {
         if let id = voice?.call_id, !id.isEmpty, id != lastVoiceCallID {
+            if let previous = lastVoiceCallID {
+                FamilySystemCalls.shared.finish(FamilySystemCallKey(service: .reticulum, id: previous))
+            }
             lastVoiceCallID = id
             voiceError = ""
+            requestedVoiceSpeaker = nil
+            voiceInterrupted = false
         }
         if let failure = voice?.error, !failure.isEmpty, failure != voiceError {
             voiceError = failure
             voiceLogger.error("Reticulum call failed: \(failure, privacy: .private)")
         }
+        reconcileSystemCall(voice)
         reconcileVoiceAudio(voice)
     }
 
+    private func reconcileSystemCall(_ voice: FamilyVoiceState?) {
+        guard let voice, voice.active, let key = voiceKey(voice), voice.call_state != "ending" else {
+            if let id = lastVoiceCallID { FamilySystemCalls.shared.finish(FamilySystemCallKey(service: .reticulum, id: id)) }
+            return
+        }
+        guard FamilySystemCalls.shared.enabled else { return }
+        guard let target = voice.target,
+              let approved = state?.contacts?.first(where: { $0.addresses["lxst"]?.lowercased() == target.lowercased() }) else {
+            Task { await endVoiceDirect(key.id) }
+            return
+        }
+        let actions = FamilySystemCallActions(
+            prepareAudio: { [weak self] in await self?.prepareVoiceAudio(key.id) ?? false },
+            start: { [weak self] in self?.state?.voice?.call_id == key.id },
+            answer: { [weak self] in await self?.answerVoiceDirect(key.id) ?? false },
+            end: { [weak self] in await self?.endVoiceDirect(key.id) },
+            mute: { [weak self] muted in await self?.muteVoiceDirect(key.id, muted: muted) ?? false }
+        )
+        if !FamilySystemCalls.shared.track(key, name: approved.name, incoming: voice.call_state == "incoming", actions: actions) {
+            Task { await endVoiceDirect(key.id) }
+            return
+        }
+        FamilySystemCalls.shared.update(key, connected: voice.call_state == "connected")
+    }
+
     private func reconcileVoiceAudio(_ voice: FamilyVoiceState?) {
-        guard UIApplication.shared.applicationState == .active,
-              let voice, voice.call_state == "connected", let id = voice.call_id, !id.isEmpty else {
+        guard let voice, voice.call_state == "connected", let key = voiceKey(voice),
+              !voiceInterrupted, FamilySystemCalls.shared.allowsAudio(key),
+              UIApplication.shared.applicationState == .active || FamilySystemCalls.shared.owns(key) || voiceAudio.callID == key.id else {
             if voiceAudio.callID != nil {
                 voiceAudio.stop()
                 speakerOn = false
             }
             return
         }
+        let id = key.id
         guard failingAudioCallID != id else { return }
         do {
             if voiceAudio.callID == id {
                 try voiceAudio.recoverStalledCapture()
             } else {
-                try voiceAudio.start(callID: id)
+                try voiceAudio.start(callID: id, managedAudio: FamilySystemCalls.shared.owns(key))
+                if let requestedVoiceSpeaker, !FamilyCallAudioSession.hasExternalOutput {
+                    try voiceAudio.setSpeaker(requestedVoiceSpeaker)
+                }
             }
             speakerOn = voiceAudio.usingBuiltInSpeaker
         } catch {
@@ -980,7 +1108,7 @@ struct FamilyGuardian: View {
                                 set: { enabled in Task { await family.configureVoiceKeepAwake(enabled) } }
                             ))
                             .disabled(family.state?.voice?.enabled != true)
-                            Text("Family receives calls while open. This option prevents auto-lock while you’re in Family. Locking the iPad or switching apps pauses incoming calls.")
+                            Text("Keep Family open to receive new calls. This option prevents auto-lock; calls already answered can continue when the screen locks or you switch apps.")
                                 .font(.footnote).foregroundStyle(.secondary)
                             if let address = family.state?.voice?.address, !address.isEmpty {
                                 Text(address).font(.caption.monospaced()).textSelection(.enabled)
@@ -988,6 +1116,17 @@ struct FamilyGuardian: View {
                             let incoming = family.state?.voice?.lastIncoming ?? ""
                             LabeledContent("Last incoming attempt", value: incoming.isEmpty ? "No incoming link recorded" : incoming)
                             if let error = family.state?.voice?.error, !error.isEmpty { Text(error).foregroundStyle(.red) }
+                        }
+                    }
+                    Section("iOS call controls") {
+                        Toggle("Use iOS call screen", isOn: Binding(
+                            get: { FamilySystemCalls.shared.enabled },
+                            set: { family.configureSystemCallControls($0) }
+                        )).disabled(family.hasCallInProgress)
+                        Text("Answer, decline, end and mute approved calls using iOS controls. Keep Family open to receive new calls; this does not make Family always available while suspended.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if !FamilySystemCalls.shared.error.isEmpty {
+                            Text(FamilySystemCalls.shared.error).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                     Section {

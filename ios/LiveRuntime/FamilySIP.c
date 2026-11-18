@@ -8,6 +8,7 @@
 #define DEBUG_LEVEL 0
 #include <re_dbg.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 static struct mqueue *queue;
 static struct ua *agent;
@@ -17,8 +18,22 @@ static struct tmr shutdown_timer;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static FamilySIPEvent listener;
 static bool running;
+static char current_call_id[80];
+static unsigned long long call_sequence;
+struct control { char *value; char *call_id; };
+static void control_destructor(void *arg) {
+    struct control *control = arg;
+    mem_deref(control->value);
+    mem_deref(control->call_id);
+}
+static void native_call_id(void) {
+    snprintf(current_call_id, sizeof(current_call_id), "native-%llu", ++call_sequence);
+}
+static void event_for_call(const char *state, const char *peer, int code, const char *call_id) {
+    if (listener) listener(state, peer ? peer : "", code, call_id ? call_id : "");
+}
 static void event(const char *state, const char *peer, int code) {
-    if (listener) listener(state, peer ? peer : "", code);
+    event_for_call(state, peer, code, current_call_id);
 }
 static void finish_shutdown(void *arg) { (void)arg; re_cancel(); }
 static void release_digit(void *arg) { (void)arg; if(current) call_send_digit(current,KEYCODE_REL); }
@@ -53,19 +68,24 @@ static void events(enum bevent_ev ev, struct bevent *e, void *arg) {
                 break;
             }
             current = c;
+            native_call_id();
             event("incoming", call_peeruri(c), 0);
             break;
         case BEVENT_CALL_OUTGOING:
             current = c;
+            if (!current_call_id[0]) native_call_id();
             event("calling", call_peeruri(c), 0);
             break;
         case BEVENT_CALL_RINGING:
+            if (c != current) break;
             event("ringing", call_peeruri(c), 0);
             break;
         case BEVENT_CALL_PROGRESS:
+            if (c != current) break;
             event("progress", call_peeruri(c), 0);
             break;
         case BEVENT_CALL_ESTABLISHED:
+            if (c != current) break;
             event("connected", call_peeruri(c), 0);
             break;
         case BEVENT_CALL_RTCP:
@@ -73,11 +93,15 @@ static void events(enum bevent_ev ev, struct bevent *e, void *arg) {
         case BEVENT_CALL_CLOSED:
             tmr_cancel(&digit_timer);
             if (current == c) {
+                char ended_id[sizeof(current_call_id)];
+                memcpy(ended_id, current_call_id, sizeof(ended_id));
                 current = NULL;
-                event("ended", call_peeruri(c), 0);
+                current_call_id[0] = '\0';
+                event_for_call("ended", call_peeruri(c), 0, ended_id);
             }
             break;
         case BEVENT_AUDIO_ERROR:
+            if (c != current) break;
             event("audio_error", NULL, 0);
             break;
         default:
@@ -87,13 +111,19 @@ static void events(enum bevent_ev ev, struct bevent *e, void *arg) {
 static void commands(int id, void *data, void *arg) {
     (void)arg;
     int err = 0;
-    char *text = data;
+    struct control *control = data;
+    char *text = control->value;
+    if (id != 1 && id != 9 && !family_sip_call_matches(control->call_id, current_call_id)) {
+        mem_deref(data);
+        return;
+    }
     switch (id) {
         case 1:
-            if (!current && agent)
+            if (!current && agent) {
+                if (control->call_id) snprintf(current_call_id, sizeof(current_call_id), "%s", control->call_id);
+                else native_call_id();
                 err = ua_connect(agent, &current, NULL, text, VIDMODE_OFF);
-            else
-                err = EBUSY;
+            } else err = EBUSY;
             break;
         case 2:
             if (current) err = ua_answer(agent, current, VIDMODE_OFF);
@@ -102,13 +132,29 @@ static void commands(int id, void *data, void *arg) {
             if (current) ua_hangup(agent, current, 0, NULL);
             break;
         case 4:
-            if (current) audio_mute(call_audio(current), text && text[0] == '1');
+            if (current) {
+                audio_mute(call_audio(current), text && text[0] == '1');
+                event("muted", NULL, audio_ismuted(call_audio(current)) ? 1 : 0);
+            }
             break;
         case 5:
             if (current && text && text[0]) {err = call_send_digit(current, text[0]);tmr_start(&digit_timer,150,release_digit,NULL);}
             break;
         case 6:
             if (current) err = call_hold(current, text && text[0] == '1');
+            break;
+        case 7:
+            if (current) {
+                audio_stop(call_audio(current));
+                err = audio_update(call_audio(current));
+                if (err) {
+                    event("audio_error", NULL, err);
+                    err = 0;
+                }
+            }
+            break;
+        case 8:
+            if (current) audio_stop(call_audio(current));
             break;
         case 9:
             /* Allow the authenticated expires=0 transaction to finish before
@@ -120,16 +166,29 @@ static void commands(int id, void *data, void *arg) {
             tmr_start(&shutdown_timer, 1500, finish_shutdown, NULL);
             break;
     }
-    if (err) event("command_failed", NULL, err);
+    if (err) {
+        event_for_call("command_failed", NULL, err, control->call_id ? control->call_id : current_call_id);
+        if (id == 1 && !current) current_call_id[0] = '\0';
+    }
     mem_deref(data);
 }
 
-void family_sip_command(int operation, const char *value) {
-    char *copy = NULL;
-    if (value && str_dup(&copy, value)) return;
+static int enqueue(int operation, const char *value, const char *call_id) {
+    struct control *control = mem_zalloc(sizeof(*control), control_destructor);
+    if (!control) return ENOMEM;
+    int err = value ? str_dup(&control->value, value) : 0;
+    if (!err && call_id) err = str_dup(&control->call_id, call_id);
+    if (err) { mem_deref(control); return err; }
     pthread_mutex_lock(&lock);
-    if (!queue || mqueue_push(queue, operation, copy)) mem_deref(copy);
+    err = queue ? mqueue_push(queue, operation, control) : ENOENT;
     pthread_mutex_unlock(&lock);
+    if (err) mem_deref(control);
+    return err;
+}
+void family_sip_command(int operation, const char *value) { (void)enqueue(operation, value, NULL); }
+int family_sip_call_command(int operation, const char *value, const char *call_id) {
+    if (!call_id || !call_id[0] || strlen(call_id) >= sizeof(current_call_id)) return EINVAL;
+    return enqueue(operation, value, call_id);
 }
 
 int family_sip_run(const char *user, const char *host, int port,
@@ -201,6 +260,7 @@ close:
     tmr_cancel(&digit_timer);
     tmr_cancel(&shutdown_timer);
     current = NULL;
+    current_call_id[0] = '\0';
     agent = NULL;
     bevent_unregister(events);
     ua_stop_all(true);
@@ -218,6 +278,6 @@ finish:
     running = false;
     pthread_mutex_unlock(&lock);
     /* The callback may immediately start the replacement account. */
-    if (finished) finished("stopped", "", err);
+    if (finished) finished("stopped", "", err, "");
     return err;
 }

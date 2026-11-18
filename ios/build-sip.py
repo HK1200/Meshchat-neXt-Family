@@ -49,6 +49,11 @@ def main():
     run("xcrun", "--sdk", "macosx", "swiftc", "-sdk", mac_sdk,
         ROOT / "FamilyLive/FamilySIPPolicy.swift", ROOT / "SIPPolicyTests/main.swift", "-o", policy_test)
     run(policy_test)
+    identity_test = work / "sip-call-identity-test"
+    run("xcrun", "--sdk", "macosx", "clang", "-isysroot", mac_sdk,
+        "-I" + str(ROOT / "LiveRuntime"), ROOT / "LiveRuntime/FamilySIPIdentity.c",
+        ROOT / "SIPPolicyTests/identity.c", "-o", identity_test)
+    run(identity_test)
     sdk = subprocess.check_output(["xcrun", "--sdk", args.sdk, "--show-sdk-path"], text=True).strip()
     output = work / (args.sdk + "-" + args.arch)
     output.mkdir(parents=True, exist_ok=True)

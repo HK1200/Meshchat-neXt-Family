@@ -6,8 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 static bool registered;
-static void received(const char *state, const char *peer, int code) {
-    (void)peer;
+static void received(const char *state, const char *peer, int code, const char *call_id) {
+    (void)peer; (void)call_id;
     fprintf(stderr, "Private SIP registration event: %s (%d)\n", state, code);
     if (!strcmp(state, "registered") && !registered) {
         registered = true;

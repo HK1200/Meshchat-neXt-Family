@@ -4,11 +4,12 @@ import UIKit
 
 @MainActor
 final class FamilyVoiceAudio {
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private var engine = AVAudioEngine()
+    private var player = AVAudioPlayerNode()
     private var pump: VoicePCMPump?
     private var tapInstalled = false
     private var sessionActive = false
+    private var managedAudio = false
     private var nativeCaptureStarted: ContinuousClock.Instant?
     private(set) var callID: String?
 
@@ -18,28 +19,25 @@ final class FamilyVoiceAudio {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
     }
 
-    func start(callID: String) throws {
+    func start(callID: String, managedAudio: Bool = false) throws {
         guard self.callID != callID else { return }
         stop()
         do {
-            try start(callID: callID, useVoiceProcessing: true)
+            try start(callID: callID, useVoiceProcessing: true, managedAudio: managedAudio)
         } catch {
-            try start(callID: callID, useVoiceProcessing: false)
+            try start(callID: callID, useVoiceProcessing: false, managedAudio: managedAudio)
         }
     }
 
-    private func start(callID: String, useVoiceProcessing: Bool) throws {
+    private func start(callID: String, useVoiceProcessing: Bool, managedAudio: Bool) throws {
+        self.managedAudio = managedAudio
         let session = AVAudioSession.sharedInstance()
         do {
-            var options: AVAudioSession.CategoryOptions = [.allowBluetooth]
-            if UIDevice.current.userInterfaceIdiom == .pad {
-                options.insert(.defaultToSpeaker)
-            }
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: options)
+            try FamilyCallAudioSession.configure()
             try session.setPreferredSampleRate(48_000)
             try session.setPreferredIOBufferDuration(0.02)
-            try session.setActive(true)
-            sessionActive = true
+            if !managedAudio { try session.setActive(true) }
+            sessionActive = !managedAudio
 
             let input = engine.inputNode
             if input.isVoiceProcessingEnabled != useVoiceProcessing {
@@ -82,8 +80,9 @@ final class FamilyVoiceAudio {
             return
         }
         guard started.duration(to: ContinuousClock.now) >= .seconds(2) else { return }
+        let managed = managedAudio
         stop()
-        try start(callID: callID, useVoiceProcessing: false)
+        try start(callID: callID, useVoiceProcessing: false, managedAudio: managed)
     }
 
     func setSpeaker(_ enabled: Bool) throws {
@@ -107,6 +106,14 @@ final class FamilyVoiceAudio {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             sessionActive = false
         }
+        managedAudio = false
+    }
+
+    func resetMediaServices() {
+        stop()
+        engine = AVAudioEngine()
+        player = AVAudioPlayerNode()
+        engine.attach(player)
     }
 
     fileprivate enum AudioError: LocalizedError {

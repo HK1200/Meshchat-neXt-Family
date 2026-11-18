@@ -24,6 +24,7 @@ TCP_ONLY_ACTIONS=frozenset({
 _tcp_only=False
 _ios_voice=False
 _ios_voice_foreground=False
+_ios_voice_presence_epoch=-1
 _lock=threading.RLock()
 _root=None
 _state=None
@@ -899,7 +900,7 @@ def background(lock_guardian=True):
     if _meshcore and _meshcore.rooms:_meshcore.rooms.close_view()
 
 def request(raw):
-    global _client_lookup,_ios_voice_foreground
+    global _client_lookup,_ios_voice_foreground,_ios_voice_presence_epoch
     try:
         if len(raw)>14_000_000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
@@ -1246,9 +1247,22 @@ def request(raw):
                 _save()
         elif action=='voice_presence' and _ios_voice:
             if type(p.get('foreground')) is not bool:raise ValueError('Invalid voice availability')
-            resumed=p['foreground'] and not _ios_voice_foreground
-            _ios_voice_foreground=p['foreground']
-            if not _ios_voice_foreground and _voice and _voice.phase!='idle':_voice.hangup()
+            preserve = p.get('preserveCallId')
+            if preserve is not None and (not isinstance(preserve, str) or not re.fullmatch('[a-f0-9]{32}', preserve)):
+                raise ValueError('Invalid preserved voice call')
+            epoch = p.get('generation')
+            if epoch is not None and (type(epoch) is not int or epoch < 0):
+                raise ValueError('Invalid voice availability generation')
+            with _lock:
+                if epoch is not None:
+                    if epoch <= _ios_voice_presence_epoch:return json.dumps({'ok':True})
+                    _ios_voice_presence_epoch = epoch
+                resumed=p['foreground'] and not _ios_voice_foreground
+                _ios_voice_foreground=p['foreground']
+                if not _ios_voice_foreground and _voice and _voice.phase!='idle':
+                    current_id = _voice.call_id
+                    if preserve != current_id or _voice.phase not in ('finding', 'calling', 'incoming', 'connected'):
+                        _voice.hangup(current_id)
             if resumed and _voice and _voice.phone:
                 with _announce_lock:
                     primary=_last_announce_primary.get('voice')
@@ -1274,7 +1288,10 @@ def request(raw):
             elif action=='voice_hangup':_voice.hangup(p.get('callId'))
             elif action=='voice_mute':
                 if type(p.get('muted')) is not bool:raise ValueError('Invalid mute setting')
-                _voice.set_muted(p['muted'])
+                with _lock:
+                    if p.get('callId') is not None and (p['callId'] != _voice.call_id or _voice.phase == 'idle'):
+                        raise ValueError('The call has changed')
+                    _voice.set_muted(p['muted'])
         elif action=='conversation_read':
             with _lock:
                 contact=next((c for c in _state['contacts'] if c['id']==p.get('contactId')),None)

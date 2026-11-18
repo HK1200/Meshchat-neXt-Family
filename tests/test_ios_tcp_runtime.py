@@ -651,6 +651,18 @@ def test_ios_voice_policy_and_remote_hangup(tmp_path, monkeypatch, caller_index)
                 break
             time.sleep(.02)
         assert all(outputs), "Both approved peers must receive non-silent PCM"
+        request(receiver_client, "voice_presence", foreground=False, preserveCallId=incoming["call_id"])
+        for client in clients:
+            assert request(client, "status")["voice"]["call_state"] == "connected"
+        # Background preservation must keep signed PCM passing for this exact call.
+        background_outputs = [False, False]
+        for _ in range(75):
+            for index, client in enumerate(clients):
+                result = request(client, "test_voice_pcm", callId=connected[index]["call_id"], pcm=frame)
+                background_outputs[index] |= any(bytes.fromhex(result["output"]))
+            if all(background_outputs): break
+            time.sleep(.02)
+        assert all(background_outputs), "Preserved background calls must retain two-way PCM"
         request(receiver_client, "voice_presence", foreground=False)
         for client in clients:
             wait_status(client, lambda state: state["voice"]["call_state"] == "idle")

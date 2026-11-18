@@ -29,7 +29,7 @@ struct FamilyVoiceCall: View {
                             }
                         }
                         Button(voice.muted == true ? "Unmute" : "Mute", systemImage: "mic.slash") {
-                            Task { _ = await family.perform("voice_mute", ["muted": voice.muted != true]) }
+                            Task { await family.toggleVoiceMute() }
                         }
                     }
                     .buttonStyle(.bordered)

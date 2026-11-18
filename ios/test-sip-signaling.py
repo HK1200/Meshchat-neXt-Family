@@ -102,7 +102,7 @@ def main(simulator):
     command = ['xcrun', '--sdk', 'iphonesimulator', 'clang', '-DFAMILY_SIP_TEST_DIAGNOSTICS=1', '-target', arch + '-apple-ios17.0-simulator', '-isysroot', sdk,
                '-I' + str(ROOT / 'LiveRuntime'), '-I' + str(ROOT / 'RuntimeBuild/sip/re-4.12.0/include'),
                '-I' + str(ROOT / 'RuntimeBuild/sip/baresip-4.12.0/include'),
-               str(ROOT / 'SIPPolicyTests/signaling.c'), str(ROOT / 'LiveRuntime/FamilySIP.c'), str(directory / 'libFamilySIP.a'),
+               str(ROOT / 'SIPPolicyTests/signaling.c'), str(ROOT / 'LiveRuntime/FamilySIP.c'), str(ROOT / 'LiveRuntime/FamilySIPIdentity.c'), str(directory / 'libFamilySIP.a'),
                '-framework', 'AudioToolbox', '-framework', 'CoreAudio', '-framework', 'CoreFoundation',
                '-framework', 'Security', '-framework', 'SystemConfiguration', '-lresolv', '-lz', '-o', str(executable)]
     subprocess.run(command, check=True)

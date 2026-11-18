@@ -165,6 +165,7 @@ struct FamilyVoiceState: Decodable, Sendable {
     let call_state: String
     let call_id: String?
     let caller_name: String?
+    let target: String?
     let address: String?
     let error: String?
     let muted: Bool?
