@@ -161,6 +161,9 @@ struct FamilyRoomEditor: View {
                     Toggle("Read only", isOn: $readOnly)
                 }
                 Section {
+                    if let room {
+                        NavigationLink("Participant names") { FamilyRoomParticipantNames(family: family, room: room) }
+                    }
                     Button("Save approved room") {
                         busy = true
                         Task {

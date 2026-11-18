@@ -663,6 +663,10 @@ final class FamilyModel: ObservableObject {
                                            "password": password, "clearPassword": clearPassword])
     }
 
+    func saveRoomParticipantName(roomID: Int, participantID: String, name: String) async -> Bool {
+        await perform("room_name", ["token": token, "roomId": roomID, "participantId": participantID, "name": name])
+    }
+
     func discoverMeshCoreRooms() async -> Bool {
         await perform("room_discover", ["token": token, "service": "meshcore"])
     }

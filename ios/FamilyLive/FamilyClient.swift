@@ -111,6 +111,9 @@ struct FamilyRoom: Decodable, Identifiable, Sendable {
 }
 
 struct FamilyRoomMessage: Decodable, Identifiable, Sendable {
+    let participantId: String?
+    let reportedName: String?
+    let savedName: String?
     let seq: Int
     let nick: String?
     let text: String
