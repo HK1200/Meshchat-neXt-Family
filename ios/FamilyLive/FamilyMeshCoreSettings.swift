@@ -6,6 +6,15 @@ struct FamilyMeshCoreSettings: View {
     @State private var receive = true
     @State private var target = ""
     @State private var saving = false
+    @State private var advertStatus = ""
+
+    private func advertise(flood: Bool) {
+        saving = true
+        Task {
+            advertStatus = await family.advertiseMeshCore(flood: flood) ? "Advert requested. Radio errors appear above." : family.error
+            saving = false
+        }
+    }
 
     var body: some View {
         Form {
@@ -28,6 +37,15 @@ struct FamilyMeshCoreSettings: View {
                         if !radio.error.isEmpty { Text(radio.error).foregroundStyle(.red) }
                     }
                     if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+                }
+                Section("Advertise this companion") {
+                    Button("Send local advert") { advertise(flood: false) }
+                        .disabled(family.state?.meshcore?.connected != true || saving)
+                    Button("Send flood advert") { advertise(flood: true) }
+                        .disabled(family.state?.meshcore?.connected != true || saving)
+                    Text("An advert broadcasts the radio’s configured name, public identity, and any location stored on the radio. Local reaches nearby nodes; flood can be repeated across the mesh.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if !advertStatus.isEmpty { Text(advertStatus) }
                 }
                 Section("Approve a MeshCore contact") {
                     ForEach((family.state?.announces ?? []).filter { $0.service == "meshcore" }, id: \.address) { client in

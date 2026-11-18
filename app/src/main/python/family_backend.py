@@ -16,7 +16,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
-    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts',
+    'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts','meshcore_advert',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
     'incoming_delivery_limit','attachment_read',
@@ -1018,11 +1018,12 @@ def request(raw):
             operation=p.get('operation')
             if operation not in ('scan','devices'):raise ValueError('Unsupported Bluetooth operation')
             return json.dumps({'ok':True,'bluetooth':bluetooth_request(operation)})
-        elif action in ['meshcore_config','meshcore_scan','meshcore_contacts']:
+        elif action in ['meshcore_config','meshcore_scan','meshcore_contacts','meshcore_advert']:
             _authorized(p)
             if not _meshcore:raise ValueError('MeshCore is starting')
             if action=='meshcore_config':_meshcore.configure(p.get('config'))
             elif action=='meshcore_scan':_meshcore.scan()
+            elif action=='meshcore_advert':_meshcore.advertise(p.get('flood'),lambda:_authorized(p))
             else:_meshcore.refresh_contacts()
         elif _tcp_only and action in ['map_import_prepare','map_import','map_select','map_tile']:
             if not _maps:raise ValueError('Map service is starting')

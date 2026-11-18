@@ -24,6 +24,7 @@ class FamilyMeshCore:
     def __init__(self,state,lock,save,session_factory=None,context=None,rooms_enabled=True):
         self.state=state;self.lock=lock;self.save=save;self.context=context;self.session_factory=session_factory
         state.setdefault('meshcore',None);self.session=None;self.connected=False;self.error='';self.name='';self.model='';self.owner='';self.contacts={};self.devices=[];self.scanning=False;self.announces={};self.receive_count=0;self.receive_status='No private messages received';self.revision=0;self._acks={};self._pending={};self._subscriptions=[]
+        self._advert_write = None
         self._battery = None
         self._battery_attempt = None
         self._battery_pending = False
@@ -128,6 +129,28 @@ class FamilyMeshCore:
             if not self.connected:raise ValueError('Connect a MeshCore companion first')
             async with self.session._lock:await self._contacts()
         return self._submit(operation())
+    def advertise(self, flood, authorize):
+        if type(flood) is not bool:raise ValueError('Choose a local or flood advert')
+        authorize()
+        return self._submit(self._advertise(flood,authorize,self.revision,self.owner))
+
+    async def _advertise(self,flood,authorize,revision,owner):
+        session=self.session
+        if not session or not self.connected:raise ValueError('Connect a MeshCore companion first')
+        async with session._lock:
+            with self.lock:
+                config=self.state.get('meshcore') or {}
+                if session is not self.session or revision!=self.revision or owner!=self.owner or not owner or not self.connected or config.get('publicKey')!=owner:
+                    raise ValueError('Companion identity changed')
+                authorize()
+                permit=(b'\x07\x01' if flood else b'\x07',revision,owner,authorize,session)
+                self._advert_write=permit
+            try:
+                session._payload(await session._client.commands.send_advert(flood=flood))
+            finally:
+                with self.lock:
+                    if self._advert_write is permit:self._advert_write=None
+
     def request_battery(self):
         with self.lock:
             session = self.session
@@ -166,6 +189,13 @@ class FamilyMeshCore:
             if payload == b'\x14':  # Local battery query, no RF.
                 if not self.connected or not self.owner or config.get('publicKey') != self.owner:
                     raise ValueError('Companion identity is not approved')
+                return write()
+            if command==7:
+                permit=self._advert_write
+                if (not permit or payload not in (b'\x07',b'\x07\x01') or
+                    permit[:3]!=(payload,revision,self.owner) or not self.connected or
+                    config.get('publicKey')!=self.owner or permit[4] is not self.session):raise ValueError('Guardian advert request is not active')
+                permit[3]()
                 return write()
             if command==10:
                 if not self.connected or not config.get('receive'):raise ValueError('Receiving is disabled')

@@ -621,6 +621,10 @@ final class FamilyModel: ObservableObject {
         return await perform("peer", payload)
     }
 
+    func advertiseMeshCore(flood: Bool) async -> Bool {
+        await perform("meshcore_advert", ["token": token, "flood": flood])
+    }
+
     func saveMeshCore(_ config: [String: Any]) async -> Bool {
         await perform("meshcore_config", ["token": token, "config": config])
     }
