@@ -68,7 +68,10 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         let top = max(form.frame.minY, app.frame.minY + 100) + 32
         XCTAssertGreaterThan(bottom - top, 80, app.debugDescription)
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        let start = origin.withOffset(CGVector(dx: form.frame.midX - app.frame.minX, dy: bottom - app.frame.minY))
+        // The suggestion/accessory bar is above XCUI's reported keyboard frame.
+        // Start well inside the exposed form instead of at that frame's edge.
+        let startY = top + (bottom - top) * 0.65
+        let start = origin.withOffset(CGVector(dx: form.frame.midX - app.frame.minX, dy: startY - app.frame.minY))
         let end = origin.withOffset(CGVector(dx: form.frame.midX - app.frame.minX, dy: top - app.frame.minY))
         start.press(forDuration: 0.1, thenDragTo: end)
     }
