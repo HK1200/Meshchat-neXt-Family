@@ -795,6 +795,9 @@ struct FamilyHome: View {
                         }
                         if state.rnode?.enabled == true, let radio = state.rnodeRuntime {
                             Text(radio.online ? "RNode connected" : radio.connecting ? "Connecting to RNode" : "RNode offline")
+                            if !radio.error.isEmpty {
+                                Text(radio.error).font(.caption).foregroundStyle(.secondary)
+                            }
                             if let battery = radio.battery {
                                 let level = Int((battery.percent / 25).rounded()) * 25
                                 Label("RNode battery: \(Int(battery.percent))%", systemImage: battery.state == "charging" ? "battery.100.bolt" : "battery.\(level)")

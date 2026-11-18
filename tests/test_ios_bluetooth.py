@@ -41,6 +41,27 @@ class RadioBoundaryTests(unittest.TestCase):
             ])
         return '{"ok":true}'
 
+    def test_reconnect_keeps_failure_until_radio_is_ready(self):
+        target = ADDRESS.upper()
+        with bluetooth._error_lock:
+            bluetooth._errors[target] = "Bluetooth connection timed out"
+        self.addCleanup(lambda: bluetooth._errors.pop(target, None))
+        session = bluetooth.NativeSession("ble", ADDRESS)
+        session.start()
+        self.assertEqual(bluetooth.last_error(ADDRESS), "Bluetooth connection timed out")
+        self.assertEqual(session.poll(0).kind, "ready")
+        self.assertEqual(bluetooth.last_error(ADDRESS), "")
+        session.close()
+
+    def test_python_connection_deadline_is_retained_before_native_timeout(self):
+        self.events = []
+        self.addCleanup(lambda: bluetooth._errors.pop(ADDRESS.upper(), None))
+        with patch.object(bluetooth.time, "monotonic", side_effect=[0, 181]):
+            with self.assertRaisesRegex(TimeoutError, "connection timed out"):
+                bluetooth.Serial("familyble://" + ADDRESS)
+        self.assertEqual(bluetooth.last_error(ADDRESS), "Bluetooth radio connection timed out")
+        self.assertEqual(self.operations[-1]["operation"], "close")
+
     def test_serial_write_preserves_interleaved_receive_bytes(self):
         radio = bluetooth.Serial("familyble://" + ADDRESS)
         self.assertTrue(radio.is_open)
@@ -69,6 +90,7 @@ class RadioBoundaryTests(unittest.TestCase):
         self.native.request = lambda text: json.dumps({"events": [{"type": "closed"}]}) if json.loads(text)["operation"] == "poll" else self.request(text)
         with self.assertRaises(ConnectionError):
             radio.write(b"private packet")
+        self.assertEqual(bluetooth.last_error(ADDRESS), "Bluetooth disconnected")
         self.assertFalse(radio.is_open)
         self.assertEqual(sum(c["operation"] == "send" for c in self.operations), 1)
         radio.close()

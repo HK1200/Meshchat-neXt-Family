@@ -23,8 +23,6 @@ def request(operation, **values):
         if values.get("id"):
             with _error_lock:_errors[values["id"].upper()] = str(result["error"])
         raise ConnectionError(result["error"])
-    if operation == "open":
-        with _error_lock:_errors.pop(values["id"].upper(), None)
     return result
 
 
@@ -104,7 +102,10 @@ class Serial:
                 if event and event.kind in ("closed", "error"):
                     raise ConnectionError(event.detail or "Bluetooth disconnected")
             raise TimeoutError("Bluetooth radio connection timed out")
-        except BaseException:
+        except BaseException as error:
+            if isinstance(error, Exception):
+                with _error_lock:
+                    _errors[self.session.address] = str(error) or "Bluetooth connection failed"
             self.session.close()
             raise
 
@@ -115,7 +116,10 @@ class Serial:
             self.buffer.extend(event.data)
         elif event.kind in ("error", "closed"):
             self.is_open = False
-            raise ConnectionError(event.detail or "Bluetooth disconnected")
+            detail = event.detail or "Bluetooth disconnected"
+            with _error_lock:
+                _errors[self.session.address] = detail
+            raise ConnectionError(detail)
 
     @property
     def in_waiting(self):

@@ -10,6 +10,7 @@ import re
 import secrets
 import socket
 import subprocess
+import sys
 import threading
 
 ROOT = Path(__file__).resolve().parent
@@ -55,33 +56,37 @@ class Registrar:
                 raw, address = self.socket.recvfrom(65535)
             except socket.timeout:
                 continue
-            lines = raw.decode("utf-8", "replace").split("\r\n")
-            if not lines[0].startswith("REGISTER "):
-                continue
-            headers = []
-            values = {}
-            for line in lines[1:]:
-                if ":" in line:
-                    name, value = line.split(":", 1)
-                    headers.append((name.lower(), value.strip()))
-                    values[name.lower()] = value.strip()
-            accepted = self.authorized(values.get("authorization", ""))
-            response = ["SIP/2.0 " + ("200 OK" if accepted else "401 Unauthorized")]
-            for name, value in headers:
-                if name in ("via", "from", "to", "call-id", "cseq"):
-                    if name == "to" and ";tag=" not in value:
-                        value += ";tag=family-test"
-                    response.append(name + ": " + value)
-            if accepted:
-                self.authenticated = True
-                self.unregistered |= values.get("expires") == "0" or "expires=0" in values.get("contact", "")
-                if "contact" in values:
-                    response.append("Contact: " + values["contact"])
-                response.append("Expires: " + ("0" if self.unregistered else "3600"))
-            else:
-                response.append('WWW-Authenticate: Digest realm="' + self.realm + '", nonce="' + self.nonce + '", algorithm=MD5, qop="auth"')
-            response.extend(("Content-Length: 0", "", ""))
-            self.socket.sendto("\r\n".join(response).encode(), address)
+            self.handle(raw, address)
+
+    def handle(self, raw, address):
+        lines = raw.decode("utf-8", "replace").split("\r\n")
+        if not lines[0].startswith("REGISTER "):
+            return
+        headers = []
+        values = {}
+        for line in lines[1:]:
+            if ":" in line:
+                name, value = line.split(":", 1)
+                headers.append((name.lower(), value.strip()))
+                values[name.lower()] = value.strip()
+        accepted = self.authorized(values.get("authorization", ""))
+        response = ["SIP/2.0 " + ("200 OK" if accepted else "401 Unauthorized")]
+        for name, value in headers:
+            if name in ("via", "from", "to", "call-id", "cseq"):
+                if name == "to" and ";tag=" not in value:
+                    value += ";tag=family-test"
+                response.append(name + ": " + value)
+        if accepted:
+            self.authenticated = True
+            self.unregistered |= values.get("expires") == "0" or "expires=0" in values.get("contact", "")
+            if "contact" in values:
+                response.append("Contact: " + values["contact"])
+            response.append("Expires: " + ("0" if self.unregistered else "3600"))
+        else:
+            response.append('WWW-Authenticate: Digest realm="' + self.realm + '", nonce="' + self.nonce + '", algorithm=MD5, qop="auth"')
+        response.extend(("Content-Length: 0", "", ""))
+        self.socket.sendto("\r\n".join(response).encode(), address)
+
 
 
 def main():
@@ -114,6 +119,7 @@ def main():
         if result.returncode or not registrar.authenticated or not registrar.unregistered:
             raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
         print("Native SIP registration authenticated, then unregistered cleanly")
+        subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=120)
     finally:
         registrar.close()
         if booted_here:

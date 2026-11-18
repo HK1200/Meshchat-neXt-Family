@@ -218,8 +218,13 @@ class Radio:
                 percent = interface.get_battery_percent()
                 if state in ('charging', 'charged', 'discharging') and type(percent) in (int, float) and 0 <= percent <= 100:
                     battery = {'percent': percent, 'state': state}
-            return {'online':online,'battery':battery,'error':self.error or native_error or ('; '.join(str(e.get('description','Radio error')) for e in getattr(interface,'hw_errors',[])) if enabled and interface else '') or (getattr(getattr(interface,'ble',None),'last_error','') if enabled and interface and not interface.online else ''),
-                    'connecting':bool(enabled and not self.error and (not interface or not interface.online)),
+            failure = ''
+            if enabled and not online:
+                hardware_error = '; '.join(str(e.get('description', 'Radio error')) for e in getattr(interface, 'hw_errors', []))
+                ble_error = getattr(getattr(interface, 'ble', None), 'last_error', '')
+                failure = self.error or native_error or hardware_error or ble_error
+            return {'online':online,'battery':battery,'error':failure,
+                    'connecting':bool(enabled and not online and not failure),
                     'reported':({k:getattr(interface,attribute,None) for k,attribute in [('frequencyHz','r_frequency'),('bandwidthHz','r_bandwidth'),('powerDbm','r_txpower'),('sf','r_sf'),('cr','r_cr')]} if interface else None),
                     'readyToTransmit':getattr(interface,'interface_ready',False) if interface else False,
                     'queuedPackets':getattr(interface,'_family_pacer').pending() if interface and hasattr(interface,'_family_pacer') else len(getattr(interface,'packet_queue',[])) if interface else 0,
