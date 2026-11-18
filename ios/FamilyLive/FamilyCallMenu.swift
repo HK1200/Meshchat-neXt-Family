@@ -41,7 +41,7 @@ struct FamilyCallMenu: View {
                     Text("Automatic uses available methods and recent call measurements. Methods without recent measurements are marked accordingly.")
                 }
             } else { ContentUnavailableView("Contact is no longer approved", systemImage: "person.crop.circle.badge.xmark") }
-            if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+            if !family.error.isEmpty { Text(family.error).foregroundStyle(.red).accessibilityIdentifier("call-method-error") }
         }
         .navigationTitle("Call")
         .onAppear { visible = true }

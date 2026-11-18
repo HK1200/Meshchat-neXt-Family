@@ -35,6 +35,13 @@ final class FamilyLiveUITests: XCTestCase {
         let password = "simulator guardian test"
         fill(app.secureTextFields["setup-password"], password)
         fill(app.secureTextFields["setup-confirmation"], password)
+        if localTest {
+            let internet = app.switches["setup-internet-peers"]
+            XCTAssertTrue(internet.waitForExistence(timeout: 10))
+            for _ in 0..<3 where !internet.isHittable { app.swipeUp() }
+            if internet.value as? String == "1" { internet.tap() }
+            XCTAssertEqual(internet.value as? String, "0", "Local messaging tests must not enable public peers")
+        }
         app.buttons["Create guardian access"].tap()
 
         let guardian = app.buttons["guardian-settings"]

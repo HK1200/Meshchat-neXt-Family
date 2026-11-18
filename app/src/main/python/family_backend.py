@@ -13,7 +13,7 @@ DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
-    'call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
+    'ios_network_context','call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts','meshcore_advert',
@@ -43,6 +43,7 @@ _meshcore=None
 _voice=None
 _voice_deferred=False
 _network_context="unknown"
+_ios_network_context_epoch=-1
 _tcp_network_context=""
 _room_names=None
 _location_outbound={}
@@ -900,7 +901,7 @@ def background(lock_guardian=True):
     if _meshcore and _meshcore.rooms:_meshcore.rooms.close_view()
 
 def request(raw):
-    global _client_lookup,_ios_voice_foreground,_ios_voice_presence_epoch
+    global _client_lookup,_ios_voice_foreground,_ios_voice_presence_epoch,_ios_network_context_epoch
     try:
         if len(raw)>14_000_000:raise ValueError('Request is too large')
         data=json.loads(raw);action=data.get('action');p=data.get('payload',{})
@@ -920,6 +921,15 @@ def request(raw):
             if _meshcore and _state.get('setup_complete'):
                 _meshcore.request_battery()
             return json.dumps({'ok': True})
+        if action=='ios_network_context':
+            if not _tcp_only:raise ValueError('This network context is only available on iOS')
+            context=p.get('context');generation=p.get('generation')
+            if (not isinstance(context,str) or not re.fullmatch(r'ios:(?:wifi|cellular|wired|other|unknown)(?::[0-9a-f]{12})?',context)
+                or type(generation) is not int or generation<0):raise ValueError('Invalid iOS network context')
+            with _lock:
+                if generation>_ios_network_context_epoch:
+                    _ios_network_context_epoch=generation;set_network_context(context)
+            return json.dumps({'ok':True})
         if action=='call_routes':
             return json.dumps({'ok':True,'callRoutes':json.loads(call_routes(json.dumps(p.get('sip',{}))))})
         if action=='runtime_diagnostics':

@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import CoreLocation
+import CryptoKit
 import BackgroundTasks
 import Network
 import OSLog
@@ -116,6 +117,25 @@ final class FamilyModel: ObservableObject {
     private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?
+    private var networkGeneration = 0
+    private var sentNetworkGeneration = -1
+    private var networkQualityContext: String {
+        guard let path = lastNetworkPath else { return "ios:unknown" }
+        let kind = path.usesInterfaceType(.wifi) ? "wifi" : path.usesInterfaceType(.cellular) ? "cellular" :
+            path.usesInterfaceType(.wiredEthernet) ? "wired" : "other"
+        let gateways = path.gateways.map { String(describing: $0) }.sorted().joined(separator: "|")
+        let digest = SHA256.hash(data: Data(gateways.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
+        return "ios:\(kind):\(digest)"
+    }
+
+    private func syncNetworkQualityContext() async {
+        guard state?.setupComplete == true, sentNetworkGeneration != networkGeneration else { return }
+        let generation = networkGeneration
+        do {
+            _ = try await request("ios_network_context", ["context": networkQualityContext, "generation": generation])
+            if generation == networkGeneration { sentNetworkGeneration = generation }
+        } catch { /* A later foreground refresh retries this local metadata update. */ }
+    }
     private var token = ""
 
     init() {
@@ -128,13 +148,16 @@ final class FamilyModel: ObservableObject {
     private func networkPathChanged(_ path: NWPath) async {
         let previous = lastNetworkPath
         lastNetworkPath = path
-        guard let previous, previous != path, path.status == .satisfied, state?.setupComplete == true else { return }
+        if previous != path { networkGeneration += 1 }
+        await syncNetworkQualityContext()
+        guard let previous, previous != path, lastNetworkPath == path, path.status == .satisfied, state?.setupComplete == true else { return }
         FamilySIP.shared.networkChanged()
         _ = try? await request("tcp_network_changed")
     }
 
     func refresh() async {
         do {
+            await syncNetworkQualityContext()
             let updated = try await request("status")
             if let session = updated.tcpSession, session != state?.tcpSession {
                 checkMailboxOnNextRefresh()
@@ -195,8 +218,8 @@ final class FamilyModel: ObservableObject {
 
     func rankedCallRoutes(contactID: Int) async -> [FamilyCallRoute] {
         let sip = FamilySIP.shared
-        let context = lastNetworkPath?.usesInterfaceType(.wifi) == true ? "ios:wifi" :
-            lastNetworkPath?.usesInterfaceType(.cellular) == true ? "ios:cellular" : "ios:other"
+        await syncNetworkQualityContext()
+        let context = networkQualityContext
         do {
             let reply = try await request("call_routes", ["sip": [
                 "enabled": sip.account?.enabled == true, "registered": sip.isRegistered, "quality_context": context
@@ -586,6 +609,7 @@ final class FamilyModel: ObservableObject {
             let reply = try await request(action, payload)
             if reply.setupComplete != nil {
                 state = reply
+                FamilySIP.shared.reconcile(reply)
                 updateVoice(reply.voice)
             }
             self.error = ""

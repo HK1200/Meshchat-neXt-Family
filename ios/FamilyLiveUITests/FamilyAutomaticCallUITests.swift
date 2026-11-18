@@ -56,6 +56,7 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         XCTAssertTrue(method.exists)
         XCTAssertTrue(method.label.contains("Automatic") || (method.value as? String)?.contains("Automatic") == true,
                       method.debugDescription)
+        XCTAssertFalse(app.staticTexts["call-method-error"].exists, "An unavailable method must not hide a runtime/packaging failure")
         XCTAssertFalse(start.isEnabled, "An unregistered SIP account must not place a call")
     }
 
