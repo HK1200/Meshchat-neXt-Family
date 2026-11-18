@@ -68,13 +68,19 @@ jobs:
           bash ios/prepare-live.sh
           python3 ios/build-sip.py iphonesimulator "$(uname -m)"
           python3 - <<'PYTHON'
-          import json, os, subprocess
+          import json, os, re, subprocess
           inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"], text=True))
-          devices = [device for group in inventory["devices"].values() for device in group
-                     if device["name"].startswith(os.environ["DEVICE_FAMILY"])]
-          if not devices:
+          candidates = []
+          for runtime, devices in inventory["devices"].items():
+              match = re.fullmatch(r"com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+(?:-\d+)*)", runtime)
+              if match:
+                  version = tuple(map(int, match[1].split("-")))
+                  candidates.extend((version, device["udid"]) for device in devices
+                                    if version >= (17,) and device.get("isAvailable")
+                                    and device["name"].startswith(os.environ["DEVICE_FAMILY"] + " "))
+          if not candidates:
               raise RuntimeError("No matching iOS simulator is installed")
-          subprocess.run(["python3", "ios/test-sip-registration.py", devices[0]["udid"]], check=True)
+          subprocess.run(["python3", "ios/test-sip-registration.py", max(candidates)[1]], check=True)
           PYTHON
   simulator:
     if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_device }}
