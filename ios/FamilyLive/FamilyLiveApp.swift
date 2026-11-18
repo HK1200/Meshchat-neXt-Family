@@ -713,11 +713,7 @@ final class FamilyModel: ObservableObject {
     }
 
     private func saveContacts(_ contacts: [FamilyContact]) async -> Bool {
-        let values = contacts.map { contact in
-            var value: [String: Any] = ["id": contact.id, "name": contact.name, "addresses": contact.addresses]
-            value["identityPublicKey"] = contact.identityPublicKey
-            return value
-        }
+        let values = contacts.map(\.saveValue)
         return await perform("contacts", ["token": token, "contacts": values])
     }
 

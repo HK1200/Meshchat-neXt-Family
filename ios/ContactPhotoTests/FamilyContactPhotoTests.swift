@@ -5,6 +5,18 @@ import UIKit
 import UniformTypeIdentifiers
 
 final class FamilyContactPhotoTests: XCTestCase {
+    func testPhotoSurvivesContactSaveRequestAndReload() throws {
+        let picture = "data:image/png;base64,aGVsbG8="
+        var contact = FamilyContact(id: 7, name: "Test", addresses: ["lxmf": String(repeating: "a", count: 32)], photo: picture)
+        let data = try JSONSerialization.data(withJSONObject: contact.saveValue)
+        let restored = try JSONDecoder().decode(FamilyContact.self, from: data)
+        XCTAssertEqual(restored.photo, picture)
+        XCTAssertEqual(restored.addresses, contact.addresses)
+        contact.photo = nil
+        let removed = try JSONSerialization.data(withJSONObject: contact.saveValue)
+        XCTAssertNil(try JSONDecoder().decode(FamilyContact.self, from: removed).photo)
+    }
+
     func testCropPrivacyAndLimits() throws {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

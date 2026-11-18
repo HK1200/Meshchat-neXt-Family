@@ -6,6 +6,13 @@ struct FamilyContact: Codable, Identifiable, Sendable {
     let addresses: [String: String]
     var identityPublicKey: String?
     var photo: String?
+
+    var saveValue: [String: Any] {
+        var value: [String: Any] = ["id": id, "name": name, "addresses": addresses]
+        value["identityPublicKey"] = identityPublicKey
+        value["photo"] = photo
+        return value
+    }
 }
 
 struct FamilyMessageAttachment: Decodable, Sendable {
