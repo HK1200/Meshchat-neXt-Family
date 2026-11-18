@@ -3,6 +3,10 @@ name: Family iOS simulator
 on:
   workflow_dispatch:
     inputs:
+      sip_signaling:
+        description: Run only the private native SIP registration and call-signaling tests
+        type: boolean
+        default: false
       rmap:
         description: Run live messaging through rmap.world on both simulators
         type: boolean
@@ -44,8 +48,35 @@ permissions:
   contents: read
 
 jobs:
+  native-sip:
+    if: ${{ inputs.sip_signaling }}
+    name: ${{ matrix.device }} native SIP
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test private native SIP signaling
+        env:
+          DEVICE_FAMILY: ${{ matrix.device }}
+        run: |
+          python3 ios/build-sip.py iphonesimulator "$(uname -m)"
+          python3 - <<'PYTHON'
+          import json, os, subprocess
+          inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"], text=True))
+          devices = [device for group in inventory["devices"].values() for device in group
+                     if device["name"].startswith(os.environ["DEVICE_FAMILY"])]
+          if not devices:
+              raise RuntimeError("No matching iOS simulator is installed")
+          subprocess.run(["python3", "ios/test-sip-registration.py", devices[0]["udid"]], check=True)
+          PYTHON
   simulator:
-    if: ${{ !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_device }}
+    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_device }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 35
