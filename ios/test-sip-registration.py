@@ -90,6 +90,31 @@ class Registrar:
 
 
 
+def verify_registration(simulator, executable):
+    for attempt in range(2):
+        registrar = Registrar()
+        try:
+            try:
+                result = subprocess.run(["xcrun", "simctl", "spawn", simulator, str(executable), registrar.user,
+                                         str(registrar.port), registrar.password], capture_output=True, text=True, timeout=70)
+            except subprocess.TimeoutExpired as error:
+                diagnostic = error.stderr or b""
+                if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode("utf-8", "replace")
+                if attempt == 0 and not registrar.authenticated and "fixture entered" not in diagnostic:
+                    print("Retrying one simulator launch before the native SIP fixture entered")
+                    subprocess.run(["xcrun", "simctl", "spawn", simulator, "launchctl", "print", "system"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True, timeout=30)
+                    continue
+                raise RuntimeError(f"Native SIP startup timed out; authenticated={registrar.authenticated}, "
+                                   f"unregistered={registrar.unregistered}; " + diagnostic) from None
+            if result.returncode or not registrar.authenticated or not registrar.unregistered:
+                raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
+            print("Native SIP registration authenticated, then unregistered cleanly")
+            return
+        finally:
+            registrar.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("simulator")
@@ -112,23 +137,10 @@ def main():
     if booted_here:
         subprocess.run(["xcrun", "simctl", "boot", args.simulator], check=True)
     subprocess.run(["xcrun", "simctl", "bootstatus", args.simulator, "-b"], check=True, timeout=180)
-    registrar = Registrar()
     try:
-        # Capture output so the private test password never appears in a command log.
-        try:
-            result = subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(executable), registrar.user,
-                                     str(registrar.port), registrar.password], capture_output=True, text=True, timeout=70)
-        except subprocess.TimeoutExpired as error:
-            diagnostic = error.stderr or b""
-            if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode("utf-8", "replace")
-            raise RuntimeError(f"Native SIP startup timed out; authenticated={registrar.authenticated}, "
-                               f"unregistered={registrar.unregistered}; " + diagnostic) from None
-        if result.returncode or not registrar.authenticated or not registrar.unregistered:
-            raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
-        print("Native SIP registration authenticated, then unregistered cleanly")
+        verify_registration(args.simulator, executable)
         subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=160)
     finally:
-        registrar.close()
         if booted_here:
             subprocess.run(["xcrun", "simctl", "shutdown", args.simulator], check=False)
 
