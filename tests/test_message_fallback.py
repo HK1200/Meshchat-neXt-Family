@@ -207,3 +207,41 @@ def test_accepted_meshcore_message_waits_for_receipt_then_falls_back(backend, mo
         assert row["service"] == "reticulum"
         assert row["fallbackFrom"]["status"] == "Not confirmed · MeshCore receipt timed out"
         assert backend._dispatch_message.call_count == 2
+
+
+@pytest.mark.parametrize("method", ["reticulum", "meshcore"])
+def test_explicit_offline_method_does_not_silently_use_other_service(backend, method):
+    if method == "reticulum":
+        backend._peer.online = False
+    else:
+        backend._meshcore.connected = False
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": method, "text": "Keep my manual selection",
+    }})))
+    assert not reply["ok"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()
+
+
+def test_explicit_meshcore_multibyte_overflow_is_rejected_before_enqueue(backend):
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": "meshcore", "text": "é" * 81,
+    }})))
+    assert not reply["ok"]
+    assert "160 UTF-8 bytes" in reply["error"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["auto", "reticulum", "meshcore"])
+def test_attachment_route_validation_happens_before_enqueue(backend, method):
+    if method != "meshcore":
+        backend._peer.online = False
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": method, "text": "Private file", "attachments": [
+            {"name": "test.txt", "data": "dGVzdA=="}],
+    }})))
+    assert not reply["ok"]
+    assert "Files and photos require" in reply["error"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()

@@ -240,6 +240,7 @@ struct FamilyReply: Decodable, Sendable {
     var error: String?
     var token: String?
     var callRoutes: [String: [FamilyCallRoute]]?
+    var messageRoutes: [String: [FamilyMessageRoute]]?
     var setupComplete: Bool?
     var tcpOnline: Bool?
     var tcpConnections: [FamilyTCPConnection]?

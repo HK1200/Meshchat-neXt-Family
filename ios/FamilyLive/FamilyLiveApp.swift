@@ -558,7 +558,7 @@ final class FamilyModel: ObservableObject {
         }
     }
 
-    func send(contactID: Int, text: String, files: [FamilyDraftAttachment] = []) async -> Bool {
+    func send(contactID: Int, text: String, files: [FamilyDraftAttachment] = [], method: FamilyMessageMethod = .automatic) async -> Bool {
         sendsStarting += 1
         if !finishingSend {
             sendTask = UIApplication.shared.beginBackgroundTask(withName: "Finish Family message") { [weak self] in
@@ -569,7 +569,7 @@ final class FamilyModel: ObservableObject {
             sendsStarting -= 1
             finishSendIfIdle()
         }
-        var payload: [String: Any] = ["contactId": contactID, "text": text, "method": "auto"]
+        var payload: [String: Any] = ["contactId": contactID, "text": text, "method": method.rawValue]
         if !files.isEmpty {
             payload["attachments"] = files.map { file -> [String: String] in
                 var item = ["name": file.name, "data": file.data.base64EncodedString()]
@@ -1333,19 +1333,23 @@ struct FamilyChat: View {
     @State private var submitting = false
     @State private var attachments: [FamilyDraftAttachment] = []
     @State private var confirmLargeSend = false
+    @State private var method: FamilyMessageMethod = .automatic
 
     private var currentContact: FamilyContact? {
         family.state?.contacts?.first { $0.id == contact.id }
     }
 
-    private var canSend: Bool {
-        guard let currentContact else { return false }
-        return ["lxmf", "meshcore"].contains { service in
-            currentContact.addresses[service]?.isEmpty == false && currentContact.addresses[service] == contact.addresses[service]
-        }
+    private var messagePolicy: FamilyMessagePolicy {
+        FamilyMessagePolicy(original: contact, current: currentContact,
+                            routes: family.state?.messageRoutes?[String(contact.id)] ?? [],
+                            text: draft, hasAttachments: !attachments.isEmpty)
     }
 
+    private var canSend: Bool { messagePolicy.issue(for: method) == nil }
+
     private func send() {
+        guard canSend else { family.error = messagePolicy.issue(for: method) ?? "Messaging is unavailable."; return }
+        let selectedMethod = method
         let text = draft
         let photos = attachments.filter { $0.image != nil }
         let first = attachments.filter { $0.image == nil } + Array(photos.prefix(1))
@@ -1358,7 +1362,12 @@ struct FamilyChat: View {
         Task {
             defer { submitting = false }
             for (index, batch) in batches.enumerated() {
-                guard await family.send(contactID: contact.id, text: index == 0 ? text : "", files: batch) else { return }
+                let textToSend = index == 0 ? text : ""
+                let policy = FamilyMessagePolicy(original: contact, current: currentContact,
+                    routes: family.state?.messageRoutes?[String(contact.id)] ?? [],
+                    text: textToSend, hasAttachments: !batch.isEmpty)
+                if let issue = policy.issue(for: selectedMethod) { family.error = issue; return }
+                guard await family.send(contactID: contact.id, text: textToSend, files: batch, method: selectedMethod) else { return }
                 if index == 0, draft == text { draft = "" }
                 let sent = Set(batch.map(\.id))
                 attachments.removeAll { sent.contains($0.id) }
@@ -1390,9 +1399,23 @@ struct FamilyChat: View {
                 }
             }
             Section {
+                Picker("Connection", selection: $method) {
+                    Text("Automatic").tag(FamilyMessageMethod.automatic)
+                    ForEach(messagePolicy.approved) { route in Text(route.name).tag(route) }
+                    if method != .automatic && !messagePolicy.approved.contains(method) {
+                        Text("\(method.name) · approval changed").tag(method)
+                    }
+                }
+                .accessibilityIdentifier("message-method")
+                .accessibilityValue(method.name)
+                .disabled(submitting)
                 TextField("Message", text: $draft).accessibilityIdentifier("message-draft")
+                if method == .meshcore || (method == .automatic && messagePolicy.available == [.meshcore]) {
+                    Text("\(draft.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count) of 160 bytes")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 FamilyAttachmentComposer(attachments: $attachments)
-                    .disabled(!canSend || submitting)
+                    .disabled(messagePolicy.approved.isEmpty || submitting)
                 Button("Send") {
                     if attachments.reduce(0, { $0 + $1.data.count }) > 900_000 { confirmLargeSend = true }
                     else { send() }
@@ -1401,8 +1424,9 @@ struct FamilyChat: View {
                 .confirmationDialog("This attachment may exceed the recipient’s limit", isPresented: $confirmLargeSend) {
                     Button("Send anyway") { send() }
                 }
-                if currentContact?.addresses["lxmf"] == nil && currentContact?.addresses["meshcore"] == nil { Text("This contact has no approved messaging address.") }
-                else if !canSend { Text("Contact approval changed. Reopen this conversation.") }
+                if let issue = messagePolicy.issue(for: method) {
+                    Text(issue).font(.footnote).accessibilityIdentifier("message-method-status")
+                }
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG
                 if family.testNotificationDelivered { Text("Message notification delivered") }

@@ -48,6 +48,10 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         let contact = app.buttons[name]
         XCTAssertTrue(contact.waitForExistence(timeout: 15))
         contact.tap()
+        let messageMethod = app.descendants(matching: .any).matching(identifier: "message-method").firstMatch
+        XCTAssertTrue(messageMethod.waitForExistence(timeout: 10))
+        XCTAssertTrue(messageMethod.label.contains("Automatic") || (messageMethod.value as? String)?.contains("Automatic") == true,
+                      messageMethod.debugDescription)
         let call = app.buttons["Call \(name)"]
         XCTAssertTrue(call.waitForExistence(timeout: 10))
         call.tap()

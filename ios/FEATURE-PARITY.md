@@ -12,18 +12,18 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 | Contact photos | Present; actual iPad save/relaunch passed | None identified in this audit |
 | Multiple editable TCP peers | Present | Physical network-change/reconnect matrix needs repetition |
 | Reticulum messages and signed identity | Present; simulator live suites passed | Repeat real-peer device tests with new build |
-| Delivery fallback across services | Shared runtime exists | Audit native send selection and automatic fallback coverage |
+| Message connection selection and fallback | Native Automatic / Reticulum / MeshCore chooser implemented locally; shared Automatic fallback retained | Six native policy tests and a private chooser UI assertion await Xcode; 23 backend fallback/validation tests passed |
 | Files and photos | Native picker, quality presets, receive/export exist | Physical Files/Photos permission and size-boundary checks |
 | Reticulum calls | Present; native audio and call-state tests passed | Actual speaker/headset, interruptions, lock during active call |
 | SIP calls | Present; native registration/signaling fixtures passed | Actual two-way audio, lock, account reconnect |
-| Native iOS call controls | Present in build 150.1; seven tests per simulator passed | Real CallKit answer/mute/hangup and interruption checks |
+| Native iOS call controls and route chooser | Present in build 181.1; Automatic/manual chooser and seven system-call tests passed on both simulators | Real CallKit answer/mute/hangup, interruption and route-quality checks |
 | RNode Bluetooth | Present | Physical pairing, LoRa traffic and reconnect; preserve known profile |
 | MeshCore Bluetooth | Present | Physical pairing, private messages and reconnect |
 | MeshCore adverts | Native controls implemented | Guardian-only local/flood controls pushed in 4674f0f; seven mock-radio authorization tests passed; physical RF check pending |
-| Radio batteries | RNode home indicator present; MeshCore home indicator added locally | Native threshold/unknown-reading tests added locally; real readings still need hardware |
+| Radio batteries | RNode and MeshCore home indicators present in build 181.1 | Native threshold/unknown-reading tests passed on both simulators; real readings still need hardware |
 | Family location sharing | Present; guardian policy, duration controls | MeshCore recipient-picker fix pushed in 37ca36b; native tests added; background sampling remains platform-limited |
 | Last-updated map pin details | Present | Device visual check at multiple zoom levels |
-| Offline maps | Verified regional download and automatic selection pushed through d383b21; MBTiles import/remove present | Published pack hash/size/database and disposable import/read/remove passed; automatic multi-pack fallback added locally; physical GPS/download UI pending |
+| Offline maps | Verified regional download and automatic selection pushed through d383b21; MBTiles import/remove present | Published pack hash/size/database and disposable import/read/remove passed; automatic multi-pack fallback passed local/native checks and is in build 181.1; physical GPS/download UI pending |
 | Rooms and Relay Chat | Reticulum and MeshCore room QR/editor/discovery wired in 58fc411 | Native service/byte-limit tests added; real MeshCore room check pending; App Store exclusion remains |
 | Day/night theme | Present | Check keyboard contrast and system bars on phone/tablet |
 | Permission checkup | Present | Recheck new call controls and platform-specific explanations |
@@ -33,15 +33,23 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 
 ## Verification baseline
 
-Source ab234d9: unsigned archive 44341891121 passed; four simulator suites
-44341897414 passed after infrastructure retries; both native SIP suites
-44341904130 passed. Separate iPad Family Mailbox Test upgraded to 150.1 with
-saved state preserved exactly. Regular Family 47.6 remained unchanged.
+Runtime source 95678f0: device archive 44393301612 and App Store archive
+44393313308 passed. Test-only repairs through 57bc35b passed all four simulator
+jobs in 44409535896, including the Automatic call chooser, message round trip,
+21 native tests per live simulator, and private SIP registration/call signaling.
+All 133 local tests passed after the message chooser/backend validation work below;
+the six new native policy tests and chooser UI assertion still require Xcode.
+
+Separate iPad Family Mailbox Test upgraded to 181.1 with four contacts, eight
+messages, settings and permanent Reticulum identity files unchanged; launch and
+process-relaunch checks passed. Regular Family 47.6 and neXt preview 82.1 stayed
+unchanged. No Apple enrollment has been performed.
 
 ## Next local work
 
-1. Finish native runs for d383b21 (contact/location, verified downloads, both room services and adverts).
-2. Review/test local home battery and automatic multi-region tile fallback patch.
-3. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
-4. Automatic fallback is shared with Android; long text above MeshCore's byte budget is excluded and remains a known cross-platform limitation.
-5. Real APNs verification still needs eventual enrollment and a deployed provider; no enrollment has been performed.
+1. Run Xcode for the message-method chooser and its native policy/UI tests after owner review.
+2. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
+3. Audit Bluetooth background receive-to-notification handling; a connected radio is not proof of a posted notification.
+4. Background location currently samples only while Family is active; it is not continuous locked-screen sharing.
+5. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
+6. Real APNs verification still needs eventual enrollment and a deployed provider; offline mailbox background checks remain opportunistic.
