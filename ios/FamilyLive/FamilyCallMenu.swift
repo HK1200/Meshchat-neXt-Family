@@ -15,7 +15,7 @@ struct FamilyCallMenu: View {
         method == "auto" ? routes.first(where: \.automatic) : routes.first { $0.service == method }
     }
     private var refreshKey: String {
-        "\(sip.registered)|\(family.state?.voice?.ready == true)|\(family.state?.tcpSession ?? "")"
+        "\(sip.isRegistered)|\(family.state?.voice?.ready == true)|\(family.state?.tcpSession ?? "")"
     }
 
     var body: some View {

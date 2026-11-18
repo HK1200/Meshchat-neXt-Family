@@ -187,10 +187,12 @@ final class FamilyLiveUITests: XCTestCase {
             voice.tap()
             let ready = app.staticTexts["reticulum-voice-ready"]
             let callingForm = app.collectionViews["guardian-settings-form"]
-            // Showing the toggle at the bottom does not expose the status row below it.
-            for _ in 0..<2 where !ready.exists {
-                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
-                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.56))
+            // SwiftUI virtualizes off-screen rows. Search in both directions using
+            // short drags; two full drags can scroll past the ready row on iPhone.
+            for delta in Array(repeating: -0.12, count: 4) + Array(repeating: 0.12, count: 8) {
+                if ready.waitForExistence(timeout: 1) { break }
+                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65 + delta))
                 start.press(forDuration: 0.05, thenDragTo: end)
             }
             XCTAssertTrue(ready.waitForExistence(timeout: 35), app.debugDescription)

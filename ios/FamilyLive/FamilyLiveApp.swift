@@ -199,7 +199,7 @@ final class FamilyModel: ObservableObject {
             lastNetworkPath?.usesInterfaceType(.cellular) == true ? "ios:cellular" : "ios:other"
         do {
             let reply = try await request("call_routes", ["sip": [
-                "enabled": sip.account?.enabled == true, "registered": sip.registered, "quality_context": context
+                "enabled": sip.account?.enabled == true, "registered": sip.isRegistered, "quality_context": context
             ]])
             return (reply.callRoutes?[String(contactID)] ?? []).filter { ["sip", "reticulum"].contains($0.service) }
         } catch { self.error = error.localizedDescription; return [] }
@@ -1345,9 +1345,10 @@ struct FamilyChat: View {
         Form {
             if let approved = currentContact, approved.addresses["sip"]?.isEmpty == false {
                 Section {
-                    NavigationLink("Call \(approved.name)", systemImage: "phone.fill") {
+                    NavigationLink {
                         FamilyCallMenu(family: family, contactID: approved.id)
-                    }.disabled(sip.active || family.state?.voice?.active == true)
+                    } label: { Label("Call \(approved.name)", systemImage: "phone.fill") }
+                    .disabled(sip.active || family.state?.voice?.active == true)
                 }
             }
             Section("Messages") {
@@ -1389,9 +1390,9 @@ struct FamilyChat: View {
             if let currentContact, currentContact.addresses["lxst"]?.isEmpty == false,
                family.state?.voice?.ready == true {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink("Call", systemImage: "phone.fill") {
+                    NavigationLink {
                         FamilyCallMenu(family: family, contactID: currentContact.id)
-                    }
+                    } label: { Label("Call", systemImage: "phone.fill") }
                 }
             }
         }

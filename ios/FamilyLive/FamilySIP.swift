@@ -38,6 +38,8 @@ final class FamilySIP: ObservableObject {
          kSecAttrAccount as String: "account"]
     }
 
+    var isRegistered: Bool { registered }
+
     private init() {
         var request = query
         request[kSecReturnData as String] = true
