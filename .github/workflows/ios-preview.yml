@@ -65,6 +65,7 @@ jobs:
         env:
           DEVICE_FAMILY: ${{ matrix.device }}
         run: |
+          bash ios/prepare-live.sh
           python3 ios/build-sip.py iphonesimulator "$(uname -m)"
           python3 - <<'PYTHON'
           import json, os, subprocess
