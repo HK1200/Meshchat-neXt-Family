@@ -38,6 +38,7 @@ class CallPeer(registration.Registrar):
         self.call_id = secrets.token_hex(12)
         self.branch = 'z9hG4bK' + secrets.token_hex(8)
         self.timer = None
+        self.packet_summaries = []
         super().__init__()
 
     def close(self):
@@ -48,6 +49,7 @@ class CallPeer(registration.Registrar):
 
     def handle(self, raw, address):
         first, values = parse(raw)
+        self.packet_summaries = (self.packet_summaries + [first])[-8:]
         if first.startswith('REGISTER '):
             super().handle(raw, address)
             if self.mode == 'incoming' and self.authenticated and not self.unregistered and not self.invited:
@@ -109,7 +111,9 @@ def main(simulator):
             result = subprocess.run(['xcrun', 'simctl', 'spawn', simulator, str(executable), peer.user,
                                      str(peer.port), peer.password, mode], capture_output=True, text=True, timeout=50)
             if result.returncode or not (peer.authenticated and peer.unregistered and peer.call_complete):
-                raise RuntimeError(f'Native SIP {mode} signaling failed: ' + result.stdout + result.stderr)
+                raise RuntimeError(f'Native SIP {mode} signaling failed: ' + result.stdout + result.stderr +
+                                   f' fixture authenticated={peer.authenticated}, invited={peer.invited}, '
+                                   f'completed={peer.call_complete}, unregistered={peer.unregistered}, packets={peer.packet_summaries}')
             print(f'Native SIP {mode} signaling completed and unregistered cleanly')
         finally:
             peer.close()

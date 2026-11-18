@@ -9,7 +9,8 @@ static bool registered, seen_call, ended, failed;
 static const char *mode;
 static char target[128];
 static void received(const char *state, const char *peer, int code) {
-    (void)peer; (void)code;
+    (void)peer;
+    fprintf(stderr, "Private SIP signaling event: %s (%d)\n", state, code);
     if (!strcmp(state, "registered") && !registered) {
         registered = true;
         if (!strcmp(mode, "outgoing")) family_sip_command(1, target);
