@@ -13,7 +13,7 @@ DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
-    'device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
+    'call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts','meshcore_advert',
@@ -920,6 +920,8 @@ def request(raw):
             if _meshcore and _state.get('setup_complete'):
                 _meshcore.request_battery()
             return json.dumps({'ok': True})
+        if action=='call_routes':
+            return json.dumps({'ok':True,'callRoutes':json.loads(call_routes(json.dumps(p.get('sip',{}))))})
         if action=='runtime_diagnostics':
             _authorized(p)
             import sys,traceback

@@ -43,6 +43,16 @@ struct FamilyMailbox: Decodable, Sendable {
     let status: String
 }
 
+struct FamilyCallRoute: Decodable, Sendable, Identifiable {
+    let service: String
+    let automatic: Bool
+    let reason: String
+    let measured: Bool
+    let score: Double
+    var id: String { service }
+    var name: String { service == "sip" ? "SIP" : "Reticulum" }
+}
+
 struct FamilyPeer: Decodable, Sendable {
     let host: String
     let port: Int
@@ -229,6 +239,7 @@ struct FamilyReply: Decodable, Sendable {
     let ok: Bool
     var error: String?
     var token: String?
+    var callRoutes: [String: [FamilyCallRoute]]?
     var setupComplete: Bool?
     var tcpOnline: Bool?
     var tcpConnections: [FamilyTCPConnection]?

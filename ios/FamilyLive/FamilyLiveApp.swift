@@ -193,11 +193,23 @@ final class FamilyModel: ObservableObject {
         _ = await perform("voice_config", ["token": token, "enabled": enabled])
     }
 
-    func call(_ contact: FamilyContact) async {
+    func rankedCallRoutes(contactID: Int) async -> [FamilyCallRoute] {
+        let sip = FamilySIP.shared
+        let context = lastNetworkPath?.usesInterfaceType(.wifi) == true ? "ios:wifi" :
+            lastNetworkPath?.usesInterfaceType(.cellular) == true ? "ios:cellular" : "ios:other"
+        do {
+            let reply = try await request("call_routes", ["sip": [
+                "enabled": sip.account?.enabled == true, "registered": sip.registered, "quality_context": context
+            ]])
+            return (reply.callRoutes?[String(contactID)] ?? []).filter { ["sip", "reticulum"].contains($0.service) }
+        } catch { self.error = error.localizedDescription; return [] }
+    }
+
+    func call(_ contact: FamilyContact, automatic: Bool = false) async {
         guard !FamilySIP.shared.active else { error = "End the SIP call first."; return }
         guard await microphoneAllowed(), !FamilySIP.shared.active else { return }
         voiceError = ""
-        _ = await perform("voice_call", ["contactId": contact.id])
+        _ = await perform("voice_call", ["contactId": contact.id, "automatic": automatic])
     }
 
     func answerCall() async {
@@ -1333,8 +1345,8 @@ struct FamilyChat: View {
         Form {
             if let approved = currentContact, approved.addresses["sip"]?.isEmpty == false {
                 Section {
-                    Button("Call \(approved.name) using SIP", systemImage: "phone.fill") {
-                        Task { await sip.call(approved) }
+                    NavigationLink("Call \(approved.name)", systemImage: "phone.fill") {
+                        FamilyCallMenu(family: family, contactID: approved.id)
                     }.disabled(sip.active || family.state?.voice?.active == true)
                 }
             }
@@ -1377,7 +1389,9 @@ struct FamilyChat: View {
             if let currentContact, currentContact.addresses["lxst"]?.isEmpty == false,
                family.state?.voice?.ready == true {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Call", systemImage: "phone") { Task { await family.call(currentContact) } }
+                    NavigationLink("Call", systemImage: "phone.fill") {
+                        FamilyCallMenu(family: family, contactID: currentContact.id)
+                    }
                 }
             }
         }
