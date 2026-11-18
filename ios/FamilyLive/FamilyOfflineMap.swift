@@ -171,6 +171,7 @@ private final class OfflineTileOverlay: MKTileOverlay {
     private let layer: String
     private let hasImportedMaps: Bool
 
+    @MainActor
     init(family: FamilyModel, layer: String, pack: FamilyMapPack?) {
         self.family = family
         self.layer = layer
