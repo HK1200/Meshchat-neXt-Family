@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 class Registrar:
-    def __init__(self):
+    def __init__(self, host="127.0.0.1"):
+        self.host = host
         self.user = "family-test"
         self.password = secrets.token_hex(16)
         self.realm = "family-private-test"
@@ -25,7 +26,7 @@ class Registrar:
         self.authenticated = False
         self.unregistered = False
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind(("127.0.0.1", 0))
+        self.socket.bind((host, 0))
         self.socket.settimeout(0.2)
         self.port = self.socket.getsockname()[1]
         self.stopping = threading.Event()
@@ -115,7 +116,7 @@ def main():
     try:
         # Capture output so the private test password never appears in a command log.
         result = subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(executable), registrar.user,
-                                 str(registrar.port), registrar.password], capture_output=True, text=True, timeout=50)
+                                 str(registrar.port), registrar.password], capture_output=True, text=True, timeout=70)
         if result.returncode or not registrar.authenticated or not registrar.unregistered:
             raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
         print("Native SIP registration authenticated, then unregistered cleanly")

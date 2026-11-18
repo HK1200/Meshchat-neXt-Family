@@ -28,13 +28,13 @@ static void received(const char *state, const char *peer, int code) {
     }
 }
 int main(int argc, char **argv) {
-    if (argc != 5) return 2;
+    if (argc != 6) return 2;
     setvbuf(stdout, NULL, _IONBF, 0);
     mode = argv[4];
     if (strcmp(mode, "incoming") && strcmp(mode, "outgoing")) return 2;
-    snprintf(target, sizeof(target), "sip:private-peer@127.0.0.1:%d", atoi(argv[2]));
+    snprintf(target, sizeof(target), "sip:private-peer@%s:%d", argv[5], atoi(argv[2]));
     alarm(45);
-    int result = family_sip_run(argv[1], "127.0.0.1", atoi(argv[2]), argv[3], received);
+    int result = family_sip_run(argv[1], argv[5], atoi(argv[2]), argv[3], received);
     if (result || !registered || !seen_call || !ended || failed) {
         fprintf(stderr, "SIP %s signaling failed (%d, registered=%d, call=%d, ended=%d, failed=%d)\n", mode, result, registered, seen_call, ended, failed);
         return 1;

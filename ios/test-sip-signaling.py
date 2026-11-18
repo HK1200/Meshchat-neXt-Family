@@ -41,7 +41,7 @@ class CallPeer(registration.Registrar):
         self.branch = 'z9hG4bK' + secrets.token_hex(8)
         self.timer = None
         self.packet_summaries = []
-        super().__init__()
+        super().__init__(host=media_host)
 
     def close(self):
         if self.timer:
@@ -76,7 +76,7 @@ class CallPeer(registration.Registrar):
         elif first.startswith('SIP/2.0 ') and self.mode == 'incoming' and values.get('call-id') == self.call_id:
             if int(first.split()[1]) >= 300:
                 packet = [f'ACK {self.contact} SIP/2.0',
-                          f'Via: SIP/2.0/UDP 127.0.0.1:{self.port};branch={self.branch}',
+                          f'Via: SIP/2.0/UDP {self.host}:{self.port};branch={self.branch}',
                           'Max-Forwards: 70', 'From: ' + values['from'], 'To: ' + values['to'],
                           'Call-ID: ' + self.call_id, 'CSeq: 1 ACK', 'Content-Length: 0', '', '']
                 self.socket.sendto('\r\n'.join(packet).encode(), address)
@@ -86,10 +86,10 @@ class CallPeer(registration.Registrar):
         body = (f'v=0\r\no=private-peer 1 1 IN IP4 {self.media_host}\r\ns=Private signaling test\r\n'
                 f'c=IN IP4 {self.media_host}\r\nt=0 0\r\nm=audio 40000 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=sendrecv\r\n')
         packet = [f'INVITE {self.contact} SIP/2.0',
-                  f'Via: SIP/2.0/UDP 127.0.0.1:{self.port};branch={self.branch}',
-                  'Max-Forwards: 70', f'From: <sip:private-peer@127.0.0.1:{self.port}>;tag=private-peer',
-                  f'To: <sip:{self.user}@127.0.0.1:{self.port}>', 'Call-ID: ' + self.call_id,
-                  'CSeq: 1 INVITE', f'Contact: <sip:private-peer@127.0.0.1:{self.port}>',
+                  f'Via: SIP/2.0/UDP {self.host}:{self.port};branch={self.branch}',
+                  'Max-Forwards: 70', f'From: <sip:private-peer@{self.host}:{self.port}>;tag=private-peer',
+                  f'To: <sip:{self.user}@{self.host}:{self.port}>', 'Call-ID: ' + self.call_id,
+                  'CSeq: 1 INVITE', f'Contact: <sip:private-peer@{self.host}:{self.port}>',
                   'Content-Type: application/sdp', f'Content-Length: {len(body.encode())}', '', body]
         self.socket.sendto('\r\n'.join(packet).encode(), address)
 
@@ -118,7 +118,7 @@ def main(simulator):
         try:
             try:
                 result = subprocess.run(['xcrun', 'simctl', 'spawn', simulator, str(executable), peer.user,
-                                         str(peer.port), peer.password, mode], capture_output=True, text=True, timeout=65)
+                                         str(peer.port), peer.password, mode, peer.host], capture_output=True, text=True, timeout=65)
             except subprocess.TimeoutExpired as error:
                 # Preserve diagnostics without printing the throwaway password arguments.
                 stdout = error.stdout or b''

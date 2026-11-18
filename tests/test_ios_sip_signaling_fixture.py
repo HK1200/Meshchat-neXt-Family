@@ -36,7 +36,8 @@ def wait_complete(peer):
 
 
 def test_private_incoming_invite_decline_and_ack():
-    peer = sip.CallPeer('incoming', media_host='192.0.2.20')
+    peer = sip.CallPeer('incoming')
+    peer.media_host = '192.0.2.20'
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
             client.bind(('127.0.0.1', 0))
