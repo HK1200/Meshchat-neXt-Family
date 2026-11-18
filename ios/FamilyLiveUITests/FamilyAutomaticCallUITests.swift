@@ -6,7 +6,8 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--isolated-family-test"]
         app.launchEnvironment["FAMILY_TEST_PROFILE"] = UUID().uuidString
-        // Only the private loopback interface is configured. No public peer or SIP account.
+        // Guardian fields are prefilled with loopback; all internet peers are disabled below.
+        // No SIP account is configured, and this test never presses Call.
         app.launchEnvironment["FAMILY_TEST_HOST"] = "127.0.0.1"
         app.launchEnvironment["FAMILY_TEST_PORT"] = "9"
         app.launch()
@@ -14,6 +15,11 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         let password = "private-call-ui-test"
         fill(app.secureTextFields["setup-password"], password)
         fill(app.secureTextFields["setup-confirmation"], password)
+        let internet = app.switches["setup-internet-peers"]
+        XCTAssertTrue(internet.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !internet.isHittable { app.swipeUp() }
+        if internet.value as? String == "1" { internet.tap() }
+        XCTAssertEqual(internet.value as? String, "0", "The private UI test must disable all internet peers before setup")
         app.buttons["Create guardian access"].tap()
         let guardian = app.buttons["guardian-settings"]
         XCTAssertTrue(guardian.waitForExistence(timeout: 20))

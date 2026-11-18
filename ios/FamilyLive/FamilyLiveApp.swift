@@ -906,6 +906,7 @@ struct FamilyHome: View {
                         SecureField("Confirm guardian password", text: $confirmation)
                             .accessibilityIdentifier("setup-confirmation")
                         Toggle("Enable Reticulum internet peers", isOn: $enableInternetPeers)
+                            .accessibilityIdentifier("setup-internet-peers")
                         NavigationLink("Review device permissions") { FamilyPermissionCheckup() }
                         Button("Create guardian access") {
                             Task {
