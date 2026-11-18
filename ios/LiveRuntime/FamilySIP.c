@@ -142,10 +142,18 @@ int family_sip_run(const char *user, const char *host, int port,
     pthread_mutex_unlock(&lock);
     int err = 0;
     char aor[768];
+#ifdef FAMILY_SIP_TEST_DIAGNOSTICS
+    /* Only the private simulator fixture compiles this diagnostic path. */
+    log_enable_stdout(true);
+    log_enable_debug(false);
+    log_enable_info(true);
+    dbg_init(DBG_INFO, 0);
+#else
     log_enable_stdout(false);
     log_enable_debug(false);
     log_enable_info(false);
     dbg_init(DBG_EMERG, 0);
+#endif
     err = libre_init();
     if (err) goto finish;
     re_thread_async_init(2);
