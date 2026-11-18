@@ -29,6 +29,7 @@ static void received(const char *state, const char *peer, int code) {
 }
 int main(int argc, char **argv) {
     if (argc != 5) return 2;
+    setvbuf(stdout, NULL, _IONBF, 0);
     mode = argv[4];
     if (strcmp(mode, "incoming") && strcmp(mode, "outgoing")) return 2;
     snprintf(target, sizeof(target), "sip:private-peer@127.0.0.1:%d", atoi(argv[2]));

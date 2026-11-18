@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -31,8 +32,9 @@ def parse(raw):
 
 
 class CallPeer(registration.Registrar):
-    def __init__(self, mode):
+    def __init__(self, mode, media_host="127.0.0.1"):
         self.mode = mode
+        self.media_host = media_host
         self.invited = False
         self.call_complete = False
         self.call_id = secrets.token_hex(12)
@@ -81,8 +83,8 @@ class CallPeer(registration.Registrar):
                 self.call_complete = True
 
     def invite(self, address):
-        body = ('v=0\r\no=private-peer 1 1 IN IP4 127.0.0.1\r\ns=Private signaling test\r\n'
-                'c=IN IP4 127.0.0.1\r\nt=0 0\r\nm=audio 40000 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=sendrecv\r\n')
+        body = (f'v=0\r\no=private-peer 1 1 IN IP4 {self.media_host}\r\ns=Private signaling test\r\n'
+                f'c=IN IP4 {self.media_host}\r\nt=0 0\r\nm=audio 40000 RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=sendrecv\r\n')
         packet = [f'INVITE {self.contact} SIP/2.0',
                   f'Via: SIP/2.0/UDP 127.0.0.1:{self.port};branch={self.branch}',
                   'Max-Forwards: 70', f'From: <sip:private-peer@127.0.0.1:{self.port}>;tag=private-peer',
@@ -105,11 +107,25 @@ def main(simulator):
                '-framework', 'Security', '-framework', 'SystemConfiguration', '-lresolv', '-lz', '-o', str(executable)]
     subprocess.run(command, check=True)
     subprocess.run(['codesign', '--force', '--sign', '-', str(executable)], check=True)
+    # Baresip selects RTP's local interface from the SDP connection address.
+    # Use the host's routable local address, not its excluded loopback interface.
+    # UDP connect only asks the kernel for a source address; it sends no packet.
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
+        route.connect(('192.0.2.1', 9))
+        media_host = route.getsockname()[0]
     for mode in ['incoming', 'outgoing']:
-        peer = CallPeer(mode)
+        peer = CallPeer(mode, media_host=media_host)
         try:
-            result = subprocess.run(['xcrun', 'simctl', 'spawn', simulator, str(executable), peer.user,
-                                     str(peer.port), peer.password, mode], capture_output=True, text=True, timeout=50)
+            try:
+                result = subprocess.run(['xcrun', 'simctl', 'spawn', simulator, str(executable), peer.user,
+                                         str(peer.port), peer.password, mode], capture_output=True, text=True, timeout=65)
+            except subprocess.TimeoutExpired as error:
+                # Preserve diagnostics without printing the throwaway password arguments.
+                stdout = error.stdout or b''
+                stderr = error.stderr or b''
+                result = subprocess.CompletedProcess([], 124,
+                    stdout.decode('utf-8', 'replace') if isinstance(stdout, bytes) else stdout,
+                    stderr.decode('utf-8', 'replace') if isinstance(stderr, bytes) else stderr)
             if result.returncode or not (peer.authenticated and peer.unregistered and peer.call_complete):
                 raise RuntimeError(f'Native SIP {mode} signaling failed: ' + result.stdout + result.stderr +
                                    f' fixture authenticated={peer.authenticated}, invited={peer.invited}, '

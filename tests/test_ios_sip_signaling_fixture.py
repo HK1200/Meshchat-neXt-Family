@@ -36,7 +36,7 @@ def wait_complete(peer):
 
 
 def test_private_incoming_invite_decline_and_ack():
-    peer = sip.CallPeer('incoming')
+    peer = sip.CallPeer('incoming', media_host='192.0.2.20')
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
             client.bind(('127.0.0.1', 0))
@@ -48,6 +48,7 @@ def test_private_incoming_invite_decline_and_ack():
             body = raw.split(b'\r\n\r\n', 1)[1]
             assert int(values['content-length']) == len(body)
             assert b'a=rtpmap:0 PCMU/8000' in body
+            assert b'c=IN IP4 192.0.2.20\r\n' in body
             response = ['SIP/2.0 486 Busy Here']
             for name in ['via', 'from', 'to', 'call-id', 'cseq']:
                 response.append(name + ': ' + values[name] + (';tag=native-client' if name == 'to' else ''))

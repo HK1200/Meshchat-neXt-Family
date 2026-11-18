@@ -119,7 +119,7 @@ def main():
         if result.returncode or not registrar.authenticated or not registrar.unregistered:
             raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
         print("Native SIP registration authenticated, then unregistered cleanly")
-        subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=120)
+        subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=160)
     finally:
         registrar.close()
         if booted_here:
