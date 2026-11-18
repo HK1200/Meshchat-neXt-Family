@@ -171,9 +171,17 @@ final class FamilyMapDownload: NSObject, ObservableObject, @preconcurrency CLLoc
                 defer { try? FileManager.default.removeItem(at: folder) }
                 let named = folder.appendingPathComponent("PNW and southern BC detail.mbtiles")
                 try FileManager.default.moveItem(at: temporary, to: named)
+                let previousMaps = Set(family.state?.mapPacks?.map(\.id) ?? [])
                 let installed = await family.importMap(named)
                 guard attempt == id else { return }
-                status = installed ? "Offline map ready." : family.error
+                guard installed else { status = family.error; return }
+                guard let added = family.state?.mapPacks?.first(where: { !previousMaps.contains($0.id) }) else {
+                    status = "Map added. Choose it under Map layer."
+                    return
+                }
+                let selected = await family.selectMap(added.id)
+                guard attempt == id else { return }
+                status = selected ? "Detailed offline map ready." : family.error
             } catch is CancellationError { if attempt == id { status = "Map download canceled. Existing maps were kept." } }
             catch {
                 guard attempt == id else { return }
