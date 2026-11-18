@@ -169,24 +169,29 @@ private final class FamilyMapAnnotation: MKPointAnnotation {
 private final class OfflineTileOverlay: MKTileOverlay {
     private weak var family: FamilyModel?
     private let layer: String
+    private let hasImportedMaps: Bool
 
     init(family: FamilyModel, layer: String, pack: FamilyMapPack?) {
         self.family = family
         self.layer = layer
+        hasImportedMaps = family.state?.mapPacks?.isEmpty == false
         super.init(urlTemplate: nil)
         minimumZ = pack?.minZoom ?? (layer == "whatcom" ? 13 : 5)
-        maximumZ = pack?.maxZoom ?? (layer == "whatcom" ? 15 : 9)
+        maximumZ = max(family.state?.mapPacks?.map(\.maxZoom).max() ?? 0, pack?.maxZoom ?? (layer == "whatcom" ? 15 : 9))
         canReplaceMapContent = layer != "whatcom"
     }
 
     override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, Error?) -> Void) {
-        if layer == "pnw" || layer == "whatcom" {
+        if !hasImportedMaps && (layer == "pnw" || layer == "whatcom") {
             result(BundledMapTiles.shared?.tile(z: path.z, x: path.x, y: path.y), nil)
             return
         }
         let layer = layer
         Task { [weak family] in
-            do { result(try await family?.mapTile(id: layer, x: path.x, y: path.y, z: path.z), nil) }
+            do {
+                let downloaded = try await family?.mapTile(id: layer, x: path.x, y: path.y, z: path.z)
+                result(downloaded ?? BundledMapTiles.shared?.tile(z: path.z, x: path.x, y: path.y), nil)
+            }
             catch { result(nil, error) }
         }
     }

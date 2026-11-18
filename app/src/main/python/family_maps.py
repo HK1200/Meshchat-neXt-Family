@@ -60,6 +60,14 @@ class MapStore:
             if not row or len(row[0])>2*1024**2:return None
             return {'mime':image_type(row[0]),'bytes':row[0]}
         except Exception:return None
+    def best_tile(self,preferred,z,x,y):
+        with self.lock:
+            packs=sorted(self.state['map_packs'],key=lambda p:(p['maxZoom'],p['id']==preferred),reverse=True)
+        for pack in packs:
+            if type(z) is int and pack['minZoom']<=z<=pack['maxZoom']:
+                tile=self.tile(pack['id'],z,x,y)
+                if tile:return tile
+        return None
     def select(self,key):
         with self.lock:
             if key!='pnw' and not any(p['id']==key for p in self.state['map_packs']):raise ValueError('Unknown map region')

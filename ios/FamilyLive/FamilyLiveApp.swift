@@ -684,7 +684,7 @@ final class FamilyModel: ObservableObject {
     }
 
     func mapTile(id: String, x: Int, y: Int, z: Int) async throws -> Data? {
-        try await request("map_tile", ["mapId": id, "x": x, "y": y, "z": z]).tile
+        try await request("map_tile", ["mapId": id, "x": x, "y": y, "z": z, "bestAvailable": true]).tile
     }
 
     func importMap(_ source: URL) async -> Bool {
@@ -934,11 +934,11 @@ struct FamilyHome: View {
                             if !radio.error.isEmpty {
                                 Text(radio.error).font(.caption).foregroundStyle(.secondary)
                             }
-                            if let battery = radio.battery {
-                                let level = Int((battery.percent / 25).rounded()) * 25
+                            if radio.online, let battery = radio.battery, let level = FamilyBatteryLevel.rnode(battery.percent) {
                                 Label("RNode battery: \(Int(battery.percent))%", systemImage: battery.state == "charging" ? "battery.100.bolt" : "battery.\(level)")
                             }
                         }
+                        if let radio = state.meshcore, radio.enabled { FamilyMeshCoreStatus(radio: radio) }
                         #if DEBUG
                         if ProcessInfo.processInfo.arguments.contains("--isolated-family-test"), state.rrcIdentity != nil {
                             Text("Relay Chat ready").accessibilityIdentifier("relay-chat-ready")

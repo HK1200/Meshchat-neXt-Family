@@ -1031,7 +1031,7 @@ def request(raw):
                 with _lock:
                     if p.get('mapId')!=_state.get('active_map') or not _state['location_policy']['mapEnabled']:
                         raise ValueError('This map is not active')
-                tile=_maps.tile(p.get('mapId'),p.get('z'),p.get('x'),p.get('y'))
+                tile=(_maps.best_tile if p.get('bestAvailable') is True else _maps.tile)(p.get('mapId'),p.get('z'),p.get('x'),p.get('y'))
                 return json.dumps({'ok':True,'tile':base64.b64encode(tile['bytes']).decode('ascii') if tile else None})
             _authorized(p)
             if action=='map_import_prepare':
