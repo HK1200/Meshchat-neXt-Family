@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct FamilyOfflineMapSettings: View {
     @ObservedObject var family: FamilyModel
+    @StateObject private var download = FamilyMapDownload()
     @State private var choosingFile = false
     @State private var importing = false
     @State private var removal: FamilyMapPack?
@@ -11,6 +12,20 @@ struct FamilyOfflineMapSettings: View {
     var body: some View {
         Form {
             if family.unlocked {
+                Section("Download a detailed offline map") {
+                    Button("Find my region and download", systemImage: "location") {
+                        download.findRegion { download.download(into: family) }
+                    }.disabled(download.busy || importing)
+                    Button("Download PNW and southern BC · 104 MiB", systemImage: "arrow.down.circle") {
+                        download.download(into: family)
+                    }.disabled(download.busy || importing)
+                    if download.busy {
+                        ProgressView(download.status)
+                        Button("Cancel download", role: .cancel) { download.cancel() }
+                    } else if !download.status.isEmpty { Text(download.status) }
+                    Text("Your location is used on this device to choose a region. It is not sent to the map server or shared with contacts. A download uses internet access. Existing maps stay installed.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 Section("Map layer") {
                     layer("Apple Maps", id: "apple")
                     layer("Pacific Northwest and southern BC", id: "pnw")
@@ -23,7 +38,7 @@ struct FamilyOfflineMapSettings: View {
                 }
                 Section {
                     Button("Import MBTiles map", systemImage: "square.and.arrow.down") { choosingFile = true }
-                        .disabled(importing)
+                        .disabled(importing || download.busy)
                     if importing { ProgressView("Importing map") }
                     if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 } footer: {
@@ -32,6 +47,8 @@ struct FamilyOfflineMapSettings: View {
             }
         }
         .navigationTitle("Offline maps")
+        .onDisappear { download.cancel() }
+        .onChange(of: family.unlocked) { if !family.unlocked { download.cancel() } }
         .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.data]) { result in
             switch result {
             case .success(let url):
@@ -62,7 +79,7 @@ struct FamilyOfflineMapSettings: View {
                 if family.state?.activeMap == id { Image(systemName: "checkmark").accessibilityLabel("Selected") }
             }
         }
-        .disabled(importing)
+        .disabled(importing || download.busy)
         .accessibilityIdentifier("offline-map-layer-\(id)")
         .accessibilityValue(family.state?.activeMap == id ? "Selected" : "")
     }

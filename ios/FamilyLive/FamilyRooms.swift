@@ -33,6 +33,9 @@ struct FamilyRoomChat: View {
             if !room.readOnly {
                 Section {
                     TextField("Message", text: $draft)
+                    if let limit = runtime?.maxMessageBytes {
+                        Text("\(draft.utf8.count) of \(limit) bytes").font(.caption)
+                    }
                     Button("Send") {
                         let text = draft
                         sending = true
@@ -43,7 +46,7 @@ struct FamilyRoomChat: View {
                             sending = false
                         }
                     }
-                    .disabled(sending || runtime?.joined != true || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(sending || runtime?.joined != true || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ((runtime?.maxMessageBytes).map { draft.utf8.count > $0 } ?? false))
                 }
             }
         }
@@ -63,7 +66,7 @@ struct FamilyRoomSettings: View {
                 ForEach(family.state?.rooms ?? []) { room in
                     NavigationLink(room.name) { FamilyRoomEditor(family: family, room: room) }
                 }
-                NavigationLink("Approve a Relay Chat room") { FamilyRoomEditor(family: family, room: nil) }
+                NavigationLink("Approve a room") { FamilyRoomEditor(family: family, room: nil) }
             }
         }
         .navigationTitle("Approved rooms")
@@ -75,6 +78,7 @@ struct FamilyRoomEditor: View {
     let room: FamilyRoom?
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var service = "reticulum"
     @State private var hub = ""
     @State private var channel = ""
     @State private var password = ""
@@ -111,8 +115,24 @@ struct FamilyRoomEditor: View {
                             }
                         }
                     }
+                    Picker("Room service", selection: $service) {
+                        Text("Reticulum Relay Chat").tag("reticulum")
+                        Text("MeshCore room server").tag("meshcore")
+                    }.disabled(room != nil)
                     TextField("Room display name", text: $name)
-                    TextField("Relay Chat hub address", text: $hub).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField(service == "meshcore" ? "MeshCore room-server key" : "Relay Chat hub address", text: $hub).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if service == "meshcore" {
+                        Button("Refresh discovered room servers") {
+                            Task { _ = await family.discoverMeshCoreRooms() }
+                        }
+                        ForEach(family.state?.meshcore?.roomAnnounces ?? []) { found in
+                            Button(found.name) {
+                                hub = found.key
+                                if name.isEmpty { name = String(found.name.prefix(32)) }
+                            }
+                        }
+                    }
+                    if service == "reticulum" {
                     if let hubs = family.state?.rrcHubs, !hubs.isEmpty {
                         Menu("Choose a discovered hub") {
                             ForEach(hubs) { found in
@@ -135,6 +155,7 @@ struct FamilyRoomEditor: View {
                         }
                     }
                     TextField("Channel name", text: $channel).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }
                     SecureField(room?.hasPassword == true ? "New password (optional)" : "Room password (optional)", text: $password)
                     if room?.hasPassword == true { Toggle("Remove stored password", isOn: $clearPassword) }
                     Toggle("Read only", isOn: $readOnly)
@@ -144,13 +165,13 @@ struct FamilyRoomEditor: View {
                         busy = true
                         Task {
                             if await family.saveRoom(id: room?.id, name: name, hub: hub, channel: channel,
-                                                     readOnly: readOnly, password: password, clearPassword: clearPassword) {
+                                                     readOnly: readOnly, password: password, clearPassword: clearPassword, service: service) {
                                 dismiss()
                             }
                             busy = false
                         }
                     }
-                    .disabled(busy || name.isEmpty || hub.isEmpty || channel.isEmpty || (clearPassword && !password.isEmpty))
+                    .disabled(busy || name.isEmpty || hub.isEmpty || (service == "reticulum" && channel.isEmpty) || (clearPassword && !password.isEmpty))
                     if room != nil {
                         Button("Remove room approval", role: .destructive) { confirmRemoval = true }.disabled(busy)
                     }
@@ -183,6 +204,7 @@ struct FamilyRoomEditor: View {
         }
         .onAppear {
             if let room {
+                service = room.service ?? "reticulum"
                 name = room.name
                 hub = room.key
                 channel = room.channel
@@ -203,6 +225,7 @@ struct FamilyRoomEditor: View {
 
     private func importCard(_ text: String) async {
         guard let card = await family.readRoomCard(text) else { return }
+        service = card.service
         name = card.name.isEmpty ? card.channel : card.name
         hub = card.key
         channel = card.channel

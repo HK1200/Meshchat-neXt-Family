@@ -638,8 +638,8 @@ final class FamilyModel: ObservableObject {
         do {
             let result = try await request("qr_parse", ["token": token, "text": text, "target": "room"])
             guard epoch == guardianEpoch, unlocked else { return nil }
-            guard let card = result.roomCard, card.service == "reticulum" else {
-                error = "Choose a Reticulum Relay Chat room code."
+            guard let card = result.roomCard, ["reticulum", "meshcore"].contains(card.service) else {
+                error = "Choose a Reticulum or MeshCore room code."
                 return nil
             }
             error = ""
@@ -651,12 +651,16 @@ final class FamilyModel: ObservableObject {
     }
 
     func saveRoom(id: Int?, name: String, hub: String, channel: String,
-                  readOnly: Bool, password: String, clearPassword: Bool) async -> Bool {
+                  readOnly: Bool, password: String, clearPassword: Bool, service: String = "reticulum") async -> Bool {
         var room: [String: Any] = ["name": name, "key": hub, "channel": channel,
-                                    "service": "reticulum", "readOnly": readOnly]
+                                    "service": service, "readOnly": readOnly]
         room["id"] = id
         return await perform("room_save", ["token": token, "room": room, "approved": true,
                                            "password": password, "clearPassword": clearPassword])
+    }
+
+    func discoverMeshCoreRooms() async -> Bool {
+        await perform("room_discover", ["token": token, "service": "meshcore"])
     }
 
     func discoverRooms(_ hub: String) async -> Bool {

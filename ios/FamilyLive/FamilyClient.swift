@@ -101,6 +101,7 @@ struct FamilyRoomCard: Decodable, Sendable {
 }
 
 struct FamilyRoom: Decodable, Identifiable, Sendable {
+    let service: String?
     let id: Int
     let name: String
     let key: String
@@ -118,6 +119,7 @@ struct FamilyRoomMessage: Decodable, Identifiable, Sendable {
 }
 
 struct FamilyRoomState: Decodable, Sendable {
+    let maxMessageBytes: Int?
     let joined: Bool
     let status: String
     let error: String?
@@ -200,6 +202,12 @@ struct FamilyMailboxRoute: Codable, Sendable {
 }
 
 struct FamilyMeshCoreState: Decodable, Sendable {
+    struct RoomAnnounce: Decodable, Identifiable, Sendable {
+        let name: String
+        let key: String
+        var id: String { key }
+    }
+    let roomAnnounces: [RoomAnnounce]?
     struct Config: Decodable, Sendable {
         let enabled: Bool
         let receive: Bool
