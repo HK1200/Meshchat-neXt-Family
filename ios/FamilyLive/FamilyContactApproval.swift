@@ -75,6 +75,7 @@ struct FamilyContactApproval: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
         }
+        .accessibilityIdentifier("contact-approval-form")
         .navigationTitle("Approve contact")
         .toolbar { Button("Back to settings") { dismiss() } }
         .sheet(isPresented: $showingQRScanner) {

@@ -27,12 +27,14 @@ struct FamilyCallMenu: View {
                     Picker("Connection", selection: $method) {
                         Text("Automatic").tag("auto")
                         ForEach(routes) { route in Text(route.name).tag(route.service) }
-                    }
+                    }.accessibilityIdentifier("call-method")
+                    .accessibilityValue(method == "auto" ? "Automatic" : routes.first(where: { $0.service == method })?.name ?? method)
                     if loading { ProgressView("Checking calling methods") }
                     else if let selected {
                         Text("\(selected.name) · \(selected.reason)").font(.footnote)
                     } else { Text("No automatic calling method is available. You can try another method or send a message.") }
                     Button("Call \(contact.name)", systemImage: "phone.fill") { startCall() }
+                        .accessibilityIdentifier("start-approved-call")
                         .buttonStyle(.borderedProminent)
                         .disabled(loading || starting || selected == nil || family.hasCallInProgress)
                 } footer: {
