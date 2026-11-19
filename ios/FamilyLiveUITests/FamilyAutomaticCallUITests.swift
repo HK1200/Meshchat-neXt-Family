@@ -37,9 +37,16 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         fill(sip, "sip:test@example.invalid")
         let save = app.buttons["Save approved contact"]
         let form = app.descendants(matching: .any).matching(identifier: "contact-approval-form").firstMatch
-        // A full-height swipe can start on the software keyboard on iPhone.
-        // Drag only the exposed form; keep the real Save and call-screen assertions.
-        for _ in 0..<4 where !save.isHittable { scrollVisibleFormUp(form, in: app) }
+        XCTAssertEqual(sip.value as? String, "sip:test@example.invalid")
+        if app.keyboards.firstMatch.exists {
+            let finish = app.buttons["finish-contact-entry"]
+            XCTAssertTrue(finish.waitForExistence(timeout: 10))
+            finish.tap()
+            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                                      object: app.keyboards.firstMatch)
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+        }
+        for _ in 0..<4 where !save.isHittable { form.swipeUp() }
         XCTAssertTrue(save.isHittable, app.debugDescription)
         save.tap()
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 15), app.debugDescription)
@@ -64,20 +71,6 @@ final class FamilyAutomaticCallUITests: XCTestCase {
                       method.debugDescription)
         XCTAssertFalse(app.staticTexts["call-method-error"].exists, "An unavailable method must not hide a runtime/packaging failure")
         XCTAssertFalse(start.isEnabled, "An unregistered SIP account must not place a call")
-    }
-
-    private func scrollVisibleFormUp(_ form: XCUIElement, in app: XCUIApplication) {
-        let keyboard = app.keyboards.firstMatch
-        let bottom = min(form.frame.maxY, keyboard.exists ? keyboard.frame.minY : app.frame.maxY) - 16
-        let top = max(form.frame.minY, app.frame.minY + 100) + 32
-        XCTAssertGreaterThan(bottom - top, 80, app.debugDescription)
-        let origin = app.coordinate(withNormalizedOffset: .zero)
-        // The suggestion/accessory bar is above XCUI's reported keyboard frame.
-        // Start well inside the exposed form instead of at that frame's edge.
-        let startY = top + (bottom - top) * 0.65
-        let start = origin.withOffset(CGVector(dx: form.frame.midX - app.frame.minX, dy: startY - app.frame.minY))
-        let end = origin.withOffset(CGVector(dx: form.frame.midX - app.frame.minX, dy: top - app.frame.minY))
-        start.press(forDuration: 0.1, thenDragTo: end)
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

@@ -17,6 +17,8 @@ struct FamilyContactApproval: View {
     @State private var qrPhoto: PhotosPickerItem?
     @State private var showingQRScanner = false
     @State private var readingQR = false
+    private enum Field: Hashable { case name, lxmf, voice, sip, meshcore }
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         Form {
@@ -24,14 +26,19 @@ struct FamilyContactApproval: View {
                 FamilyContactPhotoEditor(name: name, photo: $photo, loading: $photoLoading)
                 Section("Approve contact") {
                     TextField("Contact name", text: $name)
+                        .focused($focusedField, equals: .name)
                         .accessibilityIdentifier("contact-name")
                     TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focusedField, equals: .lxmf)
                         .accessibilityIdentifier("contact-address")
                     TextField("Reticulum voice address", text: $voiceAddress)
+                        .focused($focusedField, equals: .voice)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("SIP extension or address", text: $sipAddress)
+                        .focused($focusedField, equals: .sip)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("MeshCore public key", text: $meshcoreAddress)
+                        .focused($focusedField, equals: .meshcore)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     NavigationLink("Find messaging client") {
                         FamilyClientDiscovery(family: family) { client in
@@ -75,9 +82,17 @@ struct FamilyContactApproval: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .accessibilityIdentifier("contact-approval-form")
         .navigationTitle("Approve contact")
-        .toolbar { Button("Back to settings") { dismiss() } }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Back to settings") { dismiss() } }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done typing") { focusedField = nil }
+                    .accessibilityIdentifier("finish-contact-entry")
+            }
+        }
         .sheet(isPresented: $showingQRScanner) {
             NavigationStack {
                 FamilyQRScanner { payload in
