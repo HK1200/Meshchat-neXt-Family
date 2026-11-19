@@ -211,7 +211,10 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard let session = sessions[peripheral.identifier] else { return }
         if let error { fail(session, error.localizedDescription); return }
-        if let data = characteristic.value { emit(session, ["type": "data", "data": data.base64EncodedString()]) }
+        if let data = characteristic.value, !data.isEmpty {
+            emit(session, ["type": "data", "data": data.base64EncodedString()])
+            NotificationCenter.default.post(name: .familyRadioData, object: nil)
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {

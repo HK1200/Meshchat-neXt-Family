@@ -35,6 +35,8 @@ struct FamilyLiveApp: App {
                         FamilySIP.shared.routeChanged()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .familyRadioData)
+                    .receive(on: RunLoop.main)) { _ in family.receivedRadioData() }
                 .onChange(of: systemCalls.audioReady) { family.systemAudioChanged() }
                 .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
                     .receive(on: RunLoop.main)) { notification in
@@ -48,6 +50,7 @@ struct FamilyLiveApp: App {
                         family?.openNotification(contactID: contactID, messageID: messageID)
                     }
                     if scenePhase == .active {
+                        family.stopRadioWake()
                         await family.setVoicePresence(true)
                         await family.refreshNotificationPermission()
                         family.checkMailboxOnNextRefresh()
@@ -114,6 +117,29 @@ final class FamilyModel: ObservableObject {
     private var requestedVoiceSpeaker: Bool?
     private var presenceGeneration = 0
     var hasCallInProgress: Bool { state?.voice?.active == true || FamilySIP.shared.active }
+    private lazy var radioWake = FamilyRadioWake(
+        begin: { expiration in
+            let identifier = UIApplication.shared.beginBackgroundTask(withName: "Receive Family radio messages") {
+                Task { @MainActor in expiration() }
+            }
+            return identifier == .invalid ? nil : identifier.rawValue
+        },
+        end: { UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: $0)) },
+        now: { ProcessInfo.processInfo.systemUptime },
+        active: { UIApplication.shared.applicationState == .active },
+        prepare: { [weak self] in await self?.refreshNotificationPermission() },
+        refresh: { [weak self] in await self?.refresh() },
+        pause: { try await Task.sleep(for: .seconds(1)) }
+    )
+
+    func receivedRadioData() {
+        guard state?.setupComplete == true,
+              state?.rnode?.enabled == true || state?.meshcore?.enabled == true else { return }
+        radioWake.received()
+    }
+
+    func stopRadioWake() { radioWake.stop() }
+
     private let locationSampler = FamilyLocationSampler()
     private let networkMonitor = NWPathMonitor()
     private var lastNetworkPath: NWPath?

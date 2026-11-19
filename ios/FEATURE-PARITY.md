@@ -49,7 +49,7 @@ unchanged. No Apple enrollment has been performed.
 
 1. Run Xcode for the message-method chooser and its native policy/UI tests after owner review.
 2. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
-3. Audit Bluetooth background receive-to-notification handling; a connected radio is not proof of a posted notification.
+3. Bounded Bluetooth background inbox refresh is implemented locally with eight native lifecycle tests; Xcode and paired-radio/locked-device notification verification remain pending. A connected radio is not proof of a posted notification.
 4. Background location currently samples only while Family is active; it is not continuous locked-screen sharing.
 5. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
 6. Real APNs verification still needs eventual enrollment and a deployed provider; offline mailbox background checks remain opportunistic.
