@@ -4,7 +4,8 @@ class MeshCoreRooms:
  def __init__(self,manager):
   self.manager=manager;self.state=manager.state;self.lock=manager.lock;self.save=manager.save;self.runtime={};self.pending={};self.active=None;self.cleanup_logout=set()
   self.state.setdefault('rooms',[]);self.state.setdefault('next_room_id',max([0]+[r['id'] for r in self.state['rooms']])+1);self.state.setdefault('meshcore_room_keys',{});self.state.setdefault('meshcore_room_messages',{})
- def records(self):return [r for r in self.state['rooms'] if r.get('service','reticulum')=='meshcore']
+ def records(self):return [dict(r)
+                           for r in self.state['rooms'] if r.get('service','reticulum')=='meshcore']
  def policy(self,peer):return next((r for r in self.records() if r['key']==peer),None)
  def record(self,rid):
   record=next((r for r in self.records() if r['id']==rid),None)
@@ -18,6 +19,8 @@ class MeshCoreRooms:
  def _runtime(self,peer):return self.runtime.setdefault(peer,{'joined':False,'status':'Not joined','error':'','uncertain':False})
  def save_room(self,payload):
   raw=payload.get('room',{});name=raw.get('name','');peer=raw.get('key','');rid=raw.get('id');password=payload.get('password','');readonly=raw.get('readOnly',False)
+  access=raw.get('access','public')
+  if access not in ('public','invite_only'):raise ValueError('Choose a valid room access type')
   if payload.get('approved') is not True:raise ValueError('Confirm guardian room approval')
   if not isinstance(name,str) or not name.strip() or len(name.strip())>32:raise ValueError('Use a room name of 1–32 characters')
   if not isinstance(peer,str) or not re.fullmatch('[a-fA-F0-9]{64}',peer):raise ValueError('Use the full 64-character MeshCore room-server key')
@@ -36,7 +39,7 @@ class MeshCoreRooms:
     if identity is None:raise ValueError('Secure room storage is starting')
     cipher=base64.b64encode(identity.encrypt(password.encode())).decode()
    if not old:rid=self.state['next_room_id'];self.state['next_room_id']+=1
-   row={'id':rid,'name':name.strip(),'key':peer,'channel':'','service':'meshcore','readOnly':readonly}
+   row={'id':rid,'name':name.strip(),'key':peer,'channel':'','service':'meshcore','readOnly':readonly, 'access':access}
    if old:self.state['rooms']=[row if r['id']==rid else r for r in self.state['rooms']]
    else:self.state['rooms'].append(row)
    if cipher:self.state['meshcore_room_keys'][str(rid)]=cipher

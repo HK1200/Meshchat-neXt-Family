@@ -5,7 +5,8 @@ The production Android app ID is `org.meshchat.family`. Updates signed with the 
 1. Install JDK 17, Android SDK Platform 35 and the Android build tools. Configure `ANDROID_HOME` or create a local `local.properties` pointing to the SDK.
 2. Use the pinned ARM64 Android wheels listed in `app/build.gradle`. Set `FAMILY_ANDROID_VENDOR_DIR` to the directory holding them. An adjoining Meshchat neXt checkout’s prepared `android/vendor` directory is the default. See neXt’s Android build instructions for its wheel preparation. [neXt Android build instructions](https://github.com/HK1200/Meshchat-neXt/blob/v0.1.8/android/README.md)
 3. Set `FAMILY_ANDROID_PYTHON` to a Python 3.11 interpreter if `python3.11` is unavailable on your path.
-4. Run `./gradlew :app:assembleRelease :app:lintRelease`. After dependencies are cached, use `--offline`. The unsigned APK is under `app/build/outputs/apk/release/`.
+4. On Linux, install Android NDK `27.3.13750724` and run `python3 scripts/android/provision-expat.py --abis arm64-v8a`. This verifies official inputs and rebuilds only Python’s XML parser with the pinned Expat 2.10.0 security backport; all other Python target bytes are checked unchanged. The generated Maven inputs and provenance stay under the ignored `.expat-runtime-maven/` directory.
+5. Run `./gradlew :app:assembleRelease :app:lintRelease`. After dependencies are cached, use `--offline`. The unsigned APK is under `app/build/outputs/apk/release/`.
 
 Production packages are signed outside Gradle. To install over an existing production release, Android requires the same app ID and compatible signing certificate. The release updater also verifies the downloaded APK’s size, SHA-256, version, app ID, and certificate before opening Android’s installer.
 
@@ -32,8 +33,10 @@ Family keeps these inputs in the repository so its offline Android build can use
 | `libffi.so` | Byte-for-byte match to `chaquopy/lib/libffi.so` in [Chaquopy's libffi 3.3 build 3 ARM64 wheel](https://chaquo.com/pypi-13.1/chaquopy-libffi/). |
 | `libc++_shared.so` | Byte-for-byte match to the ARM64 shared C++ runtime in [Android NDK r27d](https://github.com/android/ndk/releases/tag/r27d), SDK revision `27.3.13750724`. |
 | `libopus.so` | Byte-for-byte match to the neXt ARM64 Android build of Opus 1.5.2. The library identifies itself as `libopus 1.5.2`. See [neXt's Opus build script](https://github.com/HK1200/Meshchat-neXt/blob/de618055557c72bbea5a84ba34288252c43cc4a5/scripts/android/provision-opus.py). |
-| `libnext_sip.so` | Byte-for-byte match to the neXt ARM64 Android build. The [neXt SIP build script](https://github.com/HK1200/Meshchat-neXt/blob/de618055557c72bbea5a84ba34288252c43cc4a5/scripts/android/build-sip.py) pins Baresip and re 4.12.0, Mbed TLS 3.6.7, Android NDK r27d and Opus 1.5.2. |
+| `libnext_sip.so` | Byte-for-byte match to the neXt ARM64 Android build. The [neXt SIP build script](https://github.com/HK1200/Meshchat-neXt/blob/59ea9cd032596c249bd75f07cc47aa31c61ae442/scripts/android/build-sip.py) pins Baresip and re 4.12.0, Mbed TLS 3.6.7, Android NDK r27d and Opus 1.5.2. This build uses mono PCM for the Android audio adapter while retaining standard Opus RTP signaling. |
 
 The source archive checksums for the SIP dependencies matched the neXt build script. Hash checks identify the input binaries. Build output can also be compared against a fresh reproduction from source.
 
 The Android package bundles their notices under `assets/notices`. See [third-party notices](NOTICES.md).
+
+Before signing, run `python3 scripts/android/verify-apk-expat.py --provenance .expat-runtime-maven/PROVENANCE.json --abis arm64-v8a app/build/outputs/apk/release/app-release-unsigned.apk` to verify the parser actually packaged in the APK.

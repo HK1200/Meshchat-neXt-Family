@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Stage the pure-Python pieces for an embedded Family TCP runtime."""
+from argparse import ArgumentParser
+from hashlib import file_digest
+from pathlib import Path, PurePosixPath
+import shutil
+import json
+from zipfile import ZipFile
+
+
+RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
+FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
+FAMILY_MODULES = ("family_backend.py", "mailbox_push.py", "family_cards.py", "family_radios.py", "family_ios_bluetooth.py", "family_ios_meshcore_crypto.py", "family_meshcore.py", "family_meshcore_rooms.py", "family_meshcore_location.py", "family_routes.py", "family_call_quality.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
+
+
+def standalone_rns(source):
+    # Only shared-instance RPC uses multiprocessing. Family starts a standalone
+    # Reticulum instance, so delay the import until one of those paths runs.
+    replacements = {
+        "import multiprocessing.connection\n": "",
+        "        if self.is_shared_instance:\n            self.rpc_listener = multiprocessing.connection.Listener":
+            "        if self.is_shared_instance:\n            import multiprocessing.connection\n"
+            "            self.rpc_listener = multiprocessing.connection.Listener",
+        "    def get_rpc_client(self): return multiprocessing.connection.Client":
+            "    def get_rpc_client(self):\n        import multiprocessing.connection\n"
+            "        return multiprocessing.connection.Client",
+    }
+    for before, after in replacements.items():
+        if source.count(before) != 1:
+            raise ValueError("The pinned Reticulum source no longer matches the standalone patch")
+        source = source.replace(before, after)
+    return source
+
+
+def tcp_rnode(source):
+    start = source.index("        import importlib.util\n", source.index("    def __init__(self, owner, configuration):"))
+    end = source.index("        super().__init__()", start)
+    patched = source[:start] + """        port = configuration.get("port", "")
+        if not isinstance(port, str) or not port.lower().startswith(("tcp://", "familyble://")):
+            raise ValueError("The iOS RNode driver requires TCP or Bluetooth LE")
+        serial = None
+        if port.lower().startswith("familyble://"):
+            import family_ios_bluetooth as serial
+            serial.PARITY_NONE = "N"
+
+""" + source[end:]
+    # The native BLE stream uses the serial parser, but pairing and detection
+    # need Bluetooth timing rather than the wired driver's 200 ms allowance.
+    wired_wait = "        else:\n            sleep(0.2)\n        \n        if not self.detected:"
+    native_wait = """        elif self.port and self.port.startswith("familyble://"):
+            deadline = time.time() + 180
+            next_probe = time.time() + 3
+            while not self.detected and not self.detached and self.serial.is_open and time.time() < deadline:
+                time.sleep(0.1)
+                if time.time() >= next_probe:
+                    self.detect()
+                    next_probe = time.time() + 3
+        else:
+            sleep(0.2)
+
+        if not self.detected:"""
+    if patched.count(wired_wait) != 1:
+        raise ValueError("Pinned RNode detection timing changed")
+    patched = patched.replace(wired_wait, native_wait)
+    patched = patched.replace("        if self.use_ble: sleep(1.00)", "        if self.use_ble or (self.port and self.port.startswith('familyble://')): sleep(1.00)")
+    # Upstream detach can run after open_port failed before assigning serial.
+    return patched.replace("            self.serial.close()", "            if self.serial is not None: self.serial.close()")
+
+
+def stage_meshcore(destination, wheels):
+    manifest = json.loads((Path(__file__).parent / "meshcore-wheels.json").read_text())
+    for entry in manifest:
+        wheel = wheels / entry["file"]
+        if file_digest(wheel.open("rb"), "sha256").hexdigest() != entry["sha256"]:
+            raise ValueError("MeshCore wheel checksum mismatch")
+        with ZipFile(wheel) as archive:
+            for info in archive.infolist():
+                if info.is_dir():continue
+                relative = PurePosixPath(info.filename)
+                if ".." in relative.parts or relative.is_absolute():raise ValueError("Invalid wheel path")
+                payload = archive.read(info)
+                if info.filename in ("meshcore/meshcore_parser.py", "meshcore/reader.py"):
+                    payload = payload.replace(b"from Crypto.Cipher import AES", b"from family_ios_meshcore_crypto import AES")
+                    payload = payload.replace(b"from Crypto.Hash import HMAC, SHA256", b"from family_ios_meshcore_crypto import HMAC, SHA256")
+                    payload = payload.replace(b"from Crypto.Hash import SHA256", b"from family_ios_meshcore_crypto import SHA256")
+                if info.filename == "meshcore/serial_cx.py":
+                    payload = payload.replace(b"import serial_asyncio_fast as serial_asyncio", b"serial_asyncio = None  # iOS uses the native CoreBluetooth transport")
+                target = destination.joinpath(*relative.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(payload)
+    for name in ("meshcore_session", "meshcore_transport", "meshcore_settings", "meshcore_radio2", "meshcore_identity", "meshcore_store"):
+        relative = Path("meshchatnext/src/backend") / (name + ".py")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(FAMILY_SOURCE / relative, target)
+
+
+def stage(wheel, destination, cbor_wheel=None, meshcore_wheels=None):
+    with wheel.open("rb") as stream:
+        if file_digest(stream, "sha256").hexdigest() != RNS_SHA256:
+            raise ValueError("Expected the pinned rns-1.5.7 wheel")
+    with ZipFile(wheel) as archive:
+        replacements = {
+            "RNS/Reticulum.py": standalone_rns(archive.read("RNS/Reticulum.py").decode()),
+            "RNS/Interfaces/RNodeInterface.py": tcp_rnode(archive.read("RNS/Interfaces/RNodeInterface.py").decode()),
+        }
+        destination.mkdir(parents=True, exist_ok=False)
+        for entry in archive.infolist():
+            relative = PurePosixPath(entry.filename)
+            if entry.is_dir() or relative.parts[0] not in {"RNS", "rns-1.5.7.dist-info"}:
+                continue
+            if ".." in relative.parts:
+                raise ValueError("Unexpected wheel path")
+            target = destination.joinpath(*relative.parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            replacement = replacements.get(relative.as_posix())
+            target.write_bytes(replacement.encode() if replacement is not None else archive.read(entry))
+    if meshcore_wheels is not None:
+        stage_meshcore(destination, meshcore_wheels)
+    for module in FAMILY_MODULES:
+        shutil.copyfile(FAMILY_SOURCE / module, destination / module)
+    shutil.copytree(FAMILY_SOURCE / "LXMF", destination / "LXMF", ignore=shutil.ignore_patterns("__pycache__"))
+    telemetry = Path("meshchatnext/src/backend/telemetry_utils.py")
+    (destination / telemetry.parent).mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(FAMILY_SOURCE / telemetry, destination / telemetry)
+    for module in ("src/path_utils.py", "src/backend/constants.py", "src/backend/path_utils.py", "src/backend/traffic_stats.py"):
+        path = Path("meshchatnext") / module
+        shutil.copyfile(FAMILY_SOURCE / path, destination / path)
+    rrc = Path("meshchatnext/src/backend/rrc")
+    shutil.copytree(FAMILY_SOURCE / rrc, destination / rrc, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(FAMILY_SOURCE / "pycparser", destination / "pycparser", ignore=shutil.ignore_patterns("__pycache__"))
+    if cbor_wheel is not None:
+        with cbor_wheel.open("rb") as stream:
+            if file_digest(stream, "sha256").hexdigest() != "3038523b8fc7de312bb9cdcbbbd599987e64307c4db357cd2030c472a6c7d468":
+                raise ValueError("Expected the pinned pure-Python cbor2 wheel")
+        with ZipFile(cbor_wheel) as archive:
+            archive.extractall(destination)
+
+
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("rns_wheel", type=Path)
+    parser.add_argument("destination", type=Path, help="New directory for staged modules")
+    parser.add_argument("--cbor-wheel", type=Path)
+    parser.add_argument("--meshcore-wheels", type=Path)
+    args = parser.parse_args()
+    stage(args.rns_wheel, args.destination, args.cbor_wheel, args.meshcore_wheels)

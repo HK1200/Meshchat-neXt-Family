@@ -95,6 +95,7 @@ def test_capture_splits_or_joins_chunks_at_negotiated_profile(monkeypatch):
     monkeypatch.setitem(sys.modules, "LXST.Sources", types.SimpleNamespace(LocalSource=base))
     monkeypatch.setitem(sys.modules, "LXST.Sinks", types.SimpleNamespace(LocalSink=base))
     monkeypatch.setitem(sys.modules, "LXST.Codecs", types.SimpleNamespace(Raw=lambda **kwargs: None))
+    monkeypatch.setitem(sys.modules, "LXST.Mixer", types.SimpleNamespace(Backend=None))
     telephony = types.SimpleNamespace()
     voice = FamilyVoice(None, {}, threading.RLock(), lambda: None, autostart=False)
     voice._install_audio(telephony)
@@ -120,6 +121,12 @@ def test_capture_splits_or_joins_chunks_at_negotiated_profile(monkeypatch):
     assert source.push(pcm[:100]) == 0
     voice.set_muted(True)
     assert not source.pending
+
+    frames.clear()
+    source.filters = [types.SimpleNamespace(handle_frame=lambda samples, rate: np.zeros_like(samples))]
+    source.push(pcm)
+    source.push(pcm, native_processing=True)
+    assert frames == [bytes(len(pcm)), pcm]
 
 
 def test_late_hangup_is_harmless_and_cannot_end_a_new_call():
@@ -166,3 +173,38 @@ def test_capture_restores_gain_control_for_quiet_and_loud_speech():
         else:
             assert rms < 0.25
     assert results[1] / results[0] < 4
+
+
+def test_ios_software_gain_keeps_quiet_speech_and_peak_headroom():
+    np = pytest.importorskip("numpy")
+    from LXST.Filters import AGC
+    from lxst_audio_processing import prepare_capture_filters
+
+    signal = np.sin(np.arange(2880, dtype=np.float32) * 2 * np.pi * 1000 / 48000)
+    standard, enhanced = AGC(target_level=-15), AGC(target_level=-15)
+    prepare_capture_filters([standard])
+    prepare_capture_filters([enhanced], default_max_gain_db=18)
+    for _ in range(120):
+        baseline = standard.handle_frame(signal * 0.01, 48000)
+        boosted = enhanced.handle_frame(signal * 0.01, 48000)
+    assert np.linalg.norm(boosted) > 1.7 * np.linalg.norm(baseline)
+    assert np.max(np.abs(enhanced.handle_frame(signal * 0.95, 48000))) <= 0.751
+
+
+def test_ios_extra_speech_gain_waits_for_the_speaker_echo_to_decay():
+    from family_voice import ios_transmit_gain
+
+    assert ios_transmit_gain(2.0, 2.0, 0.004, 0.01) == 1
+    assert ios_transmit_gain(2.6, 2.0, 0.01, 0.01) == 1
+    assert ios_transmit_gain(2.6, 2.0, 0.015, 0.006) == pytest.approx(10 ** (5 / 20))
+    assert ios_transmit_gain(2.8, 2.0, 0.004, 0.01) == pytest.approx(10 ** (5 / 20))
+
+
+def test_ios_echo_processing_precedes_capture_gain():
+    pytest.importorskip("numpy")
+    from LXST.Filters import AGC
+    from lxst_audio_processing import prepare_capture_filters
+
+    bandpass, echo = object(), object()
+    gain = AGC()
+    assert prepare_capture_filters([bandpass, gain, echo], echo_before_gain=True) == [bandpass, echo, gain]

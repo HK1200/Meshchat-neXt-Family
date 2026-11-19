@@ -1,0 +1,48 @@
+/* The same bundled interface adapts to the width of the iPhone or iPad window. */
+#screen, .appearance, .foot, .native-demo {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 70rem;
+}
+
+#screen:not(:has(> .topline #lock)):not(:has(.family-map)) {
+    max-width: 52rem;
+}
+
+.foot {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.foot button, .appearance button, #screen button {
+    min-height: 44px;
+}
+
+@media (min-width: 48rem) {
+    #screen, .appearance, .foot, .native-demo {
+        padding-inline: 2rem;
+    }
+
+    #screen:has(> .topline #lock) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-content: start;
+        gap: 0.75rem;
+    }
+
+    #screen:has(> .topline #lock) > :not(.contact) {
+        grid-column: 1 / -1;
+    }
+
+    #screen:has(> .topline #lock) > .contact {
+        min-width: 0;
+        margin-bottom: 0;
+    }
+}
+
+@media (max-height: 34rem) {
+    .chat {
+        height: clamp(9rem, 42dvh, 15.625rem);
+    }
+}

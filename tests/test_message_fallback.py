@@ -18,12 +18,13 @@ COMPANION_KEY = "ef" * 32
 
 
 @pytest.fixture
-def backend(monkeypatch):
+def backend(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(PYTHON))
     spec = importlib.util.spec_from_file_location("fallback_backend", PYTHON / "family_backend.py")
     module = importlib.util.module_from_spec(spec)
     with patch.object(signal, "signal", signal.signal):
         spec.loader.exec_module(module)
+    module._root = tmp_path
     module._state = {
         "setup_complete": True,
         "contacts": [{"id": 1, "name": "Test contact", "addresses": {
@@ -288,3 +289,41 @@ def test_guardian_can_change_incoming_delivery_limit(backend):
     assert request(1_000_000_000)["ok"]
     assert not request(1_000_000_001)["ok"]
     assert not request(True)["ok"]
+
+
+@pytest.mark.parametrize("method", ["reticulum", "meshcore"])
+def test_explicit_offline_method_does_not_silently_use_other_service(backend, method):
+    if method == "reticulum":
+        backend._peer.online = False
+    else:
+        backend._meshcore.connected = False
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": method, "text": "Keep my manual selection",
+    }})))
+    assert not reply["ok"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()
+
+
+def test_explicit_meshcore_multibyte_overflow_is_rejected_before_enqueue(backend):
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": "meshcore", "text": "é" * 81,
+    }})))
+    assert not reply["ok"]
+    assert "160 UTF-8 bytes" in reply["error"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["auto", "reticulum", "meshcore"])
+def test_attachment_route_validation_happens_before_enqueue(backend, method):
+    if method != "meshcore":
+        backend._peer.online = False
+    reply = json.loads(backend.request(json.dumps({"action": "send", "payload": {
+        "contactId": 1, "method": method, "text": "Private file", "attachments": [
+            {"name": "test.txt", "data": "dGVzdA=="}],
+    }})))
+    assert not reply["ok"]
+    assert "Files and photos require" in reply["error"]
+    assert not backend._state["messages"]
+    backend._dispatch_message.assert_not_called()

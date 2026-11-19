@@ -12,6 +12,18 @@ from family_meshcore_rooms import MeshCoreRooms
 
 
 class SavedMeshCoreRoomsTest(unittest.TestCase):
+    def test_guardian_posting_setting_applies_to_public_and_invite_only_rooms(self):
+        state = {"rooms": [
+            {"id": 1, "service": "meshcore", "readOnly": False},
+            {"id": 2, "service": "meshcore", "readOnly": False, "access": "public"},
+            {"id": 3, "service": "meshcore", "readOnly": False, "access": "invite_only"},
+            {"id": 4, "service": "meshcore", "readOnly": True, "access": "invite_only"},
+        ]}
+        manager = SimpleNamespace(state=state, lock=threading.RLock(), save=lambda: None)
+        rooms = MeshCoreRooms(manager)
+        self.assertEqual([row["readOnly"] for row in rooms.records()], [False, False, False, True])
+        self.assertFalse(state["rooms"][0]["readOnly"])
+
     def test_saved_room_logs_in_without_opening_and_rejoins_after_disconnect(self):
         owner, saved, unsaved = "11" * 32, "22" * 32, "33" * 32
         manager = SimpleNamespace(

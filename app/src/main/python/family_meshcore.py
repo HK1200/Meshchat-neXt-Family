@@ -1,4 +1,5 @@
 """Opt-in MeshCore companion and approved direct messaging, separate from RNS."""
+import sys
 import asyncio,concurrent.futures,hashlib,math,re,threading,time,uuid
 
 def key(value):
@@ -8,15 +9,19 @@ def key(value):
 def validate_config(raw):
     if not isinstance(raw,dict) or type(raw.get('enabled')) is not bool or type(raw.get('receive',False)) is not bool:raise ValueError('Invalid MeshCore settings')
     kind=raw.get('transport');target=str(raw.get('target','')).strip()
+    if sys.platform=='ios' and kind!='ble':raise ValueError('Choose Bluetooth LE on iOS')
     if kind=='ble':
-        if not re.fullmatch(r'(?:[a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}',target):raise ValueError('Select a Bluetooth companion address')
+        if sys.platform=='ios':
+            from family_ios_bluetooth import device_id
+            target=device_id(target)
+        elif not re.fullmatch(r'(?:[a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}',target):raise ValueError('Select a Bluetooth companion address')
     elif kind=='usb':
         if not re.fullmatch(r'/dev/bus/usb/\d{3}/\d{3}',target):raise ValueError('Select an attached USB companion')
     else:raise ValueError('Choose Bluetooth or USB for MeshCore')
     return {'enabled':raw['enabled'],'receive':raw.get('receive',False),'transport':kind,'target':target}
 
 class FamilyMeshCore:
-    def __init__(self,state,lock,save,session_factory=None,context=None):
+    def __init__(self,state,lock,save,session_factory=None,context=None,rooms_enabled=True):
         self.state=state;self.lock=lock;self.save=save;self.context=context;self.session_factory=session_factory
         state.setdefault('meshcore',None);self.session=None;self.connected=False;self.error='';self.name='';self.model='';self.owner='';self.contacts={};self.devices=[];self.scanning=False;self.announces={};self.receive_count=0;self.receive_status='No private messages received';self.revision=0;self._acks={};self._pending={};self._subscriptions=[]
         self._advert_pending = False
@@ -26,7 +31,7 @@ class FamilyMeshCore:
         self._battery_attempt = None
         self._battery_pending = False
         from family_meshcore_rooms import MeshCoreRooms
-        self.identity=None;self.locations=None;self._location_write=None;self._location_pending={};self.location_status='Not sharing';self.rooms=MeshCoreRooms(self)
+        self.identity=None;self.locations=None;self._location_write=None;self._location_pending={};self.location_status='Not sharing';self.rooms=MeshCoreRooms(self) if rooms_enabled else None
         self.loop=asyncio.new_event_loop();self._apply_lock=None
         threading.Thread(target=self._run,daemon=True).start()
     def _run(self):
@@ -64,7 +69,7 @@ class FamilyMeshCore:
                 with self.lock:self.scanning=False
         self._submit(operation())
     async def _close(self):
-        self.rooms.disconnected()
+        if self.rooms:self.rooms.disconnected()
         self.connected=False;self.contacts={};self.announces={};self.owner='';self.name='';self.model=''
         with self.lock:
             self._battery = None
@@ -90,7 +95,10 @@ class FamilyMeshCore:
             if self.session_factory:self.session=self.session_factory()
             else:
                 from meshchatnext.src.backend.meshcore_transport import AndroidConnection
-                self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
+                if sys.platform=='ios':
+                    from family_ios_bluetooth import NativeSession
+                    self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,native_factory=NativeSession,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
+                else:self.session=MeshCoreSession(connection_factory=lambda kind,target,**options:AndroidConnection(kind,target,send_guard=lambda payload,write:self._guard_send(revision,payload,write),**options))
             try:
                 await self.session.connect(config['transport'],config['target'],context=self.context or _context)
                 identity=await self.session.read_identity();owner=key(identity['public_key'])
@@ -123,6 +131,28 @@ class FamilyMeshCore:
             if not self.connected:raise ValueError('Connect a MeshCore companion first')
             async with self.session._lock:await self._contacts()
         return self._submit(operation())
+    def advertise(self, flood, authorize):
+        if type(flood) is not bool:raise ValueError('Choose a local or flood advert')
+        authorize()
+        return self._submit(self._advertise(flood,authorize,self.revision,self.owner))
+
+    async def _advertise(self,flood,authorize,revision,owner):
+        session=self.session
+        if not session or not self.connected:raise ValueError('Connect a MeshCore companion first')
+        async with session._lock:
+            with self.lock:
+                config=self.state.get('meshcore') or {}
+                if session is not self.session or revision!=self.revision or owner!=self.owner or not owner or not self.connected or config.get('publicKey')!=owner:
+                    raise ValueError('Companion identity changed')
+                authorize()
+                permit=(b'\x07\x01' if flood else b'\x07',revision,owner,authorize,session)
+                self._advert_write=permit
+            try:
+                session._payload(await session._client.commands.send_advert(flood=flood))
+            finally:
+                with self.lock:
+                    if self._advert_write is permit:self._advert_write=None
+
     def request_battery(self):
         with self.lock:
             session = self.session
@@ -201,10 +231,18 @@ class FamilyMeshCore:
                 if not self.connected or not self.owner or config.get('publicKey') != self.owner:
                     raise ValueError('Companion identity is not approved')
                 return write()
-            if command == 7:
-                if (not self.connected or not self.owner or config.get('publicKey') != self.owner
-                        or self._advert_write != (revision, payload)):
-                    raise ValueError('MeshCore advert is not authorized')
+            if command==7:
+                permit=self._advert_write
+                if permit and len(permit)==2:
+                    if (not self.connected or not self.owner or config.get('publicKey')!=self.owner
+                            or permit!=(revision,payload)):
+                        raise ValueError('MeshCore advert is not authorized')
+                else:
+                    if (not permit or payload not in (b'\x07',b'\x07\x01') or
+                        permit[:3]!=(payload,revision,self.owner) or not self.connected or
+                        config.get('publicKey')!=self.owner or permit[4] is not self.session):
+                        raise ValueError('Guardian advert request is not active')
+                    permit[3]()
                 return write()
             if command==10:
                 if not self.connected or not config.get('receive'):raise ValueError('Receiving is disabled')
@@ -213,9 +251,10 @@ class FamilyMeshCore:
             if command==9:
                 if len(payload)<34:raise ValueError('Invalid radio contact')
                 peer=payload[1:33].hex();kind=payload[33]
-                if not ((kind==1 and peer in self.allowed()) or (kind==3 and self.rooms.policy(peer))):raise ValueError('Radio contact is not approved')
+                if not ((kind==1 and peer in self.allowed()) or (kind==3 and self.rooms and self.rooms.policy(peer))):raise ValueError('Radio contact is not approved')
                 return write()
             if command in [26,29]:
+                if not self.rooms:raise ValueError('Rooms are unavailable in this edition')
                 if len(payload)<33:raise ValueError('Invalid room command')
                 peer=payload[1:33].hex();policy=self.rooms.policy(peer)
                 if command==29:
@@ -234,6 +273,7 @@ class FamilyMeshCore:
                     permit=self._location_write
                     if not permit or permit!=(peer,payload[13:],self.locations.generation,self.revision,self.owner) or not self.locations.can_send(self.locations.mesh_peer(peer,self.owner),permit[2]):raise ValueError('Location sharing is not authorized')
                 if kind==1 and peer in self.allowed():return write()
+                if not self.rooms:raise ValueError('Radio contact is not approved')
                 room=self.rooms.policy(peer);runtime=self.rooms._runtime(peer)
                 if kind!=3 or not room or room['readOnly'] or not runtime['joined'] or runtime.get('owner')!=self.owner:raise ValueError('Room posting is not approved')
                 if payload[13:].lstrip().startswith(b'/'):raise ValueError('Chat commands are disabled')
@@ -255,7 +295,7 @@ class FamilyMeshCore:
         with self.lock:
             self._acks[code]=time.time()
             if len(self._acks)>256:self._acks.pop(next(iter(self._acks)))
-            self.rooms.ack(code)
+            if self.rooms:self.rooms.ack(code)
             if code in getattr(self,'_location_pending',{}):
                 self._location_pending.pop(code,None);self.location_status='Private location delivered · MeshCore receipt' 
             pending=self._pending.pop(code,None)
@@ -274,7 +314,7 @@ class FamilyMeshCore:
             candidates=[peer for peer in self.contacts if peer.startswith(prefix.lower())]
             if len(candidates)!=1:self.receive_status='Sender prefix is missing or ambiguous';return
             peer=candidates[0]
-            if self.contacts[peer].get('type')==3 and self.rooms.receive(peer,payload):return
+            if self.rooms and self.contacts[peer].get('type')==3 and self.rooms.receive(peer,payload):return
             if peer not in self.allowed() or self.contacts[peer].get('type')!=1:self.receive_status='Sender is not an approved messaging client';return
             if text.startswith('!NFLOC'):
                 if payload.get('txt_type')!=0:return
@@ -307,7 +347,7 @@ class FamilyMeshCore:
                     retry=time.time()+15
                     await self._apply(self.revision)
                 if self.connected and config.get('receive'):await self._drain()
-                self.rooms.tick()
+                if self.rooms:self.rooms.tick()
                 for code,deadline in list(self._location_pending.items()):
                     if time.time()>deadline:self._location_pending.pop(code,None);self.location_status='Private location not confirmed' 
                 self._expire_receipts()
@@ -427,4 +467,4 @@ class FamilyMeshCore:
                     battery = {'voltage_mv': voltage}
             return {'advertPending':self._advert_pending,'advertStatus':self._advert_status,'battery':battery,'enabled':bool(config and config['enabled']),'config':dict(config) if config else None,'locationStatus':self.location_status,'receiveCount':self.receive_count,'receiveStatus':self.receive_status,'connected':self.connected,'name':self.name,'model':self.model,'publicKey':self.owner or (config or {}).get('publicKey',''),'error':self.error,'scanning':self.scanning,'devices':list(self.devices),
                     'clientAnnounces':[{'name':str(c.get('adv_name','Messaging client'))[:64],'service':'meshcore','address':peer,'seen':c.get('last_advert',0)} for peer,c in candidates.items() if c.get('type')==1],
-                    'roomAnnounces':[{'name':str(c.get('adv_name','Room server'))[:64],'service':'meshcore','key':peer,'kind':3} for peer,c in candidates.items() if c.get('type')==3]}
+                    'roomAnnounces':[{'name':str(c.get('adv_name','Room server'))[:64],'service':'meshcore','key':peer,'kind':3} for peer,c in candidates.items() if self.rooms and c.get('type')==3]}

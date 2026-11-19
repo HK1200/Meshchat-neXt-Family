@@ -4,7 +4,6 @@ import RNS.vendor.umsgpack as msgpack
 import os
 import time
 import base64
-import multiprocessing
 
 import LXMF.LXStamper as LXStamper
 from .LXMF import APP_NAME, compression_support_from_app_data

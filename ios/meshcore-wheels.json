@@ -1,0 +1,12 @@
+[
+  {
+    "file": "meshcore-2.3.17-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/e0/23/f8ec1b90c5187fa38693c7c98b5bb184b10f63b1841a911a08f37ece233f/meshcore-2.3.17-py3-none-any.whl",
+    "sha256": "d8ba29b7eeecd7c6e7a4036bdcbbcf8533cb925dc884985ac664026830535357"
+  },
+  {
+    "file": "pycayennelpp-2.4.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/6e/9a/79e6623e3b65b2ecf3294d3bb14aae74ea529da30d8ff5db1f9cb19c0aac/pycayennelpp-2.4.0-py3-none-any.whl",
+    "sha256": "a3e69ea4da9e2971a44d1e275d5555617b2345eea752325f28c0356f64901d62"
+  }
+]

@@ -1,3 +1,14 @@
+# neXt Family v0.6.28
+
+- Correct Android SIP Opus audio using the native mono speech profile verified with live calls in both directions.
+- Carry neXt’s verified Expat 2.10.0 Python XML-parser security backport into the Android runtime.
+- Include the current security checks, pinned test dependencies, license and verified native binary notices.
+- Include the tested system Bluetooth radio picker and Play-specific privacy configuration. GitHub builds retain approved rooms and Relay Chat; store builds omit them.
+- Integrate tested shared iOS runtime improvements for messaging, Bluetooth radios, location, offline maps and calls. iOS remains a development port; this Android release does not require Apple enrollment.
+- Use version code 42 for in-place upgrades from previous GitHub and Play installs, preserving guardian settings and identities.
+
+---
+
 # neXt Family v0.6.27
 
 - RMAP 4343 is the preferred TCP peer, alongside RMAP 4242, WashMesh, and Chicagoland Mesh.

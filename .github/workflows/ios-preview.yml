@@ -1,0 +1,267 @@
+name: Family iOS simulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      sip_signaling:
+        description: Run only the private native SIP registration and call-signaling tests
+        type: boolean
+        default: false
+      rmap:
+        description: Run live messaging through rmap.world on both simulators
+        type: boolean
+        default: false
+      next_device:
+        description: Build the unsigned Meshchat neXt preview for a physical iPhone or iPad
+        type: boolean
+        default: false
+      next_runtime_probe:
+        description: Test the Meshchat neXt Messages interface on iPhone and iPad
+        type: boolean
+        default: false
+      store_screenshots:
+        description: Capture Store-edition screenshots using disposable local test contacts
+        type: boolean
+        default: false
+      appstore_archive:
+        description: Validate the unsigned AppStore archive with rooms disabled
+        type: boolean
+        default: false
+      device_archive:
+        description: Validate a Release archive for physical iPhone and iPad
+        type: boolean
+        default: false
+      testflight:
+        description: Sign and upload an internal TestFlight build using the iOS beta environment
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - 'ios/**'
+      - '!ios/build-voice-codecs.sh'
+      - 'app/src/main/assets/**'
+      - 'app/src/main/python/**'
+      - '.github/workflows/ios-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-sip:
+    if: ${{ inputs.sip_signaling }}
+    name: ${{ matrix.device }} native SIP
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test private native SIP signaling
+        env:
+          DEVICE_FAMILY: ${{ matrix.device }}
+        run: |
+          bash ios/prepare-live.sh
+          python3 ios/build-sip.py iphonesimulator "$(uname -m)"
+          python3 - <<'PYTHON'
+          import json, os, re, subprocess
+          inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"], text=True))
+          candidates = []
+          for runtime, devices in inventory["devices"].items():
+              match = re.fullmatch(r"com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+(?:-\d+)*)", runtime)
+              if match:
+                  version = tuple(map(int, match[1].split("-")))
+                  candidates.extend((version, device["udid"]) for device in devices
+                                    if version >= (17,) and device.get("isAvailable")
+                                    and device["name"].startswith(os.environ["DEVICE_FAMILY"] + " "))
+          if not candidates:
+              raise RuntimeError("No matching iOS simulator is installed")
+          subprocess.run(["python3", "ios/test-sip-registration.py", max(candidates)[1]], check=True)
+          PYTHON
+  simulator:
+    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_device }}
+    name: ${{ matrix.device }} ${{ matrix.suite }}
+    runs-on: macos-15
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+        suite: [live, preview]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Run live Reticulum messaging test
+        if: matrix.suite == 'live'
+        run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Run public Reticulum messaging test
+        if: ${{ success() && matrix.suite == 'live' && (inputs.rmap || contains(github.event.pull_request.labels.*.name, 'ios-rmap-test')) }}
+        run: |
+          if ! bash ios/test-live.sh "${{ matrix.device }}" rmap; then
+            echo "Retrying the external Reticulum peer once with a fresh test identity."
+            bash ios/test-live.sh "${{ matrix.device }}" rmap
+          fi
+      - name: Build Family for physical iPhone and iPad
+        if: ${{ !cancelled() && matrix.device == 'iPad' && matrix.suite == 'live' }}
+        working-directory: ios
+        run: |
+          bash prepare-live.sh
+          xcodegen generate --spec project-live.yml
+          xcodebuild build -project FamilyLive.xcodeproj -scheme FamilyLive \
+            -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO
+          app=DerivedData/Build/Products/Debug-iphoneos/FamilyLive.app
+          lipo "$app/FamilyLive" -verify_arch arm64
+          test -f "$app/Frameworks/Python.framework/Python"
+          test -f "$app/staged/family_tcp.py"
+          test -s "$app/offline-tiles/tiles.bin"
+          test -s "$app/offline-tiles/index.json"
+      - name: Run preview smoke test
+        if: matrix.suite == 'preview'
+        run: bash ios/test-preview.sh "${{ matrix.device }}"
+
+      - name: Keep simulator test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-results-${{ matrix.device }}-${{ matrix.suite }}-${{ github.run_attempt }}
+          path: ios/RuntimeBuild/results/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+
+  next-runtime-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_runtime_probe }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Test neXt on both simulators
+        run: bash ios/NextRuntimeProbe/test-simulators.sh ios
+
+  next-device:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_device }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build unsigned neXt device IPA
+        run: bash ios/NextRuntimeProbe/test-simulators.sh ios device
+      - name: Store unsigned neXt device IPA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: next-ios-unsigned
+          path: ios/RuntimeBuild/neXt-iOS-unsigned.ipa
+          if-no-files-found: error
+
+  store-screenshots:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.store_screenshots }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Exercise Family with Store room restrictions and capture screenshots
+        env:
+          FAMILY_STORE_SCREENSHOTS: "1"
+        run: bash ios/test-live.sh "${{ matrix.device }}"
+      - name: Keep screenshots for listing review
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: family-store-screenshots-${{ matrix.device }}
+          path: ios/RuntimeBuild/store-screenshots/${{ matrix.device }}
+          if-no-files-found: error
+          retention-days: 7
+
+  device-archive:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.device_archive && !inputs.testflight }}
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build and verify the unsigned iPad and iPhone release archive
+        run: bash ios/archive-device.sh unsigned
+      - name: Keep the unsigned IPA for personal device testing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: family-ios-unsigned-ipa
+          path: ios/RuntimeBuild/neXt-Family-iOS-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  appstore-archive:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.appstore_archive && !inputs.testflight }}
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build the AppStore archive
+        run: bash ios/archive-device.sh appstore
+      - name: Package the unsigned App Store archive
+        run: |
+          archive=ios/RuntimeBuild/FamilyLive.xcarchive
+          zip=ios/RuntimeBuild/neXt-Family-AppStore-unsigned.xcarchive.zip
+          ditto -c -k --keepParent "$archive" "$zip"
+          unzip -tq "$zip"
+          (cd ios/RuntimeBuild && shasum -a 256 "$(basename "$zip")" > AppStore-SHA256SUMS.txt)
+      - name: Keep the unsigned App Store archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: family-appstore-unsigned-archive
+          path: |
+            ios/RuntimeBuild/neXt-Family-AppStore-unsigned.xcarchive.zip
+            ios/RuntimeBuild/AppStore-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  internal-testflight:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/feature/family-ios' }}
+    environment: ios-beta
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Sign and upload the internal TestFlight build
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+          APPLE_CONNECT_KEY_BASE64: ${{ secrets.APPLE_CONNECT_KEY_BASE64 }}
+          APPLE_CONNECT_KEY_ID: ${{ secrets.APPLE_CONNECT_KEY_ID }}
+          APPLE_CONNECT_ISSUER_ID: ${{ secrets.APPLE_CONNECT_ISSUER_ID }}
+        run: bash ios/archive-device.sh testflight

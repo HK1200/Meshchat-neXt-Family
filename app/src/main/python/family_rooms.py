@@ -123,7 +123,8 @@ class FamilyRooms:
         if not isinstance(room,str):return None
         return self._policies.get((hub,room.strip().lower()))
     def _canonical(self):
-        with self.lock:return [dict(r) for r in self.state['rooms'] if r.get('service','reticulum')=='reticulum']
+        with self.lock:return [dict(r)
+                               for r in self.state['rooms'] if r.get('service','reticulum')=='reticulum']
     def _clear_pending(self,hub,channel):
         with hub._lock:
             for mid,(message,when) in list(hub._pending_delivery.items()):
@@ -205,6 +206,8 @@ class FamilyRooms:
         if not re.fullmatch('[a-f0-9]{32}',key):raise ValueError('Use a 32-character Reticulum hub hash')
         if not channel or len(channel.encode('utf8'))>64 or any(ord(c)<32 or ord(c)==127 for c in channel):raise ValueError('Use a room name of 1–64 UTF-8 bytes without control characters')
         password=payload.get('password','')
+        access=raw.get('access','public')
+        if access not in ('public','invite_only'):raise ValueError('Choose a valid room access type')
         if not isinstance(password,str) or len(password.encode('utf8'))>256:raise ValueError('Room password is too long')
         with self.lock:
             old=next((r for r in self.state['rooms'] if r['id']==rid),None)
@@ -213,7 +216,7 @@ class FamilyRooms:
             if not old and len(self.state['rooms'])>=32:raise ValueError('Room limit reached')
             if not old:
                 rid=self.state['next_room_id'];self.state['next_room_id']+=1
-            record={'id':rid,'name':name,'key':key,'channel':channel,'service':'reticulum','readOnly':bool(raw.get('readOnly',False))}
+            record={'id':rid,'name':name,'key':key,'channel':channel,'service':'reticulum','readOnly':bool(raw.get('readOnly',False)), 'access':access}
             if old:self.state['rooms']=[record if r['id']==rid else r for r in self.state['rooms']]
             else:self.state['rooms'].append(record)
             self.save()

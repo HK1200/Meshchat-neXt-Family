@@ -7,7 +7,10 @@ import time
 import math
 import itertools
 import contextlib
-import multiprocessing
+# iOS apps can create threads but cannot launch stamp worker processes.
+IS_IOS = sys.platform == "ios"
+if not IS_IOS:
+    import multiprocessing
 
 WORKBLOCK_EXPAND_ROUNDS         = 3000
 WORKBLOCK_EXPAND_ROUNDS_PN      = 1000
@@ -116,7 +119,7 @@ def validate_pn_stamps_job_multip(transient_list, target_cost):
     return [e for e in validated_entries if e[0] != None]
 
 def validate_pn_stamps(transient_list, target_cost):
-    non_mp_platform = RNS.vendor.platformutils.is_android()
+    non_mp_platform = IS_IOS or RNS.vendor.platformutils.is_android()
     if len(transient_list) <= PN_VALIDATION_POOL_MIN_SIZE or non_mp_platform: return validate_pn_stamps_job_simple(transient_list, target_cost)
     else:                                                                     return validate_pn_stamps_job_multip(transient_list, target_cost)
 
@@ -129,7 +132,7 @@ def generate_stamp(message_id, stamp_cost, expand_rounds=WORKBLOCK_EXPAND_ROUNDS
     rounds = 0
     value = 0
 
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): stamp, rounds = job_simple(stamp_cost, workblock, message_id)
+    if IS_IOS or RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin(): stamp, rounds = job_simple(stamp_cost, workblock, message_id)
     elif RNS.vendor.platformutils.is_android(): stamp, rounds = job_android(stamp_cost, workblock, message_id)
     else:
         if USE_WORKER_MANAGER: stamp, rounds = job_linux_managed(stamp_cost, workblock, message_id)
@@ -144,7 +147,7 @@ def generate_stamp(message_id, stamp_cost, expand_rounds=WORKBLOCK_EXPAND_ROUNDS
     return stamp, value
 
 def cancel_work(message_id):
-    if RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin():
+    if IS_IOS or RNS.vendor.platformutils.is_windows() or RNS.vendor.platformutils.is_darwin():
         try:
             if message_id in active_jobs:
                 active_jobs[message_id] = True

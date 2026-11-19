@@ -46,6 +46,7 @@ public class MainActivity extends Activity {
     private volatile boolean ownedPermission;
     private final PermissionCheckup permissionCheckup = new PermissionCheckup(this);
     private boolean ownedDocument;
+    private final RadioAssociation radioAssociation = new RadioAssociation(this);
     private volatile String mapImportStatus="{\"busy\":false}";
     private final java.util.concurrent.ExecutorService lifecycle=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final java.util.concurrent.ExecutorService statusWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -255,12 +256,26 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public String mapDownloadStatus() { return activity.mapDownload.status(); }
         @JavascriptInterface public String mapImportStatus(){return activity.mapImportStatus;}
-        @JavascriptInterface public boolean guardianDialogOpen(){return activity.mapImportToken!=null||activity.ownedPermission||activity.permissionCheckup.isRequestInFlight()||activity.fileCallback!=null;}
+        @JavascriptInterface public boolean guardianDialogOpen(){return activity.mapImportToken!=null||activity.ownedPermission||activity.permissionCheckup.isRequestInFlight()||activity.fileCallback!=null||activity.radioAssociation.isPending();}
         @JavascriptInterface public String tileSource(int z,int x,int y){try{return backend.callAttr("map_source",z,x,y).toString();}catch(Exception e){return "";}}
         @JavascriptInterface public boolean locationPermissionGranted(){return activity.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
         @JavascriptInterface public void requestLocation(String token){try{org.json.JSONObject payload=new org.json.JSONObject().put("token",token);boolean allowed=new org.json.JSONObject(backend.callAttr("request",new org.json.JSONObject().put("action","authorize_location").put("payload",payload).toString()).toString()).optBoolean("ok");if(allowed)activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},14);});}catch(Exception ignored){}}
         @JavascriptInterface public boolean authorizeCamera(String token){activity.cameraToken=token;return activity.cameraAllowed();}
-        @JavascriptInterface public void requestBluetooth(){activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(android.os.Build.VERSION.SDK_INT>=31?new String[]{android.Manifest.permission.BLUETOOTH_SCAN,android.Manifest.permission.BLUETOOTH_CONNECT}:new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},12);});}
+        @JavascriptInterface public void requestBluetooth(){if(android.os.Build.VERSION.SDK_INT<31)return;activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(android.os.Build.VERSION.SDK_INT>=31?new String[]{android.Manifest.permission.BLUETOOTH_CONNECT}:new String[]{},12);});}
+        @JavascriptInterface public boolean chooseRadio(String token, String type) {
+            if (!"meshcore".equals(type) && !"classic".equals(type) && !"ble".equals(type)) return false;
+            try {
+                org.json.JSONObject payload = new org.json.JSONObject().put("token", token);
+                String request = new org.json.JSONObject().put("action", "authorize_radio_picker")
+                    .put("payload", payload).toString();
+                if (new org.json.JSONObject(backend.callAttr("request", request).toString()).optBoolean("ok")) {
+                    activity.runOnUiThread(() -> activity.radioAssociation.start(type));
+                    return true;
+                }
+            } catch (org.json.JSONException ignored) {}
+            return false;
+        }
+        @JavascriptInterface public String radioPickerStatus() { return activity.radioAssociation.status(); }
         @JavascriptInterface public boolean microphoneGranted(){return activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
         @JavascriptInterface public void requestMicrophone(){activity.runOnUiThread(()->{activity.ownedPermission=true;activity.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},16);});}
         @JavascriptInterface public boolean setReticulumSpeaker(String callId,boolean enabled){return FamilyVoiceService.setSpeaker(callId,enabled);}
@@ -284,6 +299,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void requestNotifications(){activity.runOnUiThread(()->{if(android.os.Build.VERSION.SDK_INT>=33)activity.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},11);});}
         @JavascriptInterface public String request(String request){
             try{org.json.JSONObject input=new org.json.JSONObject(request);String action=input.optString("action");
+            if (BuildConfig.GOOGLE_PLAY && ("apk_share".equals(action) || "update_install".equals(action)
+                    || "update_check".equals(action) || "update_config".equals(action))) {
+                return new org.json.JSONObject().put("ok", false)
+                        .put("error", "Google Play manages updates for this installation.").toString();
+            }
             if ("apk_share".equals(action)) {
                 org.json.JSONObject auth = new org.json.JSONObject(input.toString());
                 auth.put("action", "authorize_apk_share");
@@ -362,7 +382,7 @@ public class MainActivity extends Activity {
             if("setup".equals(action)&&new org.json.JSONObject(result).optBoolean("ok")){boolean messaging=new org.json.JSONObject(result).optBoolean("messagingEnabled");activity.runOnUiThread(()->{com.meshchatnext.sip.SipController.get(activity);if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));});}
             if(java.util.Arrays.asList("peer","rnode","meshcore_config").contains(action)&&new org.json.JSONObject(result).optBoolean("ok")){org.json.JSONObject snapshot=new org.json.JSONObject(result);boolean messaging=snapshot.optBoolean("messagingEnabled")||(snapshot.optJSONObject("location")!=null&&snapshot.getJSONObject("location").optBoolean("active"));activity.runOnUiThread(()->{if(messaging)activity.startForegroundService(new Intent(activity,FamilyService.class));else activity.stopService(new Intent(activity,FamilyService.class));});}
             if("contacts".equals(action)&&new org.json.JSONObject(result).optBoolean("ok"))com.meshchatnext.sip.SipController.get(activity).send("{\"op\":\"reconcile_contacts\"}");
-            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject voice=state.optJSONObject("voice");if(voice==null||"idle".equals(voice.optString("call_state","idle")))activity.runOnUiThread(()->{activity.showCallOverLockscreen(false);});org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
+            if("status".equals(action)){org.json.JSONObject state=new org.json.JSONObject(result);org.json.JSONObject voice=state.optJSONObject("voice");if(voice==null||"idle".equals(voice.optString("call_state","idle")))activity.runOnUiThread(()->{activity.showCallOverLockscreen(false);});org.json.JSONObject sip=state.optBoolean("setupComplete")?new org.json.JSONObject(com.meshchatnext.sip.SipController.get(activity).status()):new org.json.JSONObject("{\"enabled\":false,\"registered\":false,\"call_state\":\"idle\",\"accounts\":[]}");sip.remove("_blocked_peer");sip.remove("_blocked_at");backend.callAttr("set_network_context",FamilyRuntime.networkContext(activity));org.json.JSONObject ranked=new org.json.JSONObject(backend.callAttr("call_routes",sip.toString()).toString());sip.remove("route_quality");state.put("sip",sip);state.put("callRoutes",ranked);state.put("googlePlay",BuildConfig.GOOGLE_PLAY);if(!BuildConfig.GOOGLE_PLAY)state.put("updates",FamilyUpdates.get(activity).status());result=state.toString();}
             if(action.startsWith("location_")&&new org.json.JSONObject(result).optBoolean("ok")){boolean active=new org.json.JSONObject(result).getJSONObject("location").optBoolean("active");activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyService.class).putExtra("locationSharing",active)));}if(action.startsWith("voice_")&&new org.json.JSONObject(result).optBoolean("ok")&&new org.json.JSONObject(result).has("voice")&&new org.json.JSONObject(result).getJSONObject("voice").optBoolean("enabled"))activity.runOnUiThread(()->activity.startForegroundService(new Intent(activity,FamilyVoiceService.class)));return result;}
             catch(Exception e){return "{\"ok\":false,\"error\":\"Backend unavailable; check app diagnostics\"}";}
         }
@@ -370,14 +390,14 @@ public class MainActivity extends Activity {
     @Override protected void onPause(){
         super.onPause();
         if (!ownedPermission && mapDownload != null) mapDownload.cancelLocation();
-        final boolean lockGuardian=fileCallback==null&&!ownedPermission&&!ownedDocument&&!permissionCheckup.isRequestInFlight();
+        final boolean lockGuardian=fileCallback==null&&!ownedPermission&&!ownedDocument&&!radioAssociation.isPending()&&!permissionCheckup.isRequestInFlight();
         guardianPaused=guardianPaused||lockGuardian;
         if(runtime!=null)lifecycle.execute(()->{try{runtime.callAttr("background",lockGuardian);}catch(Exception ignored){}});
         if(lockGuardian&&web!=null)web.evaluateJavascript("window.dispatchEvent(new Event('family-native-background'))",null);
     }
     @Override protected void onResume(){
         super.onResume();
-        FamilyUpdates.get(this).check(false);
+        if (!BuildConfig.GOOGLE_PLAY) FamilyUpdates.get(this).check(false);
         final boolean relock=guardianPaused;guardianPaused=false;
         lifecycle.execute(()->runOnUiThread(()->{
             if(web!=null){
@@ -495,6 +515,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if (requestCode == RadioAssociation.REQUEST) {
+            radioAssociation.onResult(resultCode, data);
+            return;
+        }
         if(permissionCheckup.onResult(requestCode))return;
         if (requestCode == SAVE_MESSAGE_ATTACHMENT) {
             ownedDocument = false;

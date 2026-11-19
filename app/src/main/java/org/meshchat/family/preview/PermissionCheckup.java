@@ -74,14 +74,14 @@ final class PermissionCheckup {
         runtime("Microphone", "Let the other person hear you during a call.",
             Manifest.permission.RECORD_AUDIO);
         if (Build.VERSION.SDK_INT >= 31) {
-            runtime("Nearby Bluetooth devices", "Find and connect to Bluetooth radios and compatible headsets.",
-                Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT);
+            runtime("Nearby Bluetooth devices", "Connect to a Bluetooth radio you select in Android’s companion picker.",
+                Manifest.permission.BLUETOOTH_CONNECT);
         }
         if (activity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
             runtime("Camera", "Scan contact and room QR codes with the camera.",
                 Manifest.permission.CAMERA);
         }
-        runtime("Location while using the app", "Use your location for the family map and sharing you enable. Older Android versions also need this to find Bluetooth radios.",
+        runtime("Location while using the app", "Use your location for the family map and sharing you enable.",
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION);
         dialog = new AlertDialog.Builder(activity)
             .setTitle("Permission checkup")

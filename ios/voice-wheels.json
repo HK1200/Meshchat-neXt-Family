@@ -1,0 +1,23 @@
+{
+  "iphoneos-arm64": [
+    {
+      "file": "numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_iphoneos.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/numpy/2.5.2.post1/numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_iphoneos.whl",
+      "sha256": "ea0d416430861668d6591b28ff289e20abbd11697841666925d26f71bbad7a37"
+    }
+  ],
+  "iphonesimulator-arm64": [
+    {
+      "file": "numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/numpy/2.5.2.post1/numpy-2.5.2.post1-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl",
+      "sha256": "68090ec1a8bfd3e186174697f42ac1299446c5b90fbfd2cd6339c908624a7291"
+    }
+  ],
+  "iphonesimulator-x86_64": [
+    {
+      "file": "numpy-2.5.2.post1-cp314-cp314-ios_13_0_x86_64_iphonesimulator.whl",
+      "url": "https://pypi.anaconda.org/beeware/simple/numpy/2.5.2.post1/numpy-2.5.2.post1-cp314-cp314-ios_13_0_x86_64_iphonesimulator.whl",
+      "sha256": "f6e2b842e10333f734638716222c8fff410223c4dc75082e533782a87c9f1f5a"
+    }
+  ]
+}

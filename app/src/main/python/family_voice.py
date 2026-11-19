@@ -1,8 +1,20 @@
 """Approved LXST calls with native Android PCM; no host audio or auto-answer."""
-import threading,time,uuid
+import sys,threading,time,uuid
 
 PCM_BYTES_PER_MS = 96
 PLAYBACK_CHUNK = 20 * PCM_BYTES_PER_MS
+IOS_SPEECH_GAIN = 10 ** (5 / 20)
+PLAYBACK_ECHO_HOLD = 0.7
+
+
+def ios_transmit_gain(now, last_playback, microphone_rms, playback_rms):
+ if now - last_playback >= PLAYBACK_ECHO_HOLD:
+  return IOS_SPEECH_GAIN
+ # Compare unamplified capture to recent speaker audio so AGC cannot
+ # turn an echo into a signal that qualifies for the extra boost.
+ if microphone_rms >= max(0.004, 2 * playback_rms):
+  return IOS_SPEECH_GAIN
+ return 1.0
 
 
 class VoicePlaybackBuffer:
@@ -37,10 +49,31 @@ class VoicePlaybackBuffer:
   return chunk
 
 
+def check_default_codec(profiles):
+ """Check that the bundled codec can run before accepting call signaling."""
+ import numpy as np
+ from types import SimpleNamespace
+
+ profile=profiles.DEFAULT_PROFILE
+ samples=(np.sin(np.arange(48*profiles.get_frame_time(profile))*0.0576)*0.25).astype(np.float32).reshape(-1,1)
+ try:
+  encoder=profiles.get_codec(profile)
+  decoder=profiles.get_codec(profile)
+  pcm_endpoint=SimpleNamespace(channels=1,samplerate=48000)
+  encoder.source=pcm_endpoint
+  decoder.sink=pcm_endpoint
+  decoded=decoder.decode(encoder.encode(samples))
+  if decoded.shape!=samples.shape or not np.all(np.isfinite(decoded)) or not np.any(decoded):
+   raise ValueError('Opus returned invalid audio')
+ except Exception as exc:
+  raise RuntimeError(f'Reticulum voice codec could not start: {exc}') from exc
+
+
 class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
   self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
+  self.last_incoming='';self.last_playback_activity=float('-inf');self.playback_rms=0.0
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
   if state['voiceEnabled'] and autostart:threading.Thread(target=self._ensure,daemon=True).start()
  def _gate(self,acquire):
@@ -77,8 +110,24 @@ class FamilyVoice:
     if not hasattr(LinkSource,"samplerate"):LinkSource.samplerate=48000
     from LXST.Primitives import Telephony
     from RNS.vendor import umsgpack
+    if sys.platform == 'ios':check_default_codec(Telephony.Profiles)
     self._install_audio(Telephony)
-    phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self.allowed,wait_time=30)
+    phone=Telephony.Telephone(self.identity,auto_answer=None,allowed=self._approve_incoming,wait_time=30)
+    if self.gate is not None:
+     handle_link=phone.destination.callbacks.link_established
+     def incoming_link(link):
+      with self.lock:self.last_incoming='Call connection reached this iPad; waiting for caller identification.'
+      handle_link(link)
+      identify=link.callbacks.remote_identified
+      if identify is None:return
+      def identified(source,identity):
+       try:identify(source,identity)
+       except Exception as exc:
+        with self.lock:self.last_incoming=f'Incoming call setup failed: {exc}'[:200]
+        if phone.active_call is source:self.hangup()
+        else:source.teardown()
+      link.set_remote_identified_callback(identified)
+     phone.destination.set_link_established_callback(incoming_link)
     phone.destination.set_default_app_data(lambda: umsgpack.packb([self.state.get('device_name','neXt Family'),None,None]))
     # LXST 0.5.4's worker reads ANNOUNCE_INTERVAL directly. Family schedules
     # announcements on its enabled routes, so suppress the library's broadcast.
@@ -90,24 +139,33 @@ class FamilyVoice:
    except Exception as exc:self.error=str(exc)[:200]
  def _install_audio(self,telephony):
   import numpy as np
+  from importlib import import_module
+  from types import SimpleNamespace
   from LXST.Sources import LocalSource
   from LXST.Sinks import LocalSink
   from LXST.Codecs import Raw
+  # LXST 0.5.4 uses the host backend's sample rate when assigning a
+  # codec such as Null to a mixer. On iOS there is no LXST host backend.
+  mixer=import_module('LXST.Mixer')
+  if mixer.Backend is None:mixer.Backend=SimpleNamespace(SAMPLERATE=48000)
   manager=self
   class Input(LocalSource):
    def __init__(self,preferred_device=None,target_frame_ms=60,codec=None,sink=None,**kwargs):
     from lxst_audio_processing import prepare_capture_filters
-    self.filters=prepare_capture_filters(kwargs.get('filters'))
+    self.filters=prepare_capture_filters(
+     kwargs.get('filters'),default_max_gain_db=18.0 if sys.platform=='ios' else None,
+     echo_before_gain=sys.platform=='ios')
     self.target_frame_ms=target_frame_ms or 60;self.codec=codec or Raw(channels=1,bitdepth=16);self.sink=sink;self.channels=1;self.samplerate=48000;self.bitdepth=16;self.should_run=False
     self.frame_bytes=round(self.target_frame_ms*PCM_BYTES_PER_MS)
     self.pending=bytearray()
+    self.speech_gain=1.0
     manager.input=self
    def start(self):self.should_run=True
    def stop(self):
     with manager.lock:self.should_run=False;self.pending.clear()
    def can_receive(self,from_source=None):return True
    def handle_frame(self,frame,source=None):pass
-   def push(self,data):
+   def push(self,data,native_processing=False):
     if not self.should_run or not self.sink:return 0
     self.pending.extend(data)
     sent=0
@@ -116,7 +174,16 @@ class FamilyVoice:
      del self.pending[:self.frame_bytes]
      if self.sink.can_receive(from_source=self):
       samples=(np.frombuffer(frame,dtype='<i2').astype(np.float32)/32768.0).reshape(-1,1)
-      for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
+      if not native_processing:
+       if sys.platform=='ios':
+        microphone_rms=float(np.sqrt(np.mean(samples*samples)))
+        gain=ios_transmit_gain(time.monotonic(),manager.last_playback_activity,microphone_rms,manager.playback_rms)
+       for audio_filter in self.filters:samples=audio_filter.handle_frame(samples,self.samplerate)
+       if sys.platform=='ios':
+        if gain!=1.0 or self.speech_gain!=1.0:
+         ramp=np.linspace(self.speech_gain,gain,len(samples),dtype=np.float32).reshape(-1,1)
+         samples=np.clip(samples*ramp,-0.75,0.75)
+        self.speech_gain=gain
       self.sink.handle_frame(self.codec.encode(samples),self)
       sent+=1
     return sent
@@ -132,29 +199,53 @@ class FamilyVoice:
      if manager.phase!='connected' or not manager.state.get('voiceEnabled'):return
      data=np.asarray(frame,dtype=np.float32)
      if data.ndim==2 and data.shape[1]>1:data=data.mean(axis=1)
+     if sys.platform=='ios' and data.size:
+      playback_rms=float(np.sqrt(np.mean(data*data)))
+      if playback_rms>0.003:
+       now=time.monotonic()
+       if now-manager.last_playback_activity>=PLAYBACK_ECHO_HOLD:
+        manager.playback_rms=0.0
+       manager.playback_rms=max(manager.playback_rms,playback_rms)
+       manager.last_playback_activity=now
      pcm=(np.clip(data,-1,1)*32767).astype('<i2').tobytes()
      if not pcm or len(pcm)>65536:return
      manager.pcm.append(pcm);manager.received+=1
   telephony.LineSource=Input;telephony.LineSink=Output
+ def _approve_incoming(self,identity_hash):
+  with self.lock:
+   approved=self.allowed(identity_hash)
+   if self.gate is not None:
+    self.last_incoming=('Approved caller identified.' if approved else
+                        'Call rejected. Check the approved contact’s Reticulum voice address.')
+   return approved
  def _ring(self,identity):
   with self.lock:
    contact=self._contact(identity.hash)
-   if not self.allowed(identity.hash) or not self._gate(True):threading.Thread(target=self.hangup,daemon=True).start();return
+   if not contact or not self.allowed(identity.hash):
+    if self.gate is not None:self.last_incoming='Incoming call approval changed.'
+    threading.Thread(target=self.hangup,daemon=True).start();return
+   if not self._gate(True):
+    if self.gate is not None:self.last_incoming='Approved call arrived while Family was unavailable.'
+    threading.Thread(target=self.hangup,daemon=True).start();return
+   if self.gate is not None:self.last_incoming='Incoming call rang.'
    self.outgoing=False;self.connected_at=0.;self.last_rtt=None
    self.generation+=1;self.call_id=uuid.uuid4().hex;self.phase='incoming';self.peer=identity.hash.hex();self.target=contact['addresses']['lxst'];self.name=contact['name'];self.error='';self.sent=0;self.received=0
  def _connected(self,identity):
   with self.lock:
    if self.phase not in ['calling','incoming'] or not self.call_id or not self.allowed(identity.hash):threading.Thread(target=self.hangup,daemon=True).start();return
-   self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(getattr(self.phone,'active_call',None),'rtt',None);self.name=self._contact(identity.hash)['name']
+   call=getattr(self.phone,'active_call',None)
+   self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(call,'rtt',None);self.name=self._contact(identity.hash)['name']
  def _ended(self,identity=None):
   with self.lock:
    if self.outgoing and self.target and ((self.connected_at and time.time()-self.connected_at>=3) or self.error):
     metrics={};rtt=getattr(getattr(self.phone,'active_call',None),'rtt',None) or self.last_rtt
     if isinstance(rtt,(int,float)) and 0<=rtt<60:metrics['rtt_ms']=rtt*1000
     self.state['callQuality']=(self.state.get('callQuality',[])+[{'service':'reticulum','target':self.target,'context':self.quality_context,'timestamp':time.time(),'failed':bool(self.error),'metrics':metrics}])[-64:];self.save()
+   if self.outgoing and self.phase in ('finding','calling') and not self.error:
+    self.error='The Reticulum call ended before audio connected.'
    self.outgoing=False;self.connected_at=0.
    self.generation+=1;self.phase='idle';self.peer='';self.target='';self.call_id='';self.muted=False;self._gate(False)
-   self.pcm.clear()
+   self.pcm.clear();self.last_playback_activity=float('-inf');self.playback_rms=0.0
  def call(self,contact_id,automatic=False):
   with self.lock:
    contact=next((c for c in self.state['contacts'] if c['id']==contact_id),None)
@@ -162,19 +253,23 @@ class FamilyVoice:
    if not address:raise ValueError('This contact has no approved Reticulum voice address')
    if not self.state.get('voiceEnabled') or not self.phone:raise ValueError(self.error or 'Enable Reticulum calling in guardian settings')
    if self.phase!='idle' or self._dialling or self.phone.active_call:raise ValueError('A Reticulum call is already active')
-   if not self._gate(True):raise ValueError('A SIP call is active')
+   if not self._gate(True):raise ValueError('Another call is active or Family is in the background')
    self.outgoing=True;self.connected_at=0.;self.quality_context=self.route_context(address)
    self.generation+=1;generation=self.generation;self.phase='finding';self._dialling=True;self.target=address;self.call_id=uuid.uuid4().hex;self.name=contact['name'];self.error='';self.sent=0;self.received=0
   def dial():
    try:
     import RNS
-    target=bytes.fromhex(address);deadline=time.monotonic()+30
-    if not RNS.Transport.has_path(target):RNS.Transport.request_path(target)
-    while not RNS.Transport.has_path(target):
+    target=bytes.fromhex(address);deadline=time.monotonic()+30;next_request=0
+    while True:
      if generation!=self.generation:return
-     if time.monotonic()>deadline:raise ValueError('No Reticulum voice path is available')
+     identity=RNS.Identity.recall(target) if RNS.Transport.has_path(target) else None
+     if identity:break
+     now=time.monotonic()
+     if now>=deadline:raise ValueError('No Reticulum voice path is available')
+     if now>=next_request:
+      RNS.Transport.request_path(target)
+      next_request=now+2
      time.sleep(.2)
-    identity=RNS.Identity.recall(target)
     if automatic and self.route_context(address).startswith('radio:'):raise ValueError('Radio path is too slow for this voice profile')
     with self.lock:
      if generation!=self.generation:return
@@ -211,12 +306,15 @@ class FamilyVoice:
  def reconcile(self):
   with self.lock:
    if (self.peer and not self.allowed(bytes.fromhex(self.peer))) or (self.target and not any(c.get('addresses',{}).get('lxst','')==self.target for c in self.state['contacts'])):self.hangup()
- def push(self,call_id,data):
+ def push(self,call_id,data,native_processing=False):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.allowed(bytes.fromhex(self.peer)) or self.muted or not self.input:return
    data=bytes(data)
    if not data or len(data)>11520 or len(data)%2:return
-   self.sent+=self.input.push(data)
+   try:self.sent+=self.input.push(data,native_processing=native_processing)
+   except Exception as exc:
+    self.error=f'Reticulum microphone audio failed: {exc}'[:200]
+    self.hangup(call_id)
  def pull(self,call_id):
   with self.lock:
    if call_id!=self.call_id or self.phase!='connected' or not self.peer or not self.allowed(bytes.fromhex(self.peer)):return b''
@@ -230,4 +328,4 @@ class FamilyVoice:
    call=getattr(self.phone,'active_call',None)
    profile=getattr(call,'profile',None)
    profile_name=self.profiles.profile_name(profile) if self.profiles and profile is not None else ''
-   return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target,'profile':profile_name}
+   return {'enabled':self.state.get('voiceEnabled',False),'ready':self.phone is not None,'address':self.phone.destination.hash.hex() if self.phone and self.phone.destination else '', 'call_state':self.phase,'call_id':self.call_id,'caller_name':self.name,'error':self.error,'sentFrames':self.sent,'receivedFrames':self.received,'lastIncoming':self.last_incoming,'playbackUnderruns':self.pcm.underruns,'playbackDroppedMs':self.pcm.dropped_bytes//PCM_BYTES_PER_MS,'muted':self.muted,'target':self.target,'profile':profile_name}

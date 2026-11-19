@@ -2,6 +2,7 @@ package org.meshchat.family.preview;
 import android.content.Context;
 import com.chaquo.python.Python;
 import com.chaquo.python.PyObject;
+import com.chaquo.python.Kwarg;
 import com.chaquo.python.android.AndroidPlatform;
 /** Serialize cold runtime setup across activities and independently restarted services. */
 final class FamilyRuntime {
@@ -17,7 +18,7 @@ final class FamilyRuntime {
   PyObject backend=Python.getInstance().getModule("family_backend");
   backend.callAttr("set_network_context",networkContext(app));
   backend.callAttr("set_voice_deferred",app.getSharedPreferences("boot_recovery",0).getBoolean("defer_calls",false));
-  backend.callAttr("initialize",new java.io.File(app.getFilesDir(),"family-live").getAbsolutePath());
+  backend.callAttr("initialize",new java.io.File(app.getFilesDir(),"family-live").getAbsolutePath(),new Kwarg("store_build",BuildConfig.GOOGLE_PLAY));
   return backend;
  }
 }

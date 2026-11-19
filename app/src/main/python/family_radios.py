@@ -56,7 +56,11 @@ def validate(raw):
     if transport=='usb':
         if not re.fullmatch(r'/dev/bus/usb/\d{3}/\d{3}',endpoint):raise ValueError('Choose a detected USB device')
     elif transport in ['ble','classic']:
-        if not re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}',endpoint):raise ValueError('Select the Bluetooth RNode address')
+        import sys
+        if sys.platform == 'ios' and transport == 'ble':
+            from family_ios_bluetooth import device_id
+            endpoint = device_id(endpoint)
+        elif not re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}',endpoint):raise ValueError('Select the Bluetooth RNode address')
     elif not re.fullmatch(r'[A-Za-z0-9.-]{1,253}',endpoint):raise ValueError('Enter the RNode hostname or IPv4 address without a port')
     def number(key,low,high,scale=1):
         value=float(raw.get(key,''))*scale
@@ -114,9 +118,10 @@ def prepare_ble(module):
         module.BLEConnection._family_lifecycle_safe=True
 
 class Radio:
-    def __init__(self,reticulum,on_ready=None,on_retire=None):
+    def __init__(self,reticulum,on_ready=None,on_retire=None,network_only=False):
         self.reticulum=reticulum;self.interface=None;self.error='';self.config=None;self.applied=None;self.on_ready=on_ready;self.on_retire=on_retire
         self._last_ready=None
+        self.network_only=network_only
         self._lock=threading.RLock();self._pending=threading.Event()
         threading.Thread(target=self._worker,daemon=True).start()
         threading.Thread(target=self._monitor,daemon=True).start()
@@ -133,7 +138,12 @@ class Radio:
                 try:self.on_ready()
                 except Exception:pass
     def configure(self,config):
-        with self._lock:self.config=dict(config) if config else None
+        with self._lock:
+            previous=self.config
+            self.config=dict(config) if config else None
+        if self.network_only and previous and previous.get('transport')=='ble' and previous!=config:
+            from family_ios_bluetooth import request
+            request('close',id=previous['endpoint'])
         self._pending.set()
     def _worker(self):
         while True:
@@ -146,6 +156,9 @@ class Radio:
                     old.detach()
                     if old in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(old)
                 if not config or not config['enabled']:continue
+                if self.network_only:
+                    self._open_network_radio(RNS,config)
+                    continue
                 from RNS.Interfaces.Android import RNodeInterface as module
                 RNodeInterface=module.RNodeInterface
                 # A new radio session needs its own battery report.
@@ -180,18 +193,38 @@ class Radio:
                 with self._lock:self.interface=interface;self.applied=config
             except Exception as exc:
                 with self._lock:self.error=str(exc)
+    def _open_network_radio(self,rns,config):
+        if config['transport'] not in ('tcp', 'ble'):raise ValueError('Choose Bluetooth LE or Wi-Fi RNode for iOS')
+        from RNS.Interfaces.RNodeInterface import RNodeInterface
+        interface=RNodeInterface(rns.Transport,{
+            'name':'Family RNode','port':('familyble://' if config['transport']=='ble' else 'tcp://')+config['endpoint'],
+            'frequency':config['frequency'],'bandwidth':config['bandwidth'],'txpower':config['power'],
+            'spreadingfactor':config['sf'],'codingrate':config['cr'],'flow_control':False,
+        })
+        self.reticulum._add_interface(interface)
+        with self._lock:self.interface=interface;self.applied=config
+
     def snapshot(self):
         with self._lock:
             interface=self.interface;enabled=bool(self.config and self.config['enabled']);current=getattr(self,'applied',self.config)==self.config
             online = bool(enabled and current and interface and interface.online)
             battery = None
+            native_error = ''
+            if enabled and not online and self.network_only and self.config.get('transport')=='ble':
+                from family_ios_bluetooth import last_error
+                native_error = last_error(self.config['endpoint'])
             if online and hasattr(interface, 'get_battery_state_string'):
                 state = interface.get_battery_state_string()
                 percent = interface.get_battery_percent()
                 if state in ('charging', 'charged', 'discharging') and type(percent) in (int, float) and 0 <= percent <= 100:
                     battery = {'percent': percent, 'state': state}
-            return {'online':online,'battery':battery,'error':self.error or ('; '.join(str(e.get('description','Radio error')) for e in getattr(interface,'hw_errors',[])) if enabled and interface else '') or (getattr(getattr(interface,'ble',None),'last_error','') if enabled and interface and not interface.online else ''),
-                    'connecting':bool(enabled and not self.error and (not interface or not interface.online)),
+            failure = ''
+            if enabled and not online:
+                hardware_error = '; '.join(str(e.get('description', 'Radio error')) for e in getattr(interface, 'hw_errors', []))
+                ble_error = getattr(getattr(interface, 'ble', None), 'last_error', '')
+                failure = self.error or native_error or hardware_error or ble_error
+            return {'online':online,'battery':battery,'error':failure,
+                    'connecting':bool(enabled and not online and not failure),
                     'reported':({k:getattr(interface,attribute,None) for k,attribute in [('frequencyHz','r_frequency'),('bandwidthHz','r_bandwidth'),('powerDbm','r_txpower'),('sf','r_sf'),('cr','r_cr')]} if interface else None),
                     'readyToTransmit':getattr(interface,'interface_ready',False) if interface else False,
                     'queuedPackets':getattr(interface,'_family_pacer').pending() if interface and hasattr(interface,'_family_pacer') else len(getattr(interface,'packet_queue',[])) if interface else 0,

@@ -1,0 +1,144 @@
+import PhotosUI
+import SwiftUI
+import VisionKit
+
+struct FamilyContactApproval: View {
+    @ObservedObject var family: FamilyModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var address = ""
+    @State private var voiceAddress = ""
+    @State private var meshcoreAddress = ""
+    @State private var sipAddress = ""
+    @State private var photo: String?
+    @State private var photoLoading = false
+    @State private var contactSaved = false
+    @State private var importedCard: FamilyContactCard?
+    @State private var qrPhoto: PhotosPickerItem?
+    @State private var showingQRScanner = false
+    @State private var readingQR = false
+    private enum Field: Hashable { case name, lxmf, voice, sip, meshcore }
+    @FocusState private var focusedField: Field?
+
+    var body: some View {
+        Form {
+            if family.unlocked {
+                FamilyContactPhotoEditor(name: name, photo: $photo, loading: $photoLoading)
+                Section("Approve contact") {
+                    TextField("Contact name", text: $name)
+                        .focused($focusedField, equals: .name)
+                        .accessibilityIdentifier("contact-name")
+                    TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focusedField, equals: .lxmf)
+                        .accessibilityIdentifier("contact-address")
+                    TextField("Reticulum voice address", text: $voiceAddress)
+                        .focused($focusedField, equals: .voice)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("SIP extension or address", text: $sipAddress)
+                        .focused($focusedField, equals: .sip)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("MeshCore public key", text: $meshcoreAddress)
+                        .focused($focusedField, equals: .meshcore)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    NavigationLink("Find messaging client") {
+                        FamilyClientDiscovery(family: family) { client in
+                            importedCard = nil
+                            name = String(client.name.prefix(32))
+                            address = client.address
+                            voiceAddress = ""
+                            contactSaved = false
+                        }
+                    }
+                    if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                        Button("Scan contact QR code", systemImage: "camera") { showingQRScanner = true }
+                            .disabled(readingQR)
+                    }
+                    PhotosPicker(selection: $qrPhoto, matching: .images) {
+                        Label("Import contact QR image", systemImage: "qrcode")
+                    }
+                    .disabled(readingQR)
+                    .onChange(of: qrPhoto) {
+                        guard let photo = qrPhoto else { return }
+                        readingQR = true
+                        Task { await importQRPhoto(photo) }
+                    }
+                    if readingQR { ProgressView("Reading contact code") }
+                    Button(contactSaved ? "Contact saved" : "Save approved contact") {
+                        let approvedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        let key = importedCard?.addresses["lxmf"]?.lowercased() == approvedAddress
+                            ? importedCard?.identityPublicKey : nil
+                        Task {
+                            contactSaved = await family.saveContact(name: name, address: address, voiceAddress: voiceAddress, identityPublicKey: key, meshcoreAddress: meshcoreAddress, sipAddress: sipAddress, photo: photo, replacePhoto: true)
+                        }
+                    }
+                    .disabled(readingQR || photoLoading)
+                    .onChange(of: photo) { contactSaved = false }
+                    .onChange(of: meshcoreAddress) { contactSaved = false }
+                    .onChange(of: sipAddress) { contactSaved = false }
+                    .onChange(of: name) { contactSaved = false }
+                    .onChange(of: address) { contactSaved = false }
+                    .onChange(of: voiceAddress) { contactSaved = false }
+                }
+                if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .accessibilityIdentifier("contact-approval-form")
+        .navigationTitle("Approve contact")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("Back to settings") { dismiss() } }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done typing") { focusedField = nil }
+                    .accessibilityIdentifier("finish-contact-entry")
+            }
+        }
+        .sheet(isPresented: $showingQRScanner) {
+            NavigationStack {
+                FamilyQRScanner { payload in
+                    showingQRScanner = false
+                    readingQR = true
+                    Task {
+                        await importQRPayload(payload)
+                        readingQR = false
+                    }
+                } onError: {
+                    showingQRScanner = false
+                    family.error = "The camera couldn’t start. You can import a QR image instead."
+                }
+                .navigationTitle("Scan contact QR code")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingQRScanner = false }
+                    }
+                }
+            }
+        }
+    }
+
+    private func importQRPayload(_ payload: String) async {
+        guard let card = await family.readContactCard(payload) else { return }
+        importedCard = card
+        name = card.name ?? ""
+        address = card.addresses["lxmf"] ?? ""
+        voiceAddress = card.addresses["lxst"] ?? ""
+        meshcoreAddress = card.addresses["meshcore"] ?? ""
+        sipAddress = card.addresses["sip"] ?? ""
+        contactSaved = false
+    }
+
+    private func importQRPhoto(_ photo: PhotosPickerItem) async {
+        defer {
+            qrPhoto = nil
+            readingQR = false
+        }
+        do {
+            let payload = try await FamilyQRImage.read(photo)
+            guard family.unlocked else { return }
+            await importQRPayload(payload)
+        } catch {
+            if family.unlocked { family.error = error.localizedDescription }
+        }
+    }
+}

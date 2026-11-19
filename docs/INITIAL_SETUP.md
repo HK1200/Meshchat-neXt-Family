@@ -8,7 +8,7 @@
 4. If you want to try Reticulum over the internet, select **Enable Reticulum internet peers**. Otherwise leave it unchecked. Choose **Create guardian access**.
 5. Allow notifications when prompted if you want incoming message alerts and call controls. Grant microphone access when you make or answer your first call. Android may request additional permissions for Bluetooth, camera scanning, or location when you use those features.
 
-[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.21)
+[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.28)
 
 ## Transfer from Family v0.6.19 or earlier
 
@@ -55,7 +55,7 @@ To add someone who uses Family, ask them to unlock **Guardian settings → Conta
 
 MeshCore supports private text in Family. Use SIP or Reticulum for calls.
 
-## 4. Approve rooms
+## 4. Approve rooms (GitHub edition)
 
 Open **Guardian settings → Rooms**. Add a MeshCore room server or a Reticulum Relay Chat hub and channel. Choose a supported QR import, the corresponding discovery list, or enter the address manually. Add the room’s password or access information if it requires one. Save the approval, then open the room from the Family home screen.
 
@@ -76,7 +76,7 @@ Location sharing is optional. Grant device location access only if you intend to
 - Check the RNode or MeshCore battery indicators when the corresponding radio is connected.
 - If a service cannot reach a person, verify the contact address, selected route, and radio or account status under **Connections**.
 - If notifications are missing, check the app’s notification permissions in Android settings. If calls can’t use audio, check microphone permission.
-- Use the home screen’s **Install now** button when an update is offered. Guardians can also use **Security → Family updates → Check for updates**. Updates come from this repository.
+- On Google Play installs, use Google Play to update. On GitHub installs, use the home screen’s **Install now** button when an update is offered. Guardians can also use **Security → Family updates → Check for updates**. Updates come from this repository.
 
 ### Start connections after a restart
 

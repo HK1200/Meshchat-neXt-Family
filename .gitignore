@@ -15,3 +15,5 @@ __pycache__/
 *.key
 .env
 .env.*
+
+.expat-runtime-maven/

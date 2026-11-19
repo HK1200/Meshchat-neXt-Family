@@ -2,24 +2,32 @@ apply plugin: 'com.android.application'
 apply plugin: 'com.chaquo.python'
 def familyWheelDir = System.getenv("FAMILY_ANDROID_VENDOR_DIR") ?: file("../../meshchat-next/android/vendor").absolutePath
 def familyPython = System.getenv("FAMILY_ANDROID_PYTHON") ?: "python3.11"
+def googlePlay = providers.gradleProperty("googlePlay").map { it.toBoolean() }.getOrElse(false)
+
 android {
+    buildFeatures { buildConfig true }
     namespace 'org.meshchat.family.preview'
-    compileSdk 35
+    compileSdk (googlePlay ? 36 : 35)
     defaultConfig {
         applicationId 'org.meshchat.family'
         manifestPlaceholders = [familyAppLabel: 'neXt Family']
         minSdk 26
         testInstrumentationRunner 'org.meshchat.family.preview.FamilyTestInstrumentation'
         ndk { abiFilters "arm64-v8a" }
-        targetSdk 35
-        versionCode 36
-        versionName '0.6.27'
+        targetSdk (googlePlay ? 36 : 35)
+        buildConfigField "boolean", "GOOGLE_PLAY", googlePlay.toString()
+        versionCode 42
+        versionName '0.6.28'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    if (googlePlay) {
+        sourceSets.main.manifest.srcFile layout.buildDirectory.file("play/AndroidManifest.xml").get().asFile
+    }
+
     buildTypes {
         debug {
             if (project.hasProperty('isolatedSetupTest')) {
-                applicationIdSuffix '.setuptest'
+                applicationIdSuffix (project.hasProperty('relayTest') ? '.relaytest' : '.setuptest')
                 manifestPlaceholders = [familyAppLabel: 'neXt Family Preview']
             }
         }
@@ -56,3 +64,24 @@ chaquopy {
 }
 
 dependencies { implementation files("libs/usb-serial-for-android-3.8.1.aar") }
+
+
+if (googlePlay) {
+    def playManifest = tasks.register("generatePlayManifest") {
+        def original = layout.projectDirectory.file("src/main/AndroidManifest.xml")
+        def output = layout.buildDirectory.file("play/AndroidManifest.xml")
+        inputs.file(original)
+        outputs.file(output)
+        doLast {
+            def manifest = original.asFile.getText("UTF-8")
+            manifest = manifest.replaceAll(/<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"\s*\/>/, "")
+            manifest = manifest.replaceAll(/<uses-permission android:name="android.permission.BLUETOOTH_SCAN"[^>]*>/, "")
+            manifest = manifest.replaceAll(/<activity android:name="\.FamilyUpdateActivity"[^>]*\/>/, "")
+            manifest = manifest.replaceAll(/(?s)<provider android:name="\.FamilyApkShare"[^>]*>.*?<\/provider>/, "")
+            def file = output.get().asFile
+            file.parentFile.mkdirs()
+            file.setText(manifest, "UTF-8")
+        }
+    }
+    tasks.named("preBuild").configure { dependsOn(playManifest) }
+}
