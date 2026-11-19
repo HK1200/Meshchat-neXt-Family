@@ -12,7 +12,7 @@ from pathlib import Path
 DEFAULT_DEVICE_NAME='neXt Family'
 ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
-    'setup','status','unlock','lock','password','contacts','peer',
+    'setup','status','radio_batteries','unlock','lock','password','contacts','peer',
     'ios_network_context','call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend','ios_location_background',

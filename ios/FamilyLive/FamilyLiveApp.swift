@@ -103,6 +103,7 @@ final class FamilyModel: ObservableObject {
     private var guardianEpoch = 0
     private var pendingNotification: (Int, String)?
     private var nextMailboxCheck = ContinuousClock.now
+    private var nextRadioBatteryCheck = ContinuousClock.now
     static let mailboxRefreshID = "org.meshchat.family.ios.live.mailbox"
     private static let mailboxBackgroundCheckKey = "family.mailbox.lastBackgroundCheck"
     @Published private(set) var lastBackgroundMailboxCheck =
@@ -219,6 +220,15 @@ final class FamilyModel: ObservableObject {
                 #endif
             }
             finishSendIfIdle()
+            if UIApplication.shared.applicationState == .active {
+                let now = ContinuousClock.now
+                if updated.meshcore?.connected != true {
+                    nextRadioBatteryCheck = now
+                } else if now >= nextRadioBatteryCheck {
+                    nextRadioBatteryCheck = now + .seconds(30)
+                    _ = try? await request("radio_batteries")
+                }
+            }
         } catch { self.error = error.localizedDescription }
     }
 
