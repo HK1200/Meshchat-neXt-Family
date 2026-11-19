@@ -57,7 +57,7 @@ struct FamilyRNodeSettings: View {
                     }
                     if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 } footer: {
-                    Text(transport == "ble" ? "Select the identifier of your Bluetooth LE RNode. Keep the radio nearby and disconnect it from other apps." : "Enter the radio’s network address. RNode listens on TCP port 7633.")
+                    Text(transport == "ble" ? "For the first connection, put the radio itself into pairing mode and enter its current PIN when prompted. Keep other apps disconnected from the radio. A brief reconnect after successful pairing is normal." : "Enter the radio’s network address. RNode listens on TCP port 7633.")
                 }
             }
         }

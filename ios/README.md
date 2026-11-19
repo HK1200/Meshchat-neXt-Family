@@ -50,7 +50,7 @@ Approved Reticulum conversations can attach files from Files and photos from the
 
 ## Bluetooth radios
 
-In **Guardian settings → RNode**, choose Bluetooth LE, tap **Find Bluetooth radios**, and select the RNode by name. Save the confirmed frequency, bandwidth, spreading factor, coding rate, and power. Wi-Fi RNode remains available in the same menu. Bluetooth Classic serial radios require a Bluetooth LE capable firmware or a Wi-Fi connection on iOS.
+In **Guardian settings → RNode**, choose Bluetooth LE, tap **Find Bluetooth radios**, and select the RNode by name. Save the confirmed frequency, bandwidth, spreading factor, coding rate, and power. For a first pairing, enable pairing mode on the radio itself and enter its current PIN on the iPhone or iPad; ordinary Bluetooth-on mode does not accept a new pairing. A brief disconnect and reconnect after successful RNode pairing is normal. Disconnect other apps from the radio before testing. Wi-Fi RNode remains available in the same menu. Bluetooth Classic serial radios require a Bluetooth LE capable firmware or a Wi-Fi connection on iOS.
 
 In **Guardian settings → MeshCore companion**, scan and select the companion, enable approved private-message reception, and save. Approve clients listed by the companion or import a contact QR code. A full MeshCore key can also be added to an existing approved contact. The selected companion’s public key is checked again on reconnect. RNode and MeshCore use separate native Bluetooth sessions.
 
