@@ -92,6 +92,8 @@ The native lifecycle tests use an injected CallKit driver to check delayed activ
 
 ## Notifications and background delivery
 
+When the embedded runtime is executing, a verified private Reticulum message signals the native inbox after it is saved. The signal contains no message content, address or key. A short background receive task refreshes the approved inbox and posts permitted unread-message notifications. iOS can still suspend TCP completely; reliable alerts during suspension require the optional push service and Apple signing capability described below.
+
 Tap **Enable message notifications** on the home screen. Incoming messages from approved contacts can trigger a local alert while the app is running. The alert leaves out the sender and message text. Family keeps a record of posted alerts to avoid repeating them on refresh.
 
 If Family is sending a message when iOS moves it to the background, it requests a short period to finish the send. iOS can then suspend the app and its TCP connection.

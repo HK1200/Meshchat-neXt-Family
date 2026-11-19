@@ -18,6 +18,10 @@ void family_runtime_set_https_post(FamilyHTTPSPost post);
 typedef char *(*FamilyBluetoothRequest)(const char *request);
 void family_runtime_set_bluetooth(FamilyBluetoothRequest request);
 
+/* Payload-free inbox change notification. Install before starting Python. */
+typedef void (*FamilyInboxChanged)(void);
+void family_runtime_set_inbox_changed(FamilyInboxChanged callback);
+
 /* Start once before serving requests. NULL python_home uses the default stdlib. */
 bool family_runtime_start(const char *python_home, const char *modules, const char *state);
 

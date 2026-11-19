@@ -2,6 +2,7 @@ import Foundation
 
 extension Notification.Name {
     static let familyRadioData = Notification.Name("org.meshchat.family.radio-data")
+    static let familyInboxData = Notification.Name("org.meshchat.family.inbox-data")
 }
 
 /// Coalesces an actual Bluetooth wake into a bounded inbox check, not a keep-alive.

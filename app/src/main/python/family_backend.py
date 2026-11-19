@@ -471,6 +471,17 @@ def _decode_outbound_attachments(raw):
     return items
 
 
+def _notify_native_inbox():
+    if not _tcp_only:return
+    try:
+        import _family_native_events
+        _family_native_events.inbox_changed()
+    except ImportError:
+        pass  # Desktop fixtures and Android have no native iOS event module.
+    except Exception:
+        pass  # A UI notification failure cannot undo an accepted private message.
+
+
 def _receive(message):
     peer=message.source_hash.hex()
     with _lock:
@@ -540,6 +551,7 @@ def _receive(message):
             for index in range(len(_attachments(row))):
                 _attachment_file(mid,index,row).unlink(missing_ok=True)
             raise
+    _notify_native_inbox()
 
 def _update(mid,status):
     with _lock:

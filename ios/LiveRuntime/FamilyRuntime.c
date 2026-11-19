@@ -83,6 +83,27 @@ static struct PyModuleDef bluetooth_module = {
 };
 static PyObject *init_bluetooth(void) { return PyModule_Create(&bluetooth_module); }
 
+static FamilyInboxChanged inbox_changed;
+void family_runtime_set_inbox_changed(FamilyInboxChanged callback) {
+    if (!Py_IsInitialized()) inbox_changed = callback;
+}
+static PyObject *notify_inbox(PyObject *self, PyObject *ignored) {
+    if (inbox_changed) {
+        Py_BEGIN_ALLOW_THREADS
+        inbox_changed();
+        Py_END_ALLOW_THREADS
+    }
+    Py_RETURN_NONE;
+}
+static PyMethodDef inbox_methods[] = {
+    {"inbox_changed", notify_inbox, METH_NOARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef inbox_module = {
+    PyModuleDef_HEAD_INIT, "_family_native_events", NULL, -1, inbox_methods
+};
+static PyObject *init_inbox(void) { return PyModule_Create(&inbox_module); }
+
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS
 #define STRINGIFY_VALUE(value) #value
 #define STRINGIFY(value) STRINGIFY_VALUE(value)
@@ -105,6 +126,7 @@ static PyStatus append_path(PyConfig *config, const char *home, const char *suff
 bool family_runtime_start(const char *python_home, const char *modules, const char *state) {
     if (!modules || !state || Py_IsInitialized()) return false;
     if (https_post && PyImport_AppendInittab("_family_native_https", init_https) != 0) return false;
+    if (inbox_changed && PyImport_AppendInittab("_family_native_events", init_inbox) != 0) return false;
 
     if (bluetooth_request && PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return false;
 

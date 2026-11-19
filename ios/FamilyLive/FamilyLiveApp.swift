@@ -35,6 +35,8 @@ struct FamilyLiveApp: App {
                         FamilySIP.shared.routeChanged()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .familyInboxData)
+                    .receive(on: RunLoop.main)) { _ in family.receivedInboxData() }
                 .onReceive(NotificationCenter.default.publisher(for: .familyRadioData)
                     .receive(on: RunLoop.main)) { _ in family.receivedRadioData() }
                 .onChange(of: systemCalls.audioReady) { family.systemAudioChanged() }
@@ -87,6 +89,7 @@ final class FamilyModel: ObservableObject {
     @Published private(set) var speakerOn = false
     #if DEBUG
     @Published private(set) var testNotificationDelivered = false
+    @Published private(set) var testInboxSignalReceived = false
 
     var testTCPRecovered: Bool {
         guard ProcessInfo.processInfo.environment["FAMILY_TEST_RECONNECT"] == "1",
@@ -131,6 +134,14 @@ final class FamilyModel: ObservableObject {
         refresh: { [weak self] in await self?.refresh() },
         pause: { try await Task.sleep(for: .seconds(1)) }
     )
+
+    func receivedInboxData() {
+        guard state?.setupComplete == true else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["FAMILY_TEST_NOTIFICATIONS"] == "1" { testInboxSignalReceived = true }
+        #endif
+        radioWake.received()
+    }
 
     func receivedRadioData() {
         guard state?.setupComplete == true,
@@ -1475,6 +1486,7 @@ struct FamilyChat: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
                 #if DEBUG
                 if family.testNotificationDelivered { Text("Message notification delivered") }
+                if family.testInboxSignalReceived { Text("Native inbox signal received") }
                 if family.testTCPRecovered { Text("Reticulum TCP reconnected") }
                 #endif
             }

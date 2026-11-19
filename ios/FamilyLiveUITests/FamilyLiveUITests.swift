@@ -155,6 +155,7 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
         if localTest {
             XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.staticTexts["Native inbox signal received"].waitForExistence(timeout: 15))
             XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
             let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
             fill(app.textFields["message-draft"], reconnectMessage)
