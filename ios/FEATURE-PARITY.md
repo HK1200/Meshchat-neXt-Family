@@ -21,7 +21,7 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 | MeshCore Bluetooth | Present | Physical pairing, private messages and reconnect |
 | MeshCore adverts | Native controls implemented | Guardian-only local/flood controls pushed in 4674f0f; seven mock-radio authorization tests passed; physical RF check pending |
 | Radio batteries | RNode and MeshCore home indicators present in build 181.1 | Native threshold/unknown-reading tests passed on both simulators; real readings still need hardware |
-| Family location sharing | Present; guardian policy, duration controls | MeshCore recipient-picker fix pushed in 37ca36b; native tests added; background sampling remains platform-limited |
+| Family location sharing | Guardian policy and durations present; optional locked-screen session implemented locally | 143 local tests passed; ten native session tests await Xcode; physical GPS/background/expiry checks remain |
 | Last-updated map pin details | Present | Device visual check at multiple zoom levels |
 | Offline maps | Verified regional download and automatic selection pushed through d383b21; MBTiles import/remove present | Published pack hash/size/database and disposable import/read/remove passed; automatic multi-pack fallback passed local/native checks and is in build 181.1; physical GPS/download UI pending |
 | Rooms and Relay Chat | Reticulum and MeshCore room QR/editor/discovery wired in 58fc411 | Native service/byte-limit tests added; real MeshCore room check pending; App Store exclusion remains |
@@ -33,23 +33,27 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 
 ## Verification baseline
 
-Runtime source 95678f0: device archive 44393301612 and App Store archive
-44393313308 passed. Test-only repairs through 57bc35b passed all four simulator
-jobs in 44409535896, including the Automatic call chooser, message round trip,
-21 native tests per live simulator, and private SIP registration/call signaling.
-All 133 local tests passed after the message chooser/backend validation work below;
-the six new native policy tests and chooser UI assertion still require Xcode.
+Runtime source bec9ebf passed all four simulator jobs in 44458839083, including
+explicit contact keyboard dismissal, message round trips, 35 native tests per live
+simulator (eight Bluetooth wake lifecycle cases), and private SIP signaling.
+Final archive source 84b4564 differs only in the required local timer privacy
+manifest entry. Its device archive 44459103558 and App Store archive 44459108090
+passed; the final packaged manifest was inspected.
 
-Separate iPad Family Mailbox Test upgraded to 181.1 with four contacts, eight
-messages, settings and permanent Reticulum identity files unchanged; launch and
+Separate iPad Family Mailbox Test upgraded to 195.1 with four contacts, eight
+messages, settings and permanent Reticulum identity files unchanged. Launch and
 process-relaunch checks passed. Regular Family 47.6 and neXt preview 82.1 stayed
 unchanged. No Apple enrollment has been performed.
 
+The subsequent local background-location work passed 143 local tests with four
+skips; its ten new native session tests still require Xcode. The feature is off by
+default, guardian-controlled, and uses a foreground-started When In Use session
+with the system location indicator, rather than Always-location authorization.
+
 ## Next local work
 
-1. Run Xcode for the message-method chooser and its native policy/UI tests after owner review.
+1. Review/run Xcode for optional locked-screen location sharing, then verify actual permission, expiry and battery behavior on the separate app.
 2. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
-3. Bounded Bluetooth background inbox refresh is implemented locally with eight native lifecycle tests; Xcode and paired-radio/locked-device notification verification remain pending. A connected radio is not proof of a posted notification.
-4. Background location currently samples only while Family is active; it is not continuous locked-screen sharing.
-5. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
-6. Real APNs verification still needs eventual enrollment and a deployed provider; offline mailbox background checks remain opportunistic.
+3. Bounded Bluetooth background inbox refresh passed eight native lifecycle tests on both simulators; paired-radio/locked-device notification verification remains pending.
+4. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
+5. Real APNs verification still needs eventual enrollment and a deployed provider; offline mailbox background checks remain opportunistic.

@@ -1,12 +1,36 @@
 import CoreLocation
 import MapKit
 import SwiftUI
+import UIKit
 
 @MainActor
 final class FamilyLocationSampler: NSObject, @preconcurrency CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var nextSample = ContinuousClock.now
     private var pending: (([String: Double]) async -> Void)?
+    private var submit: (([String: Double]) async -> Void)?
+    private var policy: FamilyLocationState?
+    private var backgroundEnabled = false
+    private var foreground = false
+    private var expiryTask: Task<Void, Never>?
+    private var scheduledUntil: TimeInterval?
+    private var backgroundSupported: Bool {
+        (Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String])?.contains("location") == true
+    }
+    private lazy var session = FamilyLocationSession(start: { [weak self] in
+        guard let self else { return }
+        self.manager.allowsBackgroundLocationUpdates = true
+        self.manager.showsBackgroundLocationIndicator = true
+        self.manager.pausesLocationUpdatesAutomatically = false
+        self.manager.startUpdatingLocation()
+    }, stop: { [weak self] in
+        guard let self else { return }
+        self.manager.stopUpdatingLocation()
+        self.manager.allowsBackgroundLocationUpdates = false
+        self.manager.showsBackgroundLocationIndicator = false
+    })
+
+    var isContinuous: Bool { session.mode == .continuous }
 
     override init() {
         super.init()
@@ -18,36 +42,77 @@ final class FamilyLocationSampler: NSObject, @preconcurrency CLLocationManagerDe
         if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
     }
 
+    func configure(_ policy: FamilyLocationState?, background: Bool, foreground: Bool,
+                   submit: @escaping ([String: Double]) async -> Void) {
+        self.policy = policy; backgroundEnabled = background; self.foreground = foreground; self.submit = submit
+        reconcile()
+    }
+
+    private func reconcile() {
+        let previous = session.mode
+        let allowed = manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways
+        session.update(active: policy?.active == true, authorized: allowed, foreground: foreground,
+                       background: backgroundEnabled, supported: backgroundSupported, until: policy?.until)
+        if session.mode != previous { pending = nil; nextSample = .now }
+        let until = isContinuous ? policy?.until : nil
+        if until != scheduledUntil {
+            expiryTask?.cancel(); expiryTask = nil; scheduledUntil = until
+            if let until, until > 0 {
+                expiryTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(max(0, until - Date().timeIntervalSince1970))) }
+                    catch { return }
+                    guard let self, self.scheduledUntil == until else { return }
+                    self.session.expireIfNeeded()
+                    if !self.session.canSubmit { self.pending = nil }
+                }
+            }
+        }
+    }
+
     func sampleIfDue(_ submit: @escaping ([String: Double]) async -> Void) {
-        guard manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways,
-              nextSample <= .now, pending == nil else { return }
+        guard session.mode == .foreground, session.canSubmit, nextSample <= .now, pending == nil else { return }
         nextSample = .now + .seconds(30)
         pending = submit
         manager.requestLocation()
     }
 
     func suspend() {
-        pending = nil
-        nextSample = .now
+        pending = nil; nextSample = .now
+        expiryTask?.cancel(); expiryTask = nil; scheduledUntil = nil
+        session.stop()
         manager.stopUpdatingLocation()
     }
 
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        foreground = UIApplication.shared.applicationState == .active
+        reconcile()
+    }
+
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let submit = pending
-        pending = nil
-        guard let submit, let fix = locations.last, (0...655.35).contains(fix.horizontalAccuracy) else { return }
+        session.expireIfNeeded()
+        guard session.canSubmit, UIApplication.shared.applicationState == .active || isContinuous,
+              let fix = locations.last, (0...655.35).contains(fix.horizontalAccuracy) else { pending = nil; return }
+        let callback: (([String: Double]) async -> Void)?
+        if isContinuous {
+            guard nextSample <= .now else { return }
+            nextSample = .now + .seconds(30)
+            callback = submit
+        } else { callback = pending; pending = nil }
+        guard let callback else { return }
         let fields = [
             "latitude": fix.coordinate.latitude, "longitude": fix.coordinate.longitude,
             "altitude": fix.verticalAccuracy < 0 ? 0 : fix.altitude,
             "speed": max(0, fix.speed), "bearing": max(0, fix.course),
             "accuracy": fix.horizontalAccuracy, "last_update": fix.timestamp.timeIntervalSince1970
         ]
-        Task { await submit(fields) }
+        let generation = session.generation
+        Task { [weak self] in
+            guard let self, self.session.generation == generation, self.session.canSubmit else { return }
+            await callback(fields)
+        }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        pending = nil
-    }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { pending = nil }
 }
 
 struct FamilyLocationMap: View {
@@ -104,6 +169,8 @@ struct FamilyLocationSettings: View {
     @State private var userControls = false
     @State private var recipients: Set<Int> = []
     @State private var saved = false
+    @State private var backgroundEnabled = false
+    @State private var backgroundSaved = false
 
     private var eligibleContacts: [FamilyContact] {
         (family.state?.contacts ?? []).filter { $0.canShareLocation }
@@ -151,12 +218,23 @@ struct FamilyLocationSettings: View {
                     .onChange(of: recipients) { saved = false }
                 } header: { Text("Approved location contacts") }
                 Section {
+                    Toggle("Continue sharing with the screen locked", isOn: $backgroundEnabled)
+                        .accessibilityIdentifier("location-background-enabled")
+                    Button(backgroundSaved ? "Background sharing saved" : "Save background sharing") {
+                        Task { backgroundSaved = await family.configureBackgroundLocation(backgroundEnabled) }
+                    }
+                    .onChange(of: backgroundEnabled) { backgroundSaved = false }
+                } header: { Text("Locked-screen sharing") } footer: {
+                    Text("Off by default. Start sharing while Family is open. This uses more battery and iOS shows a location indicator. Force-quitting Family ends the location session.")
+                }
+                Section {
                     FamilyLocationControls(family: family, guardian: true, startRequirement: sharingRequirement)
                 }
             }
         }
         .navigationTitle("Location sharing")
         .onAppear {
+            backgroundEnabled = family.state?.locationBackgroundEnabled == true
             if let location = family.state?.location {
                 mapEnabled = location.mapEnabled
                 userControls = location.userControls
@@ -192,7 +270,9 @@ struct FamilyLocationControls: View {
                     Text(reason).font(.caption)
                 }
             }
-            Text("Location updates are sent while Family is open.").font(.caption)
+            Text(family.state?.locationBackgroundEnabled == true
+                 ? "An active sharing session can continue with the screen locked. iOS shows a location indicator."
+                 : "Location updates are sent while Family is open.").font(.caption)
             if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
         }
     }

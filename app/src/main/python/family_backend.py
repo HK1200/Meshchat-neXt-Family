@@ -15,7 +15,7 @@ TCP_ONLY_ACTIONS=frozenset({
     'setup','status','unlock','lock','password','contacts','peer',
     'ios_network_context','call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
     'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
-    'location_policy','location_start','location_stop','location_sample','location_suspend',
+    'location_policy','location_start','location_stop','location_sample','location_suspend','ios_location_background',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts','meshcore_advert',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
     'map_import_prepare','map_import','map_select','map_remove','map_tile',
@@ -872,6 +872,7 @@ def _snapshot():
         result['tcpOnline']=bool(_online_tcp())
         result['tcpConnections'] = _tcp_connection_status(_configured_tcp_peers())
         if _tcp_only:
+            result['locationBackgroundEnabled']=_state.get('ios_location_background') is True
             result['mailbox']=_mailbox_snapshot()
             result['tcpSession']=_tcp_session()
         result['voice']=_voice.snapshot() if _voice else {'enabled':bool(_state.get('voiceEnabled',False)),'ready':False,'call_state':'idle'}
@@ -930,6 +931,21 @@ def request(raw):
                 if generation>_ios_network_context_epoch:
                     _ios_network_context_epoch=generation;set_network_context(context)
             return json.dumps({'ok':True})
+        if action=='ios_location_background':
+            if not _tcp_only:raise ValueError('This setting is only available on iOS')
+            with _lock:
+                _authorized(p)
+                if type(p.get('enabled')) is not bool:raise ValueError('Choose whether to continue location sharing while locked')
+                existed='ios_location_background' in _state
+                previous=_state.get('ios_location_background')
+                _state['ios_location_background']=p['enabled']
+                try:_save()
+                except Exception:
+                    if existed:_state['ios_location_background']=previous
+                    else:_state.pop('ios_location_background',None)
+                    raise
+                if not p['enabled'] and _locations:_locations.suspend_samples()
+            return json.dumps({'ok':True,**_snapshot()})
         if action=='call_routes':
             return json.dumps({'ok':True,'callRoutes':json.loads(call_routes(json.dumps(p.get('sip',{}))))})
         if action=='runtime_diagnostics':

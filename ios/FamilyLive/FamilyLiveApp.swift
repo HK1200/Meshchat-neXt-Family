@@ -190,6 +190,7 @@ final class FamilyModel: ObservableObject {
             }
             state = updated
             FamilySIP.shared.reconcile(updated)
+            reconcileLocationSampling()
             if UIApplication.shared.applicationState == .active {
                 notifications?.push.refresh(updated)
             }
@@ -636,6 +637,7 @@ final class FamilyModel: ObservableObject {
             if reply.setupComplete != nil {
                 state = reply
                 FamilySIP.shared.reconcile(reply)
+                reconcileLocationSampling()
                 updateVoice(reply.voice)
             }
             self.error = ""
@@ -796,13 +798,30 @@ final class FamilyModel: ObservableObject {
         if await perform("location_stop", ["token": token]) { locationSampler.suspend() }
     }
 
+    func configureBackgroundLocation(_ enabled: Bool) async -> Bool {
+        await perform("ios_location_background", ["token": token, "enabled": enabled])
+    }
+
+    private func reconcileLocationSampling() {
+        locationSampler.configure(state?.location, background: state?.locationBackgroundEnabled == true,
+                                  foreground: UIApplication.shared.applicationState == .active) { [weak self] fix in
+            guard let self, self.state?.location?.active == true,
+                  UIApplication.shared.applicationState == .active ||
+                    (self.state?.locationBackgroundEnabled == true && self.locationSampler.isContinuous) else { return }
+            _ = try? await self.request("location_sample", ["fix": fix])
+        }
+    }
+
     func suspendLocation() async {
+        reconcileLocationSampling()
+        if state?.locationBackgroundEnabled == true && locationSampler.isContinuous { return }
         locationSampler.suspend()
         _ = try? await request("location_suspend")
     }
 
     func sampleLocationIfDue() {
         guard state?.location?.active == true else { return }
+        reconcileLocationSampling()
         locationSampler.sampleIfDue { [weak self] fix in
             guard let self, UIApplication.shared.applicationState == .active,
                   self.state?.location?.active == true else { return }

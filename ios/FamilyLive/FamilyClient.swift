@@ -99,6 +99,7 @@ struct FamilyLocationState: Decodable, Sendable {
     let userControls: Bool
     let active: Bool
     let duration: String?
+    let until: Double?
     let contactIds: [Int]
     let locations: [String: FamilyLocationFix]
 }
@@ -257,6 +258,7 @@ struct FamilyReply: Decodable, Sendable {
     var mailbox: FamilyMailbox?
     var mailboxRoute: FamilyMailboxRoute?
     var location: FamilyLocationState?
+    var locationBackgroundEnabled: Bool?
     var activeMap: String?
     var mapPacks: [FamilyMapPack]?
     var mapImportPath: String?

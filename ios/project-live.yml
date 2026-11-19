@@ -18,6 +18,7 @@ targets:
         UIBackgroundModes:
           - fetch
           - bluetooth-central
+          - location
           - audio
           - voip
     sources:
@@ -75,7 +76,7 @@ targets:
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Connect to the RNode and MeshCore radios selected by your guardian."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Use your microphone during approved Reticulum and SIP voice calls."
         INFOPLIST_KEY_NSCameraUsageDescription: "Scan contact QR codes in Guardian settings."
-        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Share your location with the contacts your guardian approved while Family is open."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Find your offline-map region and share your location with approved contacts when a guardian enables it, including while locked if background sharing is enabled."
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Connect to Reticulum peers on your local network."
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
