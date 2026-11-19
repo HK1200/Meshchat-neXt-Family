@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <re.h>
 #include <baresip.h>
+#include "mobile_sip_audio.h"
 #define DEBUG_MODULE "family_sip"
 #define DEBUG_LEVEL 0
 #include <re_dbg.h>
@@ -217,6 +218,7 @@ int family_sip_run(const char *user, const char *host, int port,
     if (err) goto finish;
     re_thread_async_init(2);
     const char *config =
+        MOBILE_SIP_OPUS_CONFIG
         "audio_player audiounit,default\naudio_source audiounit,default\n"
         "audio_alert audiounit,default\naudio_buffer 20-160\n"
         "audio_jitter_buffer_type adaptive\naudio_jitter_buffer_ms 40-200\n"
@@ -236,7 +238,7 @@ int family_sip_run(const char *user, const char *host, int port,
     err = bevent_register(events, NULL);
     if (err) goto close;
     re_snprintf(aor, sizeof(aor),
-        "<sip:%s@%s:%d;transport=udp>;regint=0;audio_codecs=opus/48000/2,PCMU/8000/1,PCMA/8000/1;ptime=20;rtpkeep=zero",
+        "<sip:%s@%s:%d;transport=udp>;regint=0;audio_codecs=" MOBILE_SIP_AUDIO_CODECS ";ptime=20;rtpkeep=zero",
         user, host, port);
     err = ua_alloc(&agent, aor);
     if (err) goto close;

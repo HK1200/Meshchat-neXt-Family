@@ -138,6 +138,13 @@ def main():
         subprocess.run(["xcrun", "simctl", "boot", args.simulator], check=True)
     subprocess.run(["xcrun", "simctl", "bootstatus", args.simulator, "-b"], check=True, timeout=180)
     try:
+        # Exercise the actual selected codec and PCM channels before wire tests.
+        codec_executable = directory / "sip-codec-profile-test"
+        codec_command = [str(ROOT / "SIPPolicyTests/codec_profile.c") if item == str(ROOT / "SIPPolicyTests/registration.c")
+                         else str(codec_executable) if item == str(executable) else item for item in command]
+        subprocess.run(codec_command, check=True)
+        subprocess.run(["codesign", "--force", "--sign", "-", str(codec_executable)], check=True)
+        subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(codec_executable)], check=True, timeout=30)
         verify_registration(args.simulator, executable)
         subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=160)
     finally:
