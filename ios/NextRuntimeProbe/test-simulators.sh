@@ -19,9 +19,9 @@ cp -R "$probe/App" "$probe/project.yml" .
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged
 curl --fail --silent --show-error --location --retry 3 \
-    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.19/meshchatnext-frontend.zip \
+    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.20/meshchatnext-frontend.zip \
     --output frontend.zip
-printf '%s\n' 'c5144f886cf79e5b44a8f68b5edf590df1109a5f06131c76bc01fb720ceee6a2  frontend.zip' \
+printf '%s\n' '14814af6c6fb5a50236e8ad8420917bcdf51e5142818baa0419a6ca4522a6749  frontend.zip' \
     | shasum -a 256 -c -
 unzip -q frontend.zip -d staged/frontend
 python3 -m venv wheels-env
