@@ -73,6 +73,8 @@ cp "$scratch/echo/peer.json" staged/
 cp "$scratch/echo/peer.json" Tests/peer.json
 
 xcodegen generate
+mkdir -p "$family_ios/RuntimeBuild/next-results"
+result_set="$(mktemp -d "$family_ios/RuntimeBuild/next-results/run.XXXXXXXX")"
 for device in iPhone iPad; do
     destination="$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
@@ -87,7 +89,21 @@ for runtime in sorted(devices, key=lambda k: tuple(int(v) for v in k.split("iOS-
 else:
     raise SystemExit(f"No {family.strip()} simulator available")
 ' "$device")"
-    xcodebuild test -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
+    if xcodebuild test -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
         -destination "platform=iOS Simulator,id=$destination" -derivedDataPath DerivedData \
-        -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- || { cat "$scratch/echo.log"; exit 1; }
+        -resultBundlePath "$result_set/$device.xcresult" \
+        -parallel-testing-enabled NO CODE_SIGN_IDENTITY=-; then
+        # Release the previous simulator before testing the other device family.
+        xcrun simctl shutdown "$destination" || true
+    else
+        next_probe_exit=$?
+        mkdir -p "$result_set/crashes-$device"
+        for report in "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.ips \
+                      "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.crash; do
+            if [[ -f "$report" ]]; then cp "$report" "$result_set/crashes-$device/"; fi
+        done
+        cp "$scratch/echo.log" "$result_set/echo.log"
+        cat "$scratch/echo.log"
+        exit "$next_probe_exit"
+    fi
 done

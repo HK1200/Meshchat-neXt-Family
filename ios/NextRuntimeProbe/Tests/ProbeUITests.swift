@@ -7,6 +7,7 @@ final class ProbeUITests: XCTestCase {
     }
 
     func testConversationSendsAndReceivesSignedLXMF() throws {
+        continueAfterFailure = false
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
         let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: url))
         let app = XCUIApplication()

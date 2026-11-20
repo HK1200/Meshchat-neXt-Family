@@ -157,8 +157,11 @@ struct NextTCPConnections: View {
                 }
             }
             .task {
-                drafts = initial.map(NextTCPDraft.init)
-                guard let base else { loaded = true; return }
+                guard let base else {
+                    drafts = initial.map(NextTCPDraft.init)
+                    loaded = true
+                    return
+                }
                 while !Task.isCancelled {
                     do {
                         let fresh = try await NextTCPAPI.load(base)

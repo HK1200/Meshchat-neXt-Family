@@ -147,6 +147,14 @@ jobs:
         run: command -v xcodegen || brew install xcodegen
       - name: Test neXt on both simulators
         run: bash ios/NextRuntimeProbe/test-simulators.sh ios
+      - name: Keep neXt simulator results and synthetic test crash reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: next-ios-simulator-results-${{ github.run_attempt }}
+          path: ios/RuntimeBuild/next-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   next-device:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_device }}
