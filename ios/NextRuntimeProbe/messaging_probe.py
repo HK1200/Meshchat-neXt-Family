@@ -1,7 +1,6 @@
 """Direct LXMF transport for the iOS Messages preview."""
 
 import re
-import secrets
 import time
 
 import LXMF
@@ -37,8 +36,8 @@ class MessagingProbe:
             raise ValueError("Invalid LXMF contact address")
         self.address = bytes.fromhex(raw_address) if raw_address else None
         self.on_receive = on_receive
-        folder = workspace / ("reticulum" if device else f"reticulum-{secrets.token_hex(8)}")
-        folder.mkdir(mode=0o700, exist_ok=device)
+        folder = workspace / ("reticulum" if device else "reticulum-simulator")
+        folder.mkdir(mode=0o700, exist_ok=True)
         (folder / "config").write_text(
             "[reticulum]\nshare_instance = No\nenable_transport = No\n"
             "[interfaces]\n",
@@ -46,18 +45,17 @@ class MessagingProbe:
         )
         self.reticulum = RNS.Reticulum(configdir=str(folder), loglevel=1)
         identity_path = folder / "identity"
-        if device and identity_path.exists():
+        if identity_path.exists():
             identity = RNS.Identity.from_file(str(identity_path))
             if identity is None:
                 raise RuntimeError("Could not load the saved neXt identity")
         else:
             identity = RNS.Identity()
-            if device:
-                temporary = identity_path.with_suffix(".tmp")
-                if not identity.to_file(str(temporary)):
-                    raise RuntimeError("Could not save the neXt identity")
-                temporary.chmod(0o600)
-                temporary.replace(identity_path)
+            temporary = identity_path.with_suffix(".tmp")
+            if not identity.to_file(str(temporary)):
+                raise RuntimeError("Could not save the neXt identity")
+            temporary.chmod(0o600)
+            temporary.replace(identity_path)
         self.router = LXMF.LXMRouter(
             identity=identity, storagepath=str(folder / "lxmf"), autopeer=False,
         )

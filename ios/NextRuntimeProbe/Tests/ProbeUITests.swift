@@ -72,6 +72,51 @@ final class ProbeUITests: XCTestCase {
         send.tap()
         XCTAssertTrue(web.staticTexts["Echo: " + fixture.message].waitForExistence(timeout: 105), app.debugDescription)
         verifyOwnContactQR(app)
+        verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyProfilePreferences(_ app: XCUIApplication, reply: String) {
+        let ownAddress = app.staticTexts["my-lxmf-address"].label
+        let web = app.webViews.firstMatch
+        let settings = web.buttons["Settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 15), app.debugDescription)
+        settings.tap()
+        let name = web.textFields["Display Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 15), app.debugDescription)
+        let previous = name.value as? String ?? ""
+        name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + "Simulator profile")
+        // Tapping the current navigation item blurs the web field without
+        // depending on a keyboard accessory or a guessed screen coordinate.
+        settings.tap()
+        XCTAssertTrue(web.staticTexts["Setting Display Name auto-saved"].waitForExistence(timeout: 20), app.debugDescription)
+        let dark = web.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH %@", "Dark Theme")).firstMatch
+        revealWebButton(dark, in: web)
+        dark.tap()
+        let brand = app.staticTexts["next-native-brand"]
+        let darkApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "dark"), object: brand)
+        XCTAssertEqual(XCTWaiter.wait(for: [darkApplied], timeout: 15), .completed, app.debugDescription)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["tcp-connections"].waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
+        XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 60), app.debugDescription)
+        let restoredDark = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "dark"), object: brand)
+        XCTAssertEqual(XCTWaiter.wait(for: [restoredDark], timeout: 15), .completed, app.debugDescription)
+        settings.tap()
+        XCTAssertTrue(name.waitForExistence(timeout: 15))
+        let restoredName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Simulator profile"), object: name)
+        XCTAssertEqual(XCTWaiter.wait(for: [restoredName], timeout: 15), .completed, app.debugDescription)
+        let light = web.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH %@", "Light Theme")).firstMatch
+        revealWebButton(light, in: web)
+        light.tap()
+        let lightApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "light"), object: brand)
+        XCTAssertEqual(XCTWaiter.wait(for: [lightApplied], timeout: 15), .completed, app.debugDescription)
+    }
+
+    private func revealWebButton(_ button: XCUIElement, in web: XCUIElement) {
+        for _ in 0..<8 where !button.isHittable { web.swipeUp() }
+        XCTAssertTrue(button.waitForExistence(timeout: 10) && button.isHittable, XCUIApplication().debugDescription)
     }
 
     private func verifyOwnContactQR(_ app: XCUIApplication) {

@@ -105,3 +105,28 @@ stopped. Regular Family remains 47.6; no Apple enrollment has been performed.
 3. Bounded Bluetooth wake lifecycle checks passed, and actual RNode/MeshCore locked notifications appeared. Repeat with long idle intervals and connection loss when hardware is free.
 4. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
 5. Real APNs verification still needs eventual enrollment and a deployed provider; offline mailbox background checks remain opportunistic.
+
+
+## neXt iOS messaging follow-up
+
+The reviewed TCP-controls baseline passed both simulators in `44793739771`.
+The contact QR change `91937df` passed both native tests, including decoding the
+actual displayed code, in `44799411385`. The separate neXt iPad preview upgraded
+to 223.1 with identical identity/history and unchanged saved preferences; all
+four TCP rows remained saved. Modern CoreDevice restarts reopened the stored
+conversation successfully. The older developer-launcher black screen has no
+proven product-level cause.
+
+Unread-state change `a647956` passed CI, Security, Scorecard and both native
+simulators in `44807183946`. Its private signed-message test also verifies
+unread state after restart, mark-read authorization and message previews.
+Regular Family is still 47.6 and the separate Family test app is 218.1.
+
+The next local profile/theme change is not uploaded yet. It saves the existing
+Settings controls, announces the saved display name and keeps simulator
+identity/history in the simulator's private sandbox for genuine restart checks.
+The full backend suite passed 198 tests, and the subsequent two real TCP
+integration cases passed, including simulator signed-history persistence.
+The actual released frontend's name save/reload and all three theme controls
+passed an isolated browser check with public networking disabled. New native
+profile/theme/restart checks still require owner review and Xcode.

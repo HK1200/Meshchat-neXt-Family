@@ -26,6 +26,7 @@ private struct ProbeScreen: View {
     @State private var address: String?
     @State private var error: String?
     @State private var starting = false
+    @State private var theme = "system"
     @State private var tcpConnected: Bool?
     @State private var tcpEnabledCount: Int?
 
@@ -52,6 +53,8 @@ private struct ProbeScreen: View {
                 VStack(spacing: 0) {
                     HStack {
                         Text("neXt").font(.headline)
+                            .accessibilityIdentifier("next-native-brand")
+                            .accessibilityValue(theme)
                         Spacer()
                         Button("TCP connections") { showConnections = true }
                             .accessibilityIdentifier("tcp-connections")
@@ -107,6 +110,7 @@ private struct ProbeScreen: View {
                 }
             }
         }
+        .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .sheet(isPresented: $showConnections) {
             NextTCPConnections(base: url, initial: configuredPeers) { peers in
                 savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
@@ -135,6 +139,7 @@ private struct ProbeScreen: View {
         struct ConnectionStatus: Decodable {
             let connected: Bool
             let enabledCount: Int?
+            let theme: String?
         }
         while !Task.isCancelled {
             do {
@@ -144,6 +149,7 @@ private struct ProbeScreen: View {
                 let status = try JSONDecoder().decode(ConnectionStatus.self, from: data)
                 tcpConnected = status.connected
                 tcpEnabledCount = status.enabledCount
+                theme = status.theme ?? "system"
             } catch {
                 tcpConnected = nil
             }

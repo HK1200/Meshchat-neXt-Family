@@ -68,11 +68,34 @@ class ConversationHistory:
                 INSERT OR IGNORE INTO conversation_reads(peer, through_id)
                 SELECT peer, MAX(id) FROM messages GROUP BY peer
             """)
+            self.db.execute("CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             # The preview has no persistent outbound queue. A send interrupted
             # by app termination is left visible as failed.
             self.db.execute("""
                 UPDATE messages SET state = 'failed' WHERE state = 'sending'
             """)
+
+    def preferences(self, default_name="neXt iOS"):
+        result = {"display_name": default_name, "theme": "system"}
+        result.update(dict(self.db.execute("SELECT key, value FROM preferences")))
+        return result
+
+    def update_preferences(self, changes, default_name="neXt iOS"):
+        if not isinstance(changes, dict) or not changes or set(changes) - {"display_name", "theme"}:
+            raise ValueError("This iOS preview supports saving the display name and theme")
+        values = dict(changes)
+        if "display_name" in values:
+            name = values["display_name"]
+            if (not isinstance(name, str) or not name.strip() or len(name.strip().encode("utf-8")) > 128
+                    or any(ord(character) < 32 or ord(character) == 127 for character in name)):
+                raise ValueError("Enter a display name of at most 128 UTF-8 bytes without control characters")
+            values["display_name"] = name.strip()
+        if "theme" in values and values["theme"] not in ("light", "dark", "system"):
+            raise ValueError("Choose Light, Dark or System theme")
+        with self.db:
+            self.db.executemany("INSERT INTO preferences VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                                values.items())
+        return self.preferences(default_name)
 
     def ensure_contact(self, address, name):
         with self.db:
@@ -193,14 +216,16 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     probe = MessagingProbe(settings, ready_file.parent, inbound, device=device)
     peer = probe.address.hex() if probe.address else None
     own = probe.source.hash.hex()
-    history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3" if device else ":memory:")
+    history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3")
     token = secrets.token_urlsafe(32)
     contact = "Test contact" if device else "Simulator Echo"
     if peer:
         history.ensure_contact(peer, contact)
     contacts = history.contacts()
     display_name = "neXt iOS" if device else "neXt Simulator"
-    config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": display_name}
+    config = {"lxmf_address_hash": own, "identity_hash": probe.source.identity.hash.hex(),
+              **history.preferences(display_name)}
+    probe.source.display_name = config["display_name"]
     responses = {
         "status": {"status": "ok", "network_ready": True, "ui_ready": True},
         "auth/status": {"auth_enabled": False, "authenticated": True},
@@ -225,7 +250,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 return web.json_response({"peers": probe.connections.snapshot()}, headers={"Cache-Control": "no-store"})
             if path == "preview/reticulum-connection":
                 return web.json_response(
-                    {"connected": probe.online, "enabledCount": sum(row["enabled"] for row in probe.connections.snapshot())},
+                    {"connected": probe.online, "enabledCount": sum(row["enabled"] for row in probe.connections.snapshot()), "theme": config["theme"]},
                     headers={"Cache-Control": "no-store"},
                 )
             if path in responses:
@@ -253,8 +278,24 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     return web.json_response({"lxmf_messages": history.page(address, request.query)})
                 except (ValueError, OverflowError):
                     raise web.HTTPBadRequest(text="Invalid history pagination")
-        if request.method in ("POST", "DELETE") and request.headers.get("X-CSRF-Token") != token:
+        if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
+        if request.method == "PATCH" and path == "config":
+            try:
+                saved = history.update_preferences(await request.json(), display_name)
+            except ValueError as error:
+                return web.json_response({"message": str(error)}, status=400)
+            renamed = saved["display_name"] != config["display_name"]
+            config.update(saved)
+            probe.source.display_name = config["display_name"]
+            if renamed:
+                probe.connections.request_announce()
+            for client in tuple(clients):
+                try:
+                    await client.send_json({"type": "config", "config": config})
+                except (ConnectionError, RuntimeError):
+                    clients.discard(client)
+            return web.json_response({"config": config})
         if request.method == "DELETE" and path.startswith("lxmf-messages/"):
             message_hash = path.removeprefix("lxmf-messages/")
             try:

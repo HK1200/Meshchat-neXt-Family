@@ -137,6 +137,10 @@ class TCPPeers:
     def online(self):
         return any(row["online"] for row in self.snapshot())
 
+    def request_announce(self):
+        with self.lock:
+            self.announced.clear()
+
     def announce_due(self):
         with self.lock:
             for identifier, interface in self.interfaces.items():
