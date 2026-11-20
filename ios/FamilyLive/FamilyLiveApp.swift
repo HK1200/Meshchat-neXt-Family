@@ -976,6 +976,7 @@ struct FamilyHome: View {
     @ObservedObject private var sip = FamilySIP.shared
     @State private var password = ""
     @State private var confirmation = ""
+    @State private var showSetupPasswords = false
     @State private var enableInternetPeers = false
     @State private var showGuardian = false
     @State private var guardianDismissingForCall = false
@@ -991,10 +992,25 @@ struct FamilyHome: View {
             Form {
                 if family.state?.setupComplete == false {
                     Section("Guardian setup") {
-                        SecureField("Guardian password", text: $password)
-                            .accessibilityIdentifier("setup-password")
-                        SecureField("Confirm guardian password", text: $confirmation)
-                            .accessibilityIdentifier("setup-confirmation")
+                        Group {
+                            if showSetupPasswords {
+                                TextField("Guardian password", text: $password)
+                                    .accessibilityIdentifier("setup-password")
+                                TextField("Confirm guardian password", text: $confirmation)
+                                    .accessibilityIdentifier("setup-confirmation")
+                            } else {
+                                SecureField("Guardian password", text: $password)
+                                    .accessibilityIdentifier("setup-password")
+                                SecureField("Confirm guardian password", text: $confirmation)
+                                    .accessibilityIdentifier("setup-confirmation")
+                            }
+                        }
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        Button(showSetupPasswords ? "Hide passwords" : "Show passwords") {
+                            showSetupPasswords.toggle()
+                        }
+                        .accessibilityIdentifier("setup-password-visibility")
                         Toggle("Enable Reticulum internet peers", isOn: $enableInternetPeers)
                             .accessibilityIdentifier("setup-internet-peers")
                         NavigationLink("Review device permissions") { FamilyPermissionCheckup() }
@@ -1005,6 +1021,7 @@ struct FamilyHome: View {
                                 ]) {
                                     password = ""
                                     confirmation = ""
+                                    showSetupPasswords = false
                                 }
                             }
                         }
@@ -1327,6 +1344,8 @@ struct FamilyGuardian: View {
 
 struct FamilyClientDiscovery: View {
     @ObservedObject var family: FamilyModel
+    var service = "lxmf"
+    var editingContactID: Int? = nil
     let select: (FamilyDiscoveredClient) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -1336,23 +1355,23 @@ struct FamilyClientDiscovery: View {
     private var query: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var lookup: FamilyClientLookup? { family.state?.clientLookup }
     private var approvedAddresses: Set<String> {
-        Set((family.state?.contacts ?? []).compactMap { $0.addresses["lxmf"]?.lowercased() })
+        Set((family.state?.contacts ?? []).filter { $0.id != editingContactID }
+            .compactMap { $0.addresses[service]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
     }
     private var matches: [FamilyDiscoveredClient] {
         (family.state?.announces ?? []).filter { client in
-            client.service == "lxmf" && !approvedAddresses.contains(client.address.lowercased()) &&
-                (query.isEmpty || client.name.localizedCaseInsensitiveContains(query) ||
-                    client.address.localizedCaseInsensitiveContains(query))
+            FamilyContactDiscoveryPolicy.matches(client, service: service, query: query,
+                                                 approvedAddresses: approvedAddresses)
         }
     }
 
     var body: some View {
         Form {
             Section {
-                TextField("Name or LXMF address", text: $search)
+                TextField(service == "meshcore" ? "Name or MeshCore key" : "Name or LXMF address", text: $search)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                if query.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil,
+                if service == "lxmf", query.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil,
                    !approvedAddresses.contains(query.lowercased()), matches.isEmpty {
                     Button("Look up address") {
                         let address = query.lowercased()
@@ -1387,7 +1406,7 @@ struct FamilyClientDiscovery: View {
                 }
             }
         }
-        .navigationTitle("Find messaging client")
+        .navigationTitle(service == "meshcore" ? "Find MeshCore contact" : "Find messaging client")
     }
 }
 

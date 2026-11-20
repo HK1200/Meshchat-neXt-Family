@@ -35,6 +35,12 @@ final class FamilyLiveUITests: XCTestCase {
         let password = "simulator guardian test"
         fill(app.secureTextFields["setup-password"], password)
         fill(app.secureTextFields["setup-confirmation"], password)
+        app.buttons["setup-password-visibility"].tap()
+        XCTAssertEqual(app.textFields["setup-password"].value as? String, password)
+        XCTAssertEqual(app.textFields["setup-confirmation"].value as? String, password)
+        app.buttons["setup-password-visibility"].tap()
+        XCTAssertTrue(app.secureTextFields["setup-password"].exists)
+        XCTAssertTrue(app.secureTextFields["setup-confirmation"].exists)
         if localTest {
             let internet = app.switches["setup-internet-peers"]
             XCTAssertTrue(internet.waitForExistence(timeout: 10))
@@ -108,6 +114,25 @@ final class FamilyLiveUITests: XCTestCase {
         saveContact.tap()
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
         app.buttons["Back to settings"].tap()
+        if localTest {
+            let edit = app.buttons[contactName]
+            for _ in 0..<4 where !edit.isHittable { app.swipeDown() }
+            XCTAssertTrue(edit.waitForExistence(timeout: 10))
+            edit.tap()
+            let editedName = app.textFields["edit-contact-name"]
+            fill(editedName, "Unsaved guardian name")
+            app.buttons["finish-contact-editor-entry"].tap()
+            let meshDiscovery = app.buttons["Find MeshCore contact"]
+            for _ in 0..<3 where !meshDiscovery.isHittable { app.swipeUp() }
+            XCTAssertTrue(meshDiscovery.isHittable)
+            meshDiscovery.tap()
+            XCTAssertTrue(app.navigationBars["Find MeshCore contact"].waitForExistence(timeout: 10))
+            app.navigationBars["Find MeshCore contact"].buttons.element(boundBy: 0).tap()
+            for _ in 0..<3 where !editedName.isHittable { app.swipeDown() }
+            XCTAssertEqual(editedName.value as? String, "Unsaved guardian name",
+                           "Returning from discovery must not erase unsaved contact edits")
+            app.navigationBars["Edit contact"].buttons.element(boundBy: 0).tap()
+        }
         app.buttons["Done"].tap()
 
         XCTAssertTrue(app.staticTexts["Reticulum TCP connected"].waitForExistence(timeout: 25))

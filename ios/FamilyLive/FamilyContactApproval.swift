@@ -49,6 +49,15 @@ struct FamilyContactApproval: View {
                             contactSaved = false
                         }
                     }
+                    NavigationLink("Find MeshCore contact") {
+                        FamilyClientDiscovery(family: family, service: "meshcore") { client in
+                            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                name = String(client.name.prefix(32))
+                            }
+                            meshcoreAddress = client.address
+                            contactSaved = false
+                        }
+                    }
                     if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                         Button("Scan contact QR code", systemImage: "camera") { showingQRScanner = true }
                             .disabled(readingQR)

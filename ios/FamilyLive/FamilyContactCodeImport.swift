@@ -2,6 +2,19 @@ import PhotosUI
 import SwiftUI
 import VisionKit
 
+enum FamilyContactDiscoveryPolicy {
+    static func matches(_ client: FamilyDiscoveredClient, service: String, query: String,
+                        approvedAddresses: Set<String>) -> Bool {
+        guard ["lxmf", "meshcore"].contains(service), client.service == service,
+              !approvedAddresses.contains(client.address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else {
+            return false
+        }
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || client.name.localizedCaseInsensitiveContains(query)
+            || client.address.localizedCaseInsensitiveContains(query)
+    }
+}
+
 /// Only supported, nonempty service addresses replace fields in an existing contact.
 enum FamilyContactAddressMerge {
     static func apply(_ incoming: [String: String], to existing: [String: String]) -> [String: String] {

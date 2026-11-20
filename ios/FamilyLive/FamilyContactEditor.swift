@@ -15,25 +15,39 @@ struct FamilyContactEditor: View {
     @State private var confirmRemoval = false
     @State private var importingCode = false
     @State private var importedCard: FamilyContactCard?
+    @State private var loadedContact = false
+    private enum Field: Hashable { case name, lxmf, voice, sip, meshcore }
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         Form {
             if family.unlocked {
                 FamilyContactPhotoEditor(name: name, photo: $photo, loading: $photoLoading)
                 TextField("Contact name", text: $name)
+                    .focused($focusedField, equals: .name)
+                    .accessibilityIdentifier("edit-contact-name")
                 TextField("LXMF address", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .focused($focusedField, equals: .lxmf)
                 TextField("Reticulum voice address", text: $voiceAddress)
+                    .focused($focusedField, equals: .voice)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("SIP extension or address", text: $sipAddress)
+                    .focused($focusedField, equals: .sip)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("MeshCore public key", text: $meshcoreAddress)
+                    .focused($focusedField, equals: .meshcore)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button("Scan or import service QR code", systemImage: "qrcode.viewfinder") { importingCode = true }
                     .disabled(busy)
                 NavigationLink("Find messaging client") {
-                    FamilyClientDiscovery(family: family) { client in
+                    FamilyClientDiscovery(family: family, editingContactID: contact.id) { client in
                         address = client.address
                         importedCard = nil
+                    }
+                }
+                NavigationLink("Find MeshCore contact") {
+                    FamilyClientDiscovery(family: family, service: "meshcore", editingContactID: contact.id) { client in
+                        meshcoreAddress = client.address
                     }
                 }
                 Text("Import fills the services in the code. Other services, the name, and the photo stay unchanged. Review the addresses before saving.")
@@ -60,6 +74,14 @@ struct FamilyContactEditor: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done typing") { focusedField = nil }
+                    .accessibilityIdentifier("finish-contact-editor-entry")
+            }
+        }
         .navigationTitle("Edit contact")
         .sheet(isPresented: $importingCode) {
             FamilyContactCodeImport(family: family) { card in
@@ -74,6 +96,8 @@ struct FamilyContactEditor: View {
             }
         }
         .onAppear {
+            guard !loadedContact else { return }
+            loadedContact = true
             name = contact.name
             address = contact.addresses["lxmf"] ?? ""
             voiceAddress = contact.addresses["lxst"] ?? ""
