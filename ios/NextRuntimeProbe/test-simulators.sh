@@ -28,7 +28,7 @@ python3 -m venv wheels-env
 wheels-env/bin/python -m pip install --disable-pip-version-check --target staged \
     --only-binary=:all: --platform any --python-version 3.14 'aiohttp==3.14.5'
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
-cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" staged/
+cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 if [[ "$mode" == device ]]; then
     # The device project excludes the simulator test target and its echo fixture.
@@ -62,7 +62,7 @@ YAML
 fi
 
 cp -R "$probe/Tests" .
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop > "$scratch/echo.log" 2>&1 &
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do
     [[ ! -f "$scratch/echo/peer.json" ]] || break

@@ -161,4 +161,16 @@ The conversation list keeps unread state, the latest message preview and failed-
 
 The simulator harness restricts every configured endpoint to `127.0.0.1`, including settings restored after relaunch. It checks adding a disabled peer, editing its port, toggling it, preserving the original peer, reopening the app and receiving a signed reply through the actual Messages view. A separate local HTTP/LXMF integration test exercises two TCP listeners, CSRF rejection, duplicate prevention, delivery over the remaining peer after the primary is disabled, and identity/contact/history preservation across restart.
 
-These additions are transport work toward the full neXt port. They do not imply the prototype already implements Android/desktop calling, Bluetooth radios, map/location, attachments or all administration endpoints. Those features require their own native/backend integration and device verification.
+The Messages file picker and photo controls use standard LXMF file/image fields.
+Direct messages use neXt's 10 MB default budget (9,950,000 bytes of content and
+attachments reserved below it), with at most 32 attachments. Existing photo
+quality presets remain in the released interface. Images are served according
+to their detected bytes, and filenames are reduced to a safe basename. History
+pages and message events carry metadata; file/photo bytes are fetched only when
+needed. Choosing a received file opens a native Save/share sheet; its temporary
+copy is removed when that sheet closes. Only the embedded backend's attachment
+URLs and its own blob URLs may become native downloads. The camera permission
+is requested only if the user chooses to take a photo. Physical camera/Photos/
+Files picker checks still require device verification.
+
+These additions are transport work toward the full neXt port. They do not imply the prototype already implements Android/desktop calling, Bluetooth radios, map/location or all administration endpoints. Those features require their own native/backend integration and device verification.

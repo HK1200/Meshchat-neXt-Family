@@ -72,7 +72,22 @@ final class ProbeUITests: XCTestCase {
         send.tap()
         XCTAssertTrue(web.staticTexts["Echo: " + fixture.message].waitForExistence(timeout: 105), app.debugDescription)
         verifyOwnContactQR(app)
+        verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyAttachmentExport(_ app: XCUIApplication) {
+        let web = app.webViews.firstMatch
+        let file = web.buttons.matching(NSPredicate(format: "label CONTAINS %@", "next-test.txt")).firstMatch
+        for _ in 0..<6 where !file.isHittable { web.swipeUp() }
+        XCTAssertTrue(file.waitForExistence(timeout: 20) && file.isHittable, app.debugDescription)
+        file.tap()
+        let name = app.staticTexts["export-attachment-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertEqual(name.label, "next-test.txt")
+        XCTAssertTrue(app.buttons["share-attachment"].exists)
+        app.navigationBars["Attachment"].buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
 
     private func verifyProfilePreferences(_ app: XCUIApplication, reply: String) {

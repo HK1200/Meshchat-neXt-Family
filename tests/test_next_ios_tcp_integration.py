@@ -10,6 +10,8 @@ from urllib.error import HTTPError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -30,7 +32,7 @@ def run_hub(folder, ports, pipe):
             return
         identity = RNS.Identity.recall(message.source_hash)
         target = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
-        router.handle_outbound(LXMF.LXMessage(target, source, "Echo: " + message.content_as_string(), desired_method=LXMF.LXMessage.DIRECT))
+        router.handle_outbound(LXMF.LXMessage(target, source, "Echo: " + message.content_as_string(), fields=message.fields, desired_method=LXMF.LXMessage.DIRECT))
     router.register_delivery_callback(received)
     class ObservedNames:
         aspect_filter = "lxmf.delivery"
@@ -230,3 +232,40 @@ def test_simulator_profile_identity_and_signed_history_survive_actual_restart(tm
         assert any(row["content"] == "Echo: Simulator persistence" for row in api(base, "lxmf-messages/conversation/" + address)[1]["lxmf_messages"])
         assert api(base, "lxmf/conversations")[1]["conversations"][0]["is_unread"]
         assert all(row["host"] == "127.0.0.1" for row in api(base, "preview/reticulum-connections")[1]["peers"])
+
+
+def test_signed_file_and_photo_delivery_download_and_restart(tmp_path):
+    import base64
+    listener = socket.socket(); listener.bind(("127.0.0.1", 0)); port = listener.getsockname()[1]; listener.close()
+    app = tmp_path / "attachment-app"; app.mkdir(); settings = app / "settings.json"
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=")
+    content = b"Private attachment with exact bytes: \x00\xff"
+    with ExitStack() as stack:
+        _, hub = start(stack, run_hub, tmp_path / "hub", [port]); assert hub.poll(10); address = hub.recv()
+        settings.write_text(json.dumps({"address": address, "peers": [dict(id="private", host="127.0.0.1", port=port, enabled=True)]}))
+        with ExitStack() as first:
+            ready = app / "first.url"; start(first, run_server, app, ready, settings); wait(ready.exists); base = ready.read_text()
+            token = api(base, "auth/csrf")[1]["csrf_token"]
+            fields = {"file_attachments": [{"file_name": "../../safe.txt", "file_bytes": base64.b64encode(content).decode()}], "image": {"image_type": "html", "image_bytes": base64.b64encode(png).decode()}}
+            status, result = api(base, "lxmf-messages/send", body={"lxmf_message": {"destination_hash": address, "content": "", "fields": fields}}, token=token)
+            assert status == 200, result
+            def arrived():
+                messages = api(base, "lxmf-messages/conversation/" + address)[1]["lxmf_messages"]
+                return next((row for row in messages if row["state"] == "received" and row.get("fields", {}).get("image")), None)
+            received = wait(arrived)
+            assert received["fields"]["file_attachments"][0]["file_bytes"] is None
+            assert received["fields"]["image"]["image_bytes"] is None
+            message_hash = received["hash"]
+            summary = api(base, "lxmf/conversations")[1]["conversations"][0]
+            assert summary["has_attachments"] and summary["latest_message_preview"] == "Echo: "
+        ready = app / "second.url"; start(stack, run_server, app, ready, settings); wait(ready.exists); base = ready.read_text()
+        for kind, data, content_type in [("file", content, "application/octet-stream"), ("image", png, "image/png")]:
+            with urlopen(urljoin(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + kind)) as response:
+                assert response.read() == data
+                assert response.headers["Content-Type"].startswith(content_type)
+                assert response.headers["X-Content-Type-Options"] == "nosniff"
+                if kind == "file": assert "safe.txt" in response.headers["Content-Disposition"] and ".." not in response.headers["Content-Disposition"]
+        for suffix in ("file?file_index=-1", "file?file_index=99", "file?file_index=abc", "audio"):
+            with pytest.raises(HTTPError) as error:
+                urlopen(urljoin(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + suffix))
+            assert error.value.code == 404

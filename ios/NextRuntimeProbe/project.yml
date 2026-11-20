@@ -18,6 +18,9 @@ targets:
         CFBundleShortVersionString: "0.1.20"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
+        NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
+        NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
+        NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
         NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
         NSAppTransportSecurity:
           NSExceptionDomains:
@@ -49,6 +52,7 @@ targets:
         excludes: [peer.json]
       - path: Tests/peer.json
         buildPhase: resources
+      - path: App/AttachmentExport.swift
     dependencies:
       - target: NextRuntimeProbe
     settings:

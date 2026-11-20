@@ -8,6 +8,8 @@ import re
 import secrets
 import sqlite3
 from pathlib import Path
+from urllib.parse import quote
+import base64
 
 # iPadOS terminates sandboxed apps that call sendfile. Configure aiohttp
 # before importing it so both the simulator and device use buffered reads.
@@ -16,10 +18,12 @@ os.environ["AIOHTTP_NOSENDFILE"] = "1"
 from aiohttp import web
 
 from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_for
+import attachment_fields
 
 
 def record(message, state):
     reply, fields = decode_reply_fields(message.fields or {})
+    fields.update(attachment_fields.incoming(message.fields or {}))
     return {
         "hash": message.hash.hex(),
         "source_hash": message.source_hash.hex(),
@@ -158,11 +162,22 @@ class ConversationHistory:
         """, (peer, peer)).fetchone()
         latest = self.page(peer, {"order": "desc", "count": 1})
         row = latest[0] if latest else {}
+        fields = row.get("fields") or {}
+        files = fields.get("file_attachments") or []
+        count = len(files) + bool(fields.get("image"))
+        preview = row.get("content")
+        if not preview and count:
+            preview = f"{count} attachments" if count > 1 else files[0]["file_name"] if files else "Photo"
         return {
+            "has_attachments": bool(count),
             "is_unread": bool(unread), "unread_count": unread, "failed_messages_count": failed,
-            "latest_message_preview": row.get("content"), "latest_message_title": row.get("title"),
+            "latest_message_preview": preview, "latest_message_title": row.get("title"),
             "updated_at": row.get("created_at"),
         }
+
+    def message(self, message_hash):
+        row = self.db.execute("SELECT payload FROM messages WHERE hash = ?", (message_hash,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def message_for_reply(self, peer, message_hash):
         row = self.db.execute(
@@ -196,7 +211,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         row = history.save(address, row)
         for client in tuple(clients):
             try:
-                await client.send_json({"type": kind, "lxmf_message": row})
+                await client.send_json({"type": kind, "lxmf_message": attachment_fields.slim(row)})
             except (ConnectionError, RuntimeError):
                 clients.discard(client)
 
@@ -270,12 +285,41 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if path.startswith("telephone/contacts/check/"):
                 entry = contacts.get(path.rsplit("/", 1)[1])
                 return web.json_response({"is_contact": entry is not None, "contact": entry, "id": entry["id"] if entry else None})
+            if path.startswith("lxmf-messages/attachment/"):
+                parts = path.split("/")
+                if len(parts) != 4 or not re.fullmatch(r"[a-f0-9]{64}", parts[2]):
+                    raise web.HTTPNotFound()
+                row = history.message(parts[2])
+                if row is None:
+                    raise web.HTTPNotFound()
+                fields = row.get("fields") or {}
+                try:
+                    if parts[3] == "image":
+                        item = fields["image"]
+                        data = base64.b64decode(item["image_bytes"], validate=True)
+                        detected = attachment_fields.image_type(data)
+                        if not detected: raise ValueError("Unsupported image")
+                        content_type = "image/" + detected
+                        disposition = "inline"
+                    elif parts[3] == "file":
+                        index = int(request.query.get("file_index", "0"))
+                        if index < 0: raise ValueError("Invalid file index")
+                        item = fields["file_attachments"][index]
+                        data = base64.b64decode(item["file_bytes"], validate=True)
+                        content_type = "application/octet-stream"
+                        disposition = "attachment; filename*=UTF-8''" + quote(attachment_fields.filename(item["file_name"]), safe="")
+                    else:
+                        raise web.HTTPNotFound()
+                except (KeyError, ValueError, TypeError, IndexError):
+                    raise web.HTTPNotFound()
+                return web.Response(body=data, content_type=content_type,
+                    headers={"Content-Disposition": disposition, "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Cache-Control": "private, no-store"})
             if path.startswith("lxmf-messages/conversation/"):
                 address = path.rsplit("/", 1)[1]
                 if address not in contacts:
                     return web.json_response({"lxmf_messages": []})
                 try:
-                    return web.json_response({"lxmf_messages": history.page(address, request.query)})
+                    return web.json_response({"lxmf_messages": [attachment_fields.slim(row) for row in history.page(address, request.query)]})
                 except (ValueError, OverflowError):
                     raise web.HTTPBadRequest(text="Invalid history pagination")
         if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
@@ -354,10 +398,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     raise web.HTTPBadRequest(text="Expected an LXMF message object")
                 content = draft.get("content")
                 address = draft.get("destination_hash")
-                if (not isinstance(address, str) or address not in contacts or not isinstance(content, str)
-                        or not content.strip() or draft.get("fields")):
-                    return web.json_response({"message": "Only plain texts to saved LXMF contacts are supported"}, status=400)
-                fields = None
+                if not isinstance(address, str) or address not in contacts or not isinstance(content, str):
+                    return web.json_response({"message": "Choose a saved LXMF contact"}, status=400)
+                try:
+                    fields = attachment_fields.outgoing(draft.get("fields") or {}, content)
+                except ValueError as error:
+                    return web.json_response({"message": str(error)}, status=400)
+                if not content.strip() and not fields:
+                    return web.json_response({"message": "Enter a message or choose an attachment"}, status=400)
                 reply = draft.get("reply_to_hash")
                 if reply is not None:
                     if not isinstance(reply, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", reply):
@@ -365,7 +413,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     previous = history.message_for_reply(address, reply.lower())
                     if previous is None:
                         return web.json_response({"message": "The quoted message is unavailable in this conversation"}, status=404)
-                    fields = reply_fields_for(reply, previous["content"])
+                    fields.update(reply_fields_for(reply, previous["content"]))
                 try:
                     message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields)
                     message.pack()
@@ -383,7 +431,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 except Exception:
                     await publish("lxmf_message_state_updated", {**row, "state": "failed"})
                     return web.json_response({"message": "Could not queue the message"}, status=502)
-                return web.json_response({"lxmf_message": row})
+                return web.json_response({"lxmf_message": attachment_fields.slim(row)})
         raise web.HTTPNotFound()
 
     async def websocket(request):
@@ -415,7 +463,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # The embedded host is recreated on each launch and serves its assets locally.
         raise web.HTTPNotFound()
 
-    app = web.Application(middlewares=[local_only])
+    app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)

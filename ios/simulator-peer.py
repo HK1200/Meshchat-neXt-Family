@@ -11,7 +11,9 @@ import LXMF
 import RNS
 
 
-def main(folder, public, drop_test=False):
+def main(folder, public, drop_test=False, attachment_echo=False):
+    if public and attachment_echo:
+        raise ValueError("Attachment fixtures must stay on loopback")
     folder.mkdir()
     config = "[reticulum]\nshare_instance = No\n"
     if public:
@@ -73,8 +75,13 @@ def main(folder, public, drop_test=False):
                 if verified.signature_validated:
                     reply_to = verified.source
                     text = verified.content_as_string()
+                    fields = None
+                    if attachment_echo:
+                        import base64
+                        fields = {LXMF.FIELD_FILE_ATTACHMENTS: [["next-test.txt", b"Private signed attachment test"]],
+                                  LXMF.FIELD_IMAGE: ["png", base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=")]}
                     response = LXMF.LXMessage(
-                        reply_to, destination, "Echo: " + text, desired_method=LXMF.LXMessage.DIRECT
+                        reply_to, destination, "Echo: " + text, fields=fields, desired_method=LXMF.LXMessage.DIRECT
                     )
                     if reconnect_message and text == challenge:
                         response.register_delivery_callback(drop_client)
@@ -107,4 +114,4 @@ def main(folder, public, drop_test=False):
 
 if __name__ == "__main__":
     public = len(sys.argv) > 2 and sys.argv[2] == "rmap"
-    main(Path(sys.argv[1]), public, drop_test=not public and sys.argv[2:3] != ["local-no-drop"])
+    main(Path(sys.argv[1]), public, drop_test=not public and sys.argv[2:3] != ["local-no-drop"], attachment_echo=sys.argv[3:4] == ["attachment-echo"])

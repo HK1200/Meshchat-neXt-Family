@@ -57,7 +57,7 @@ class MessagingProbe:
             temporary.chmod(0o600)
             temporary.replace(identity_path)
         self.router = LXMF.LXMRouter(
-            identity=identity, storagepath=str(folder / "lxmf"), autopeer=False,
+            identity=identity, storagepath=str(folder / "lxmf"), autopeer=False, delivery_limit=10_000,
         )
         self.source = self.router.register_delivery_identity(
             identity, display_name="neXt iOS" if device else "neXt simulator probe", stamp_cost=0,

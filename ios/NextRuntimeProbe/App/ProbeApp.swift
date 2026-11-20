@@ -22,6 +22,10 @@ private struct ProbeScreen: View {
     @AppStorage("tcpPeers") private var savedPeers = ""
     @State private var showConnections = false
     @State private var showMyContactQR = false
+    @State private var exportItem: NextExportItem?
+    @State private var exportFolder: URL?
+    @State private var exportError = ""
+    @State private var showExportError = false
     @State private var url: URL?
     @State private var address: String?
     @State private var error: String?
@@ -78,7 +82,12 @@ private struct ProbeScreen: View {
                             .padding(.vertical, 4)
                             .task(id: url) { await watchConnection(at: url) }
                     }
-                    ProbeWebView(url: url)
+                    ProbeWebView(url: url, onExport: { file in
+                        exportFolder = file.deletingLastPathComponent()
+                        exportItem = NextExportItem(file: file)
+                    }, onExportError: { problem in
+                        exportError = problem; showExportError = true
+                    })
                 }
             } else if let error {
                 VStack {
@@ -119,6 +128,13 @@ private struct ProbeScreen: View {
         .sheet(isPresented: $showMyContactQR) {
             NextMyContactQR(address: address ?? "")
         }
+        .sheet(item: $exportItem, onDismiss: {
+            if let exportFolder { try? FileManager.default.removeItem(at: exportFolder) }
+            exportFolder = nil
+        }) { item in NextAttachmentExport(item: item) }
+        .alert("Attachment couldn’t be saved", isPresented: $showExportError) {
+            Button("OK", role: .cancel) { }
+        } message: { Text(exportError) }
         .task {
             guard url == nil, error == nil, !starting else { return }
             if simulator {
@@ -210,10 +226,13 @@ private struct ProbeScreen: View {
     }
 }
 
+@MainActor
 private struct ProbeWebView: UIViewRepresentable {
     let url: URL
+    let onExport: (URL) -> Void
+    let onExportError: (String) -> Void
 
-    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url) }
+    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -241,15 +260,34 @@ private struct ProbeWebView: UIViewRepresentable {
 
     func updateUIView(_ view: WKWebView, context: Context) {}
 
+    static func dismantleUIView(_ view: WKWebView, coordinator: NavigationGuard) { coordinator.downloads.cancel() }
+
+    @MainActor
     final class NavigationGuard: NSObject, WKNavigationDelegate {
         let url: URL
-        init(url: URL) { self.url = url }
+        let downloads: NextAttachmentDownloads
+        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void) {
+            self.url = url
+            downloads = NextAttachmentDownloads(base: url, onComplete: onExport, onError: onError)
+            super.init()
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            downloads.start(download)
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            downloads.start(download)
+        }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let target = action.request.url
-            let isLocal = target?.scheme == url.scheme && target?.host == url.host && target?.port == url.port
-            decisionHandler(action.targetFrame?.isMainFrame == true && isLocal ? .allow : .cancel)
+            if action.shouldPerformDownload {
+                decisionHandler(downloads.allows(target) ? .download : .cancel)
+            } else {
+                decisionHandler(action.targetFrame?.isMainFrame == true && downloads.isLocal(target) ? .allow : .cancel)
+            }
         }
     }
 }
