@@ -318,24 +318,49 @@ def _connect(*, reconnect=False):
         _peer = existing[0] if existing else None
         _backup_peers = tuple(interface for interface in existing[1:] if interface is not None)
         _announce_available_routes()
-        errors = []
-        for index, (host, port) in enumerate(endpoints):
-            if existing[index] is not None:
-                continue
+        errors = {}
+
+        def open_peer(index, host, port):
+            global _peer, _backup_peers
+            interface = None
+            registered = False
             try:
+                # Each peer gets its own attempt: a stalled primary must not use
+                # the whole iOS background window before a healthy backup starts.
                 interface = FamilyTCPInterface(RNS.Transport, {
                     'name': 'Family TCP' if index == 0 else f'Family TCP backup {index}',
                     'target_host': host, 'target_port': port, 'connect_timeout': 8,
                 })
-                _rns._add_interface(interface)
+                with _lock:
+                    wanted = {_tcp_key(peer['host'], peer['port'])
+                              for peer in _configured_tcp_peers() if peer['enabled']}
+                    if _tcp_key(host, port) not in wanted or _connect_pending is True:
+                        interface.detach()
+                        return
+                    _rns._add_interface(interface)
+                    existing[index] = interface
+                    _peer = existing[0]
+                    _backup_peers = tuple(item for item in existing[1:] if item is not None)
+                    registered = True
+                # Announcing acquires its own lock before _lock; keep that order.
+                _announce_available_routes()
             except Exception as error:
-                errors.append(str(error))
-                continue
-            existing[index] = interface
-            _peer = existing[0]
-            _backup_peers = tuple(item for item in existing[1:] if item is not None)
-            _announce_available_routes()
-        _error = errors[0] if errors and not _tcp_interfaces() else ''
+                with _lock:
+                    errors[index] = str(error)
+                if interface is not None and not registered:
+                    interface.detach()
+                    if interface in RNS.Transport.interfaces:
+                        RNS.Transport.interfaces.remove(interface)
+
+        attempts = []
+        for index, (host, port) in enumerate(endpoints):
+            if existing[index] is None:
+                attempt = threading.Thread(target=open_peer, args=(index, host, port), daemon=True)
+                attempts.append(attempt)
+                attempt.start()
+        for attempt in attempts:
+            attempt.join()
+        _error = errors[min(errors)] if errors and not _tcp_interfaces() else ''
     except Exception as e:_error=str(e)
     finally:
         with _lock:

@@ -138,3 +138,96 @@ def test_reconnect_drops_retired_lxmf_links_without_touching_other_routes(monkey
     assert router.backchannel_links == {b"radio": unaffected}
     assert len(events) == 5 and events[-1] == "interface detached"
     assert unaffected.status == RNS.Link.ACTIVE and replacement.status == RNS.Link.ACTIVE
+
+
+
+def test_healthy_backup_is_available_while_primary_connection_is_blocked(monkeypatch):
+    import threading
+    import RNS
+    import family_tcp
+
+    primary_started = threading.Event()
+    release_primary = threading.Event()
+    backup_announced = threading.Event()
+    interfaces = []
+    monkeypatch.setattr(RNS.Transport, "interfaces", interfaces)
+    monkeypatch.setattr(family, "_rns", SimpleNamespace(_add_interface=interfaces.append))
+    monkeypatch.setattr(family, "_peer", None)
+    monkeypatch.setattr(family, "_backup_peers", ())
+    monkeypatch.setattr(family, "_router", None)
+    monkeypatch.setattr(family, "_rooms", None)
+    monkeypatch.setattr(family, "_connecting", False)
+    monkeypatch.setattr(family, "_connect_pending", None)
+    monkeypatch.setattr(family, "_error", "")
+    peers = [dict(id=str(index), host="127.0.0.1", port=port, enabled=True)
+             for index, port in enumerate((45101, 45102))]
+    monkeypatch.setattr(family, "_state", {"tcpPeers": peers})
+
+    def connect(owner, config):
+        if config["target_port"] == 45101:
+            primary_started.set()
+            assert release_primary.wait(5)
+            raise ConnectionError("Primary unavailable")
+        return SimpleNamespace(target_ip=config["target_host"], target_port=config["target_port"],
+                               online=True, detached=False)
+
+    def announce():
+        if family._online_tcp() is not None:
+            backup_announced.set()
+
+    monkeypatch.setattr(family_tcp, "FamilyTCPInterface", connect)
+    monkeypatch.setattr(family, "_announce_available_routes", announce)
+    runner = threading.Thread(target=family._connect)
+    runner.start()
+    try:
+        assert primary_started.wait(2)
+        assert backup_announced.wait(2), "A blocked primary must not hold up the healthy backup"
+        assert family._online_tcp().target_port == 45102
+        assert family._connecting  # The primary attempt has not finished yet.
+        assert [row["online"] for row in family._tcp_connection_status(peers)] == [False, True]
+    finally:
+        release_primary.set()
+        runner.join(5)
+    assert not runner.is_alive()
+    assert not family._connecting and family._error == ""
+
+
+def test_disabling_peer_during_connection_does_not_register_stale_interface(monkeypatch):
+    import threading
+    import RNS
+    import family_tcp
+
+    started, release = threading.Event(), threading.Event()
+    interfaces, detached = [], []
+    monkeypatch.setattr(RNS.Transport, "interfaces", interfaces)
+    monkeypatch.setattr(family, "_rns", SimpleNamespace(_add_interface=interfaces.append))
+    monkeypatch.setattr(family, "_peer", None)
+    monkeypatch.setattr(family, "_backup_peers", ())
+    monkeypatch.setattr(family, "_router", None)
+    monkeypatch.setattr(family, "_rooms", None)
+    monkeypatch.setattr(family, "_connecting", False)
+    monkeypatch.setattr(family, "_connect_pending", None)
+    monkeypatch.setattr(family, "_error", "")
+    peer = dict(id="test", host="127.0.0.1", port=45103, enabled=True)
+    monkeypatch.setattr(family, "_state", {"tcpPeers": [peer]})
+    monkeypatch.setattr(family, "_announce_available_routes", lambda: None)
+
+    def connect(owner, config):
+        started.set()
+        assert release.wait(5)
+        return SimpleNamespace(target_ip=config["target_host"], target_port=config["target_port"],
+                               online=True, detached=False, detach=lambda: detached.append(True))
+
+    monkeypatch.setattr(family_tcp, "FamilyTCPInterface", connect)
+    runner = threading.Thread(target=family._connect)
+    runner.start()
+    try:
+        assert started.wait(2)
+        with family._lock:
+            family._state["tcpPeers"] = [dict(peer, enabled=False)]
+    finally:
+        release.set()
+        runner.join(5)
+    assert not runner.is_alive()
+    assert not interfaces and not family._tcp_interfaces()
+    assert detached == [True]
