@@ -1,4 +1,5 @@
 import XCTest
+import CoreImage
 
 final class ProbeUITests: XCTestCase {
     private struct EchoFixture: Decodable {
@@ -70,6 +71,28 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
         send.tap()
         XCTAssertTrue(web.staticTexts["Echo: " + fixture.message].waitForExistence(timeout: 105), app.debugDescription)
+        verifyOwnContactQR(app)
+    }
+
+    private func verifyOwnContactQR(_ app: XCUIApplication) {
+        let address = app.staticTexts["my-lxmf-address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        let expected = "lxmf://" + address.label.lowercased()
+        let show = app.buttons["show-my-contact-qr"]
+        XCTAssertTrue(show.waitForExistence(timeout: 10))
+        show.tap()
+        let image = app.images["my-lxmf-qr-image"]
+        XCTAssertTrue(image.waitForExistence(timeout: 10), app.debugDescription)
+        guard let captured = CIImage(data: image.screenshot().pngRepresentation),
+              let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil,
+                                       options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
+            XCTFail("Could not decode the displayed contact QR")
+            return
+        }
+        let payloads = detector.features(in: captured).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+        XCTAssertEqual(payloads, [expected], "The displayed QR must contain this device's actual messaging address")
+        app.navigationBars["My contact QR"].buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
 
     private func waitUntilLoaded(_ app: XCUIApplication) {

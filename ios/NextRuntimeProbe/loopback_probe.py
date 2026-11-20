@@ -337,8 +337,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         staging = ready_file.with_suffix(".tmp")
         route = f"/#/messages/{peer}" if peer else "/#/messages"
         staging.write_text(f"http://{authority}{route}", encoding="utf-8")
-        if device:
-            ready_file.with_suffix(".address").write_text(own, encoding="utf-8")
+        ready_file.with_suffix(".address").write_text(own, encoding="utf-8")
         staging.replace(ready_file)
         # Each connected route announces at startup/reconnect and hourly.
         # Simulator profiles are separately restricted to loopback only.

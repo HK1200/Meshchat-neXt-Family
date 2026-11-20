@@ -21,6 +21,7 @@ private struct ProbeScreen: View {
     @AppStorage("testAddress") private var contact = ""
     @AppStorage("tcpPeers") private var savedPeers = ""
     @State private var showConnections = false
+    @State private var showMyContactQR = false
     @State private var url: URL?
     @State private var address: String?
     @State private var error: String?
@@ -59,10 +60,15 @@ private struct ProbeScreen: View {
                         HStack {
                             Text("My LXMF address")
                             Spacer()
+                            Button { showMyContactQR = true } label: {
+                                Label("Show my contact QR code", systemImage: "qrcode").labelStyle(.iconOnly)
+                            }
+                            .accessibilityIdentifier("show-my-contact-qr")
                             ShareLink(item: address)
                         }
                         .padding(.horizontal)
                         Text(address).font(.caption.monospaced()).textSelection(.enabled)
+                            .accessibilityIdentifier("my-lxmf-address")
                         Label(tcpConnected == true ? "Reticulum TCP connected" : tcpEnabledCount == 0 ? "Reticulum TCP off" : "No TCP peer connected",
                               systemImage: tcpConnected == true ? "link" : "link.badge.plus")
                             .font(.caption)
@@ -105,6 +111,9 @@ private struct ProbeScreen: View {
             NextTCPConnections(base: url, initial: configuredPeers) { peers in
                 savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
             }
+        }
+        .sheet(isPresented: $showMyContactQR) {
+            NextMyContactQR(address: address ?? "")
         }
         .task {
             guard url == nil, error == nil, !starting else { return }
