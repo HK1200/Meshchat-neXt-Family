@@ -121,7 +121,10 @@ final class FamilyLiveUITests: XCTestCase {
             XCTAssertTrue(edit.waitForExistence(timeout: 10))
             edit.tap()
             let editedName = app.textFields["edit-contact-name"]
-            fill(editedName, "Unsaved guardian name")
+            XCTAssertTrue(editedName.waitForExistence(timeout: 10))
+            XCTAssertEqual(editedName.value as? String, contactName)
+            let eraseName = String(repeating: XCUIKeyboardKey.delete.rawValue, count: contactName.count)
+            fill(editedName, eraseName + "Unsaved guardian name")
             app.buttons["finish-contact-editor-entry"].tap()
             let meshDiscovery = app.buttons["Find MeshCore contact"]
             for _ in 0..<3 where !meshDiscovery.isHittable { app.swipeUp() }
