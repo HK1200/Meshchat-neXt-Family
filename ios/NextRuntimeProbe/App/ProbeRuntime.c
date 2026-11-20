@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python/Python.h>
 #include "ProbeRuntime.h"
+#include "ProbeSignals.h"
 #include <stdio.h>
 
 static PyStatus append_bundle_path(PyConfig *config, const char *home, const char *suffix) {
@@ -15,6 +16,10 @@ static PyStatus append_bundle_path(PyConfig *config, const char *home, const cha
 }
 
 void next_probe_run(const char *home, const char *modules, const char *ready_file) {
+    if (!next_prepare_process_signals()) {
+        fprintf(stderr, "Could not configure safe TCP write handling\n");
+        return;
+    }
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.install_signal_handlers = 0;
