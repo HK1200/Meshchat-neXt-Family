@@ -144,7 +144,7 @@ in TestFlight on the iPad. Internal TestFlight does not require the iPad's UDID.
 
 [Apple TestFlight guide](https://developer.apple.com/testflight/)
 
-Use the **AppStore** build configuration when archiving Family for the App Store. It disables room access and networking. Local and GitHub builds use Debug or Release and include rooms.
+Use the **AppStore** build configuration when archiving Family for the App Store. It disables room access and room networking. Local and GitHub builds use Debug or Release and include rooms.
 
 
 ## Native neXt TCP connections
@@ -154,6 +154,8 @@ The neXt iOS shell uses the released Messages interface and the native **TCP con
 Use the QR button beside **My LXMF address** to show a scannable Reticulum messaging contact code. Family can scan it in Guardian settings and review the new contact; the code contains the public messaging address only. **Share contact code** shares the same `lxmf://` format. Both simulator tests decode the displayed QR and compare it with the running identity's address.
 
 A contact address is optional at first start. Contacts can be added through neXt’s contact interface after the runtime starts. Editing connections preserves the Reticulum identity, contacts and stored messages. The runtime retires only links on affected interfaces, rejects duplicate endpoints and retries unavailable configured connections. Each connected interface announces when it starts/reconnects and hourly thereafter. The status screen refreshes connection state without overwriting unsaved edits.
+
+The conversation list keeps unread state, the latest message preview and failed-send indicators across restarts. Opening a conversation or using the existing mark-read controls clears its unread state. An upgrade preserves old history without flagging every old message as new.
 
 The simulator harness restricts every configured endpoint to `127.0.0.1`, including settings restored after relaunch. It checks adding a disabled peer, editing its port, toggling it, preserving the original peer, reopening the app and receiving a signed reply through the actual Messages view. A separate local HTTP/LXMF integration test exercises two TCP listeners, CSRF rejection, duplicate prevention, delivery over the remaining peer after the primary is disabled, and identity/contact/history preservation across restart.
 

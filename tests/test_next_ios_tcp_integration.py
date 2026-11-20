@@ -143,3 +143,15 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
         assert len(contacts) == 1 and contacts[0]["lxmf_address"] == address
         messages = api(base, "lxmf-messages/conversation/" + address)[1]["lxmf_messages"]
         assert any(row["content"] == "Echo: " + text for row in messages)
+
+        summary = api(base, "lxmf/conversations")[1]["conversations"][0]
+        assert summary["is_unread"] and summary["unread_count"] == 1
+        assert summary["latest_message_preview"] == "Echo: " + text
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        read_path = "lxmf/conversations/" + address + "/mark-as-read"
+        assert api(base, read_path, body={})[0] == 403
+        assert api(base, "lxmf/conversations/bulk-mark-as-read", body={"destination_hashes": [address, "bad"]}, token=token)[0] == 400
+        assert api(base, "lxmf/conversations")[1]["conversations"][0]["is_unread"]
+        assert api(base, read_path, body={}, token=token)[0] == 200
+        assert not api(base, "lxmf/conversations")[1]["conversations"][0]["is_unread"]
+        assert api(base, "lxmf/conversations/bulk-mark-as-read", body={"mark_all": True}, token=token)[0] == 200

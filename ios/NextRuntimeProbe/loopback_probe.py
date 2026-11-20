@@ -57,6 +57,17 @@ class ConversationHistory:
                     name TEXT NOT NULL
                 )
             """)
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_reads (
+                    peer TEXT PRIMARY KEY,
+                    through_id INTEGER NOT NULL
+                )
+            """)
+            # Upgrading the preview must not label all old history as new.
+            self.db.execute("""
+                INSERT OR IGNORE INTO conversation_reads(peer, through_id)
+                SELECT peer, MAX(id) FROM messages GROUP BY peer
+            """)
             # The preview has no persistent outbound queue. A send interrupted
             # by app termination is left visible as failed.
             self.db.execute("""
@@ -80,9 +91,13 @@ class ConversationHistory:
 
     def save(self, peer, row):
         with self.db:
+            self.db.execute("INSERT OR IGNORE INTO conversation_reads VALUES (?, 0)", (peer,))
             payload = json.dumps({k: v for k, v in row.items() if k not in ("id", "state")})
             self.db.execute("""
-                INSERT INTO messages(hash, peer, state, payload) VALUES (?, ?, ?, ?)
+                INSERT INTO messages(id, hash, peer, state, payload)
+                VALUES (MAX(COALESCE((SELECT MAX(id) FROM messages), 0),
+                            COALESCE((SELECT MAX(through_id) FROM conversation_reads), 0)) + 1,
+                        ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET state = excluded.state, payload = excluded.payload
             """, (row["hash"], peer, row["state"], payload))
             message_id, = self.db.execute(
@@ -102,6 +117,29 @@ class ConversationHistory:
             ORDER BY id {order} LIMIT ?
         """, (peer, after_id, after_id, count))
         return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
+
+    def mark_read(self, peer):
+        with self.db:
+            self.db.execute("""
+                INSERT INTO conversation_reads(peer, through_id)
+                VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM messages WHERE peer = ?))
+                ON CONFLICT(peer) DO UPDATE SET through_id = excluded.through_id
+            """, (peer, peer))
+
+    def summary(self, peer):
+        unread, failed = self.db.execute("""
+            SELECT COUNT(CASE WHEN state = 'received' AND id > COALESCE(
+                (SELECT through_id FROM conversation_reads WHERE peer = ?), 0) THEN 1 END),
+                COUNT(CASE WHEN state = 'failed' THEN 1 END)
+            FROM messages WHERE peer = ?
+        """, (peer, peer)).fetchone()
+        latest = self.page(peer, {"order": "desc", "count": 1})
+        row = latest[0] if latest else {}
+        return {
+            "is_unread": bool(unread), "unread_count": unread, "failed_messages_count": failed,
+            "latest_message_preview": row.get("content"), "latest_message_title": row.get("title"),
+            "updated_at": row.get("created_at"),
+        }
 
     def message_for_reply(self, peer, message_hash):
         row = self.db.execute(
@@ -198,7 +236,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         "destination_hash": address,
                         "display_name": entry["name"],
                         "is_contact": True,
-                        "unread_count": 0,
+                        **history.summary(address),
                     }
                     for address, entry in contacts.items()
                 ]})
@@ -251,7 +289,22 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 history.ensure_contact(address.lower(), name.strip())
                 contacts.update(history.contacts())
                 return web.json_response({"message": "Contact added"})
+            if path == "lxmf/conversations/bulk-mark-as-read":
+                body = await request.json()
+                if not isinstance(body, dict):
+                    raise web.HTTPBadRequest(text="Expected a conversation selection")
+                addresses = list(contacts) if body.get("mark_all") is True else body.get("destination_hashes")
+                if (not isinstance(addresses, list) or len(addresses) > 1000
+                        or any(not isinstance(address, str) or address not in contacts for address in addresses)):
+                    raise web.HTTPBadRequest(text="Select saved conversations")
+                for address in addresses:
+                    history.mark_read(address)
+                return web.json_response({"status": "success"})
             if path.startswith("lxmf/conversations/") and path.endswith("/mark-as-read"):
+                address = path.removeprefix("lxmf/conversations/").removesuffix("/mark-as-read")
+                if address not in contacts:
+                    raise web.HTTPNotFound()
+                history.mark_read(address)
                 return web.json_response({"status": "success"})
             if path == "lxmf-messages/send":
                 body = await request.json()
