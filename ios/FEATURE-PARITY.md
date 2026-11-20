@@ -1,14 +1,14 @@
 # Family iOS / Android parity audit
 
-Audited 2026-11-19 against the Android assets and shared runtime in this checkout.
+Audited 2026-11-20 against the Android assets and shared runtime in this checkout.
 “Present” means native wiring exists, not that a physical-device end-to-end test passed.
 Regular Family on the iPad is excluded from testing. Apple enrollment remains on hold.
 
 | Area | iOS status | Remaining verification or work |
 |---|---|---|
-| Guardian setup, nickname, approved contacts | Present | Unlock visibility is present; setup visibility and native regression coverage are in the current local patch |
+| Guardian setup, nickname, approved contacts | Present | Setup/unlock visibility checks passed on both native simulators |
 | Contact QR camera and image import | Present for new contacts | Existing-contact import and preservation tests pushed in 37ca36b; native iPhone suite passed |
-| Existing contact service discovery | Present for LXMF in 37ca36b | Native iPhone suite passed; MeshCore saved-contact picker still separate |
+| Existing contact service discovery | Present for LXMF in 37ca36b | LXMF and MeshCore editor pickers passed both native simulators, including unsaved-draft preservation |
 | Contact photos | Present; actual iPad save/relaunch passed | None identified in this audit |
 | Multiple editable TCP peers | Present | Physical network-change/reconnect matrix needs repetition |
 | Reticulum messages and signed identity | Present; simulator live suites passed | Repeat real-peer device tests with new build |
@@ -21,7 +21,7 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 | MeshCore Bluetooth | Present | Fairside J connected; outgoing receipt and incoming locked-screen notification passed; reconnect observed |
 | MeshCore adverts | Native controls implemented | Guardian-only local/flood controls pushed in 4674f0f; seven mock-radio authorization tests passed; physical RF check pending |
 | Radio batteries | RNode and MeshCore home indicators present in build 181.1 | Native threshold/unknown-reading tests passed on both simulators; real readings still need hardware |
-| Family location sharing | Guardian policy and durations present; optional locked-screen session implemented locally | Integrated native tests passed; fresh locked-screen updates and Stop sharing verified on the separate iPad; physical expiry/movement matrix remains |
+| Family location sharing | Guardian policy and durations present; optional locked-screen session implemented | Integrated native tests passed; fresh locked-screen updates and Stop sharing verified on the separate iPad; physical expiry/movement matrix remains |
 | Last-updated map pin details | Present | Device visual check at multiple zoom levels |
 | Offline maps | Verified regional download and automatic selection pushed through d383b21; MBTiles import/remove present | Published pack hash/size/database and disposable import/read/remove passed; automatic multi-pack fallback passed local/native checks and is in build 181.1; physical GPS/download UI pending |
 | Rooms and Relay Chat | Reticulum and MeshCore room QR/editor/discovery wired in 58fc411 | Native service/byte-limit tests added; real MeshCore room check pending; App Store exclusion remains |
@@ -59,15 +59,27 @@ retry. The device archive `44631059571` and unsigned App Store archive
 CI, CodeQL and Scorecard passed. Regular Family on the physical iPad was not
 updated or cleared. Apple enrollment remains on hold.
 
-The current local follow-up adds MeshCore selection to new/existing contact
-editors, keeps unsaved edits when returning from discovery, adds editor keyboard
-dismissal, and exposes optional setup-password visibility. Its new native checks
-still require Xcode after owner review. These changes have not been installed on
-regular Family.
+The contact-editor follow-up and two test repairs passed all four simulator jobs in
+`44714253572`. The subsequent real TCP reconnect repair `46a7b1b` removes retired
+LXMF links from both caches while preserving other routes and callback-created
+replacements. Its regression fails before the repair and passes afterward. CI
+`44716801847` passed 159 tests with eight skips and three subtests. Security and
+Scorecard passed. Unsigned device and App Store archives `44716802255` passed;
+both downloaded build 213.1 archives contain the exact repaired runtime.
+
+Final simulator run `44716835633` passed both live suites with the full approved
+message UI round trip and 48 native tests on each device. The iPhone preview
+startup check passed on one unchanged fresh-runner retry; all four jobs are now
+green. Regular Family was not updated or cleared, and Apple enrollment remains
+on hold. neXt’s 0.1.20 frontend passed signed-reply UI tests on iPhone and iPad in
+`44710941151`.
+
+The new local neXt TCP peer/settings work described in the README still requires
+owner-reviewed upload and Xcode execution. Its native UI checks have not yet run.
 
 ## Next local work
 
-1. Run the contact discovery/editor/setup visibility follow-up on both simulators; then check physical location expiry/movement and battery behavior on the separate app.
+1. Run the new neXt peer-control and persistence checks on both simulators after review; then continue the remaining service integrations and physical location expiry/movement and battery checks.
 2. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
 3. Bounded Bluetooth wake lifecycle checks passed, and actual RNode/MeshCore locked notifications appeared. Repeat with long idle intervals and connection loss when hardware is free.
 4. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.

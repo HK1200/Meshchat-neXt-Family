@@ -7,6 +7,8 @@ import time
 import LXMF
 import RNS
 
+from tcp_peers import TCPPeers, normalize_peers
+
 
 def reply_fields_for(hash_hex, quote):
     return {
@@ -29,23 +31,17 @@ def decode_reply_fields(fields):
 
 class MessagingProbe:
     def __init__(self, peer, workspace, on_receive=None, *, device=False):
-        host = peer.get("host", "")
-        port = peer.get("port")
-        if (not isinstance(host, str) or len(host) > 253
-                or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]*", host)
-                or type(port) is not int or not 1 <= port <= 65535
-                or (host != "127.0.0.1" and not device)):
-            raise ValueError("Invalid Reticulum TCP peer")
-        self.address = bytes.fromhex(peer["address"])
-        if len(self.address) != RNS.Reticulum.TRUNCATED_HASHLENGTH // 8:
+        normalize_peers(peer, device=device)
+        raw_address = peer.get("address", "")
+        if not isinstance(raw_address, str) or (raw_address and not re.fullmatch(r"[a-fA-F0-9]{32}", raw_address)):
             raise ValueError("Invalid LXMF contact address")
+        self.address = bytes.fromhex(raw_address) if raw_address else None
         self.on_receive = on_receive
         folder = workspace / ("reticulum" if device else f"reticulum-{secrets.token_hex(8)}")
         folder.mkdir(mode=0o700, exist_ok=device)
         (folder / "config").write_text(
             "[reticulum]\nshare_instance = No\nenable_transport = No\n"
-            "[interfaces]\n[[Reticulum TCP]]\ntype = TCPClientInterface\nenabled = Yes\n"
-            f"target_host = {host}\ntarget_port = {port}\n",
+            "[interfaces]\n",
             encoding="utf-8",
         )
         self.reticulum = RNS.Reticulum(configdir=str(folder), loglevel=1)
@@ -69,10 +65,12 @@ class MessagingProbe:
             identity, display_name="neXt iOS" if device else "neXt simulator probe", stamp_cost=0,
         )
         self.router.register_delivery_callback(self.receive)
+        self.connections = TCPPeers(self.reticulum, self.router, self.source, device=device)
+        self.connections.apply(peer)
 
     @property
     def online(self):
-        return any(interface.online for interface in RNS.Transport.interfaces)
+        return self.connections.online
 
     def receive(self, message):
         if self.on_receive and message.signature_validated:
@@ -82,7 +80,12 @@ class MessagingProbe:
         deadline = time.monotonic() + 35
         next_request = 0
         while time.monotonic() < deadline:
-            if RNS.Transport.has_path(address):
+            interface = RNS.Transport.next_hop_interface(address)
+            usable = bool(interface and interface in RNS.Transport.interfaces
+                          and interface.online and not getattr(interface, "detached", False))
+            if not usable and RNS.Transport.has_path(address):
+                RNS.Transport.expire_path(address)
+            if usable:
                 identity = RNS.Identity.recall(address)
                 if identity:
                     break
@@ -101,5 +104,4 @@ class MessagingProbe:
         )
 
     def send(self, message):
-        self.source.announce()
         self.router.handle_outbound(message)

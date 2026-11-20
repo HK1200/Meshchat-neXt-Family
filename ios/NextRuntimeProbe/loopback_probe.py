@@ -123,7 +123,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -148,13 +148,18 @@ async def serve(ready_file, frontend, fixture, *, device=False):
         loop.call_soon_threadsafe(schedule, "lxmf.delivery", record(message, "received"))
 
     settings = json.loads(fixture.read_text(encoding="utf-8"))
+    if not device and peer_settings is not None:
+        # Native persistence may alter only loopback peer settings in simulator tests.
+        # Keep the signed echo fixture's identity/address; the transport validates every host.
+        settings["peers"] = peer_settings["peers"]
     probe = MessagingProbe(settings, ready_file.parent, inbound, device=device)
-    peer = probe.address.hex()
+    peer = probe.address.hex() if probe.address else None
     own = probe.source.hash.hex()
     history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3" if device else ":memory:")
     token = secrets.token_urlsafe(32)
     contact = "Test contact" if device else "Simulator Echo"
-    history.ensure_contact(peer, contact)
+    if peer:
+        history.ensure_contact(peer, contact)
     contacts = history.contacts()
     display_name = "neXt iOS" if device else "neXt Simulator"
     config = {"lxmf_address_hash": own, "identity_hash": own, "display_name": display_name}
@@ -178,9 +183,11 @@ async def serve(ready_file, frontend, fixture, *, device=False):
     async def api(request):
         path = request.match_info["path"]
         if request.method == "GET":
-            if device and path == "preview/reticulum-connection":
+            if path == "preview/reticulum-connections":
+                return web.json_response({"peers": probe.connections.snapshot()}, headers={"Cache-Control": "no-store"})
+            if path == "preview/reticulum-connection":
                 return web.json_response(
-                    {"connected": probe.online},
+                    {"connected": probe.online, "enabledCount": sum(row["enabled"] for row in probe.connections.snapshot())},
                     headers={"Cache-Control": "no-store"},
                 )
             if path in responses:
@@ -220,6 +227,15 @@ async def serve(ready_file, frontend, fixture, *, device=False):
                 return web.json_response({"message": str(exc)}, status=409)
             return web.json_response({"status": "success"})
         if request.method == "POST":
+            if path == "preview/reticulum-connections":
+                body = await request.json()
+                if not isinstance(body, dict) or "peers" not in body:
+                    raise web.HTTPBadRequest(text="Expected a peer list")
+                try:
+                    peers = await asyncio.to_thread(probe.connections.apply, body)
+                except ValueError as error:
+                    return web.json_response({"message": str(error)}, status=400)
+                return web.json_response({"peers": peers})
             if path == "telephone/contacts" and device:
                 body = await request.json()
                 if not isinstance(body, dict):
@@ -319,22 +335,18 @@ async def serve(ready_file, frontend, fixture, *, device=False):
         host, port = runner.addresses[0]
         authority = f"{host}:{port}"
         staging = ready_file.with_suffix(".tmp")
-        staging.write_text(f"http://{authority}/#/messages/{peer}", encoding="utf-8")
+        route = f"/#/messages/{peer}" if peer else "/#/messages"
+        staging.write_text(f"http://{authority}{route}", encoding="utf-8")
         if device:
             ready_file.with_suffix(".address").write_text(own, encoding="utf-8")
         staging.replace(ready_file)
-        if device:
-            # Announce only after the TCP link comes up, including after reconnect.
-            online = False
-            while True:
-                connected = probe.online
-                if connected and not online:
-                    await asyncio.to_thread(probe.source.announce)
-                online = connected
-                await asyncio.sleep(1)
-        else:
-            await asyncio.Future()
+        # Each connected route announces at startup/reconnect and hourly.
+        # Simulator profiles are separately restricted to loopback only.
+        while True:
+            await asyncio.to_thread(probe.connections.announce_due)
+            await asyncio.sleep(1)
     finally:
+        probe.connections.close()
         await runner.cleanup()
         if tasks:
             await asyncio.gather(*tasks)
@@ -347,7 +359,10 @@ def run_for_app(ready_file):
     simulator = resources / "peer.json"
     fixture = simulator if simulator.is_file() else ready.with_suffix(".json")
     try:
-        asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator))
+        overrides = None
+        if fixture == simulator and ready.with_suffix(".json").is_file():
+            overrides = json.loads(ready.with_suffix(".json").read_text(encoding="utf-8"))
+        asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator, peer_settings=overrides))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

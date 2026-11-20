@@ -143,3 +143,14 @@ in TestFlight on the iPad. Internal TestFlight does not require the iPad's UDID.
 [Apple TestFlight guide](https://developer.apple.com/testflight/)
 
 Use the **AppStore** build configuration when archiving Family for the App Store. It disables room access and networking. Local and GitHub builds use Debug or Release and include rooms.
+
+
+## Native neXt TCP connections
+
+The neXt iOS shell uses the released Messages interface and the native **TCP connections** screen. New default TCP profiles list RMAP 4343, RMAP 4242, WashMesh 7242 and Chicago 4242 separately. Each row can be edited, disabled or removed; **Add TCP peer** creates a disabled row for review before connecting. Existing custom/private single-peer profiles keep their custom connection enabled and show the public defaults disabled, rather than silently connecting to them. Saved rows retain their independent on/off state on the next launch.
+
+A contact address is optional at first start. Contacts can be added through neXt’s contact interface after the runtime starts. Editing connections preserves the Reticulum identity, contacts and stored messages. The runtime retires only links on affected interfaces, rejects duplicate endpoints and retries unavailable configured connections. Each connected interface announces when it starts/reconnects and hourly thereafter. The status screen refreshes connection state without overwriting unsaved edits.
+
+The simulator harness restricts every configured endpoint to `127.0.0.1`, including settings restored after relaunch. It checks adding a disabled peer, editing its port, toggling it, preserving the original peer, reopening the app and receiving a signed reply through the actual Messages view. A separate local HTTP/LXMF integration test exercises two TCP listeners, CSRF rejection, duplicate prevention, delivery over the remaining peer after the primary is disabled, and identity/contact/history preservation across restart.
+
+These additions are transport work toward the full neXt port. They do not imply the prototype already implements Android/desktop calling, Bluetooth radios, map/location, attachments or all administration endpoints. Those features require their own native/backend integration and device verification.
