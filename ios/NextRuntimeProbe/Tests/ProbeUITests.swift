@@ -80,8 +80,13 @@ final class ProbeUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in form: XCUIElement, up: Bool = true) {
-        for _ in 0..<6 where !element.isHittable {
-            if up { form.swipeUp() } else { form.swipeDown() }
+        XCTAssertTrue(form.waitForExistence(timeout: 10), XCUIApplication().debugDescription)
+        for _ in 0..<12 where !element.isHittable {
+            // A full-height downward swipe can pull the sheet itself closed.
+            // Keep the gesture short and inside the form's content area.
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.4))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.4 : 0.7))
+            start.press(forDuration: 0.05, thenDragTo: end)
         }
         XCTAssertTrue(element.waitForExistence(timeout: 10) && element.isHittable, XCUIApplication().debugDescription)
     }
