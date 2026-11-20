@@ -1,5 +1,7 @@
 # neXt Family for iOS
 
+For the native live app, see the [iPhone/iPad setup and recovery guide](../docs/IOS_SETUP_AND_RECOVERY.md) and [feature verification audit](FEATURE-PARITY.md). The sample preview described first below is a separate target.
+
 The iOS target runs the shared Family interface in a native WebKit view for iPhone and iPad. On narrow windows contacts stay in a single column. Wider windows show two contact columns and give the map more room. It uses sample contacts, conversations, rooms, and map positions. The banner identifies preview mode on every screen. The app serves its interface and tiles from the bundle and blocks external navigation and network requests.
 
 ## Run the preview on a Mac

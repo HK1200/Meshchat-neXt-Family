@@ -74,12 +74,33 @@ green. Regular Family was not updated or cleared, and Apple enrollment remains
 on hold. neXt’s 0.1.20 frontend passed signed-reply UI tests on iPhone and iPad in
 `44710941151`.
 
-The new local neXt TCP peer/settings work described in the README still requires
-owner-reviewed upload and Xcode execution. Its native UI checks have not yet run.
+The neXt TCP peer/settings work was reviewed and pushed as `e8018e0`. Its
+initial iPhone control/restart/signed-reply test passed and the unsigned device
+build passed. The iPad failure led to retained result/video diagnostics in
+`7313aaa`; `4954d98` changes the test's full-height form swipes to short in-form
+gestures after a recording showed the sheet being pulled downward. The final
+both-device native result remains pending. These checks do not establish parity
+for neXt calling, radios, maps or attachments.
+
+Family's independent TCP connection attempts were reviewed and pushed as
+`00470f6`. The two new regressions fail before and pass after the repair; the
+full pinned suite passed 180 tests, with eight optional skips and three subtests.
+CI, Security and Scorecard passed. Both unsigned archives in `44785472955`
+passed; build 218.1 contains the exact reviewed backend. All four Family
+simulator jobs in `44785477485` passed, including message UI round trips and 48
+native checks on each live simulator. The GitHub and Play Android variants
+compiled, and both APKs contain backend bytecode matching the reviewed source.
+
+The separate iPad test app upgraded in place from 213.1 to 218.1. Its seven
+contacts, fifteen messages, full saved state and permanent identity were
+byte-identical immediately after installation; all preferences were unchanged.
+It launched successfully and its signed startup announce reached a temporary
+listener at its unchanged saved private TCP endpoint. The listener was then
+stopped. Regular Family remains 47.6; no Apple enrollment has been performed.
 
 ## Next local work
 
-1. Run the new neXt peer-control and persistence checks on both simulators after review; then continue the remaining service integrations and physical location expiry/movement and battery checks.
+1. Complete neXt peer-control and persistence checks on both simulators and the separate iPad preview; then continue the remaining service integrations and physical location expiry/movement and battery checks.
 2. Test RNode/MeshCore pairing/reconnect, call interruptions/headsets and map downloads on actual hardware.
 3. Bounded Bluetooth wake lifecycle checks passed, and actual RNode/MeshCore locked notifications appeared. Repeat with long idle intervals and connection loss when hardware is free.
 4. Long text above MeshCore's byte budget is excluded from Automatic fallback and remains a known cross-platform limitation.
