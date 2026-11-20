@@ -88,3 +88,53 @@ def test_changing_primary_reuses_backup_interfaces(monkeypatch):
     assert [row["online"] for row in family._tcp_connection_status(peers)] == [
         False, False, True, True,
     ]
+
+
+def test_reconnect_drops_retired_lxmf_links_without_touching_other_routes(monkeypatch):
+    import RNS
+
+    old = SimpleNamespace(target_ip="127.0.0.1", target_port=4343, online=True, detached=False)
+    radio = object()
+    events = []
+    old.detach = lambda: events.append("interface detached")
+
+    def link(interface, status=RNS.Link.ACTIVE, closed=None):
+        result = SimpleNamespace(attached_interface=interface, status=status)
+        def teardown():
+            assert "interface detached" not in events
+            events.append(result)
+            result.status = RNS.Link.CLOSED
+            if closed:
+                closed()
+        result.teardown = teardown
+        return result
+
+    direct = link(old)
+    backchannel = link(old)
+    pending = link(None, RNS.Link.PENDING)
+    unaffected = link(radio)
+    replacement = link(radio)
+    direct_cache = {b"direct": direct, b"pending": pending, b"radio": unaffected}
+    # A close callback may replace a cache entry with a new usable link.
+    swapped = link(old, closed=lambda: direct_cache.update({b"swapped": replacement}))
+    direct_cache[b"swapped"] = swapped
+    router = SimpleNamespace(direct_links=direct_cache, backchannel_links={b"back": backchannel, b"radio": unaffected})
+    interfaces = [old]
+    monkeypatch.setattr(RNS.Transport, "interfaces", interfaces)
+    monkeypatch.setattr(RNS.Transport, "next_hop_interface", lambda address: old if address == b"pending" else radio)
+    monkeypatch.setattr(family, "_rns", object())
+    monkeypatch.setattr(family, "_router", router)
+    monkeypatch.setattr(family, "_rooms", None)
+    monkeypatch.setattr(family, "_peer", old)
+    monkeypatch.setattr(family, "_backup_peers", ())
+    monkeypatch.setattr(family, "_configured_tcp_peers", lambda: [])
+    monkeypatch.setattr(family, "_announce_available_routes", lambda: None)
+    monkeypatch.setattr(family, "_connecting", False)
+    monkeypatch.setattr(family, "_connect_pending", None)
+
+    family._connect(reconnect=True)
+
+    assert router.direct_links == {b"radio": unaffected, b"swapped": replacement}
+    assert router.backchannel_links == {b"radio": unaffected}
+    assert len(events) == 5 and events[-1] == "interface detached"
+    assert unaffected.status == RNS.Link.ACTIVE and replacement.status == RNS.Link.ACTIVE

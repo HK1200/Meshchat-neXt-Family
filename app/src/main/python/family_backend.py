@@ -309,6 +309,9 @@ def _connect(*, reconnect=False):
                         if (link.attached_interface is previous or
                             (link.status==RNS.Link.PENDING and RNS.Transport.next_hop_interface(address) is previous)):
                             link.teardown()
+                            # Do not hand a new send a closed link and its retry delay.
+                            if cache.get(address) is link:
+                                cache.pop(address, None)
             previous.detach()
             if previous in RNS.Transport.interfaces:RNS.Transport.interfaces.remove(previous)
         existing = [retained.get(_tcp_key(host, port)) for host, port in endpoints]
