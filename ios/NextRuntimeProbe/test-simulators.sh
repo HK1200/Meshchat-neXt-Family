@@ -49,6 +49,7 @@ YAML
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
     test ! -e "$app/staged/peer.json"
+    /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
     mkdir Payload
     ditto "$app" Payload/NextRuntimeProbe.app

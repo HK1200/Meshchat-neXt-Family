@@ -17,6 +17,7 @@ targets:
         CFBundleDisplayName: Meshchat neXt
         CFBundleShortVersionString: "0.1.20"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
         NSAppTransportSecurity:
           NSExceptionDomains:
