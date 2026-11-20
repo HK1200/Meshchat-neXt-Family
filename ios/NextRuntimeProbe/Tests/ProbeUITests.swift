@@ -85,11 +85,20 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 15), app.debugDescription)
         let previous = name.value as? String ?? ""
         name.tap()
-        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + "Simulator profile")
-        // Tapping the current navigation item blurs the web field without
-        // depending on a keyboard accessory or a guessed screen coordinate.
+        // WebKit can place the insertion point at the beginning on tap.
+        // The fixture name fits the field; tapping its trailing edge moves
+        // the caret to the end before deleting the old text.
+        name.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+        let cleared = name.value as? String ?? ""
+        XCTAssertTrue(cleared.isEmpty || cleared == "Display Name", app.debugDescription)
+        name.typeText("Simulator profile")
+        XCTAssertEqual(name.value as? String, "Simulator profile", app.debugDescription)
         settings.tap()
-        XCTAssertTrue(web.staticTexts["Setting Display Name auto-saved"].waitForExistence(timeout: 20), app.debugDescription)
+        // Allow the released UI's 600 ms debounce to finish. The saved name
+        // is asserted after terminating and reopening the app below, rather
+        // than depending on a short-lived toast being exposed to XCTest.
+        Thread.sleep(forTimeInterval: 1)
         let dark = web.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH %@", "Dark Theme")).firstMatch
         revealWebButton(dark, in: web)
         dark.tap()
