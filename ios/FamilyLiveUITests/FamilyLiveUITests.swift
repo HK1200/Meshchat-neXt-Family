@@ -115,8 +115,9 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
         app.buttons["Back to settings"].tap()
         if localTest {
-            let edit = app.buttons[contactName]
-            for _ in 0..<4 where !edit.isHittable { app.swipeDown() }
+            let guardianForm = app.collectionViews["guardian-settings-form"]
+            let edit = guardianForm.buttons[contactName]
+            for _ in 0..<4 where !edit.isHittable { guardianForm.swipeDown() }
             XCTAssertTrue(edit.waitForExistence(timeout: 10))
             edit.tap()
             let editedName = app.textFields["edit-contact-name"]
