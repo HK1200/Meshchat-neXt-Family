@@ -287,7 +287,11 @@ Five new native tests cover private preference-file persistence, multi-window
 merging, invalid/secret-key rejection, identity isolation and corrupt-file
 preservation. A browser execution test additionally checks origin isolation,
 ordered acknowledgements and rollback after consecutive failed writes. Its
-both-simulator run `44901168607` is still in progress at this checkpoint.
+both-simulator run `44901168607` passed all 38 native cases on each device
+and the complete iPhone UI flow. The iPad UI failed because the test's trailing-edge
+caret tap left the original display name unchanged. The native Select All repair
+keeps the cleared-field, exact replacement, saved-name, theme and restart assertions.
+The next run also includes the actual WebKit persistence/child-frame isolation case.
 
 The physical iPad upgraded only the separate neXt preview from **236.1** to
 **264.1**. Regular Family **47.6** and Family Mailbox Test **218.1** stayed unchanged. The new consistent backup

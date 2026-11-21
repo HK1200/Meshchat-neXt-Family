@@ -174,13 +174,11 @@ final class ProbeUITests: XCTestCase {
         settings.tap()
         let name = web.textFields["Display Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15), app.debugDescription)
-        let previous = name.value as? String ?? ""
         name.tap()
-        // WebKit can place the insertion point at the beginning on tap.
-        // The fixture name fits the field; tapping its trailing edge moves
-        // the caret to the end before deleting the old text.
-        name.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
-        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+        // Use Apple's native Select All keyboard action. Coordinate taps can
+        // leave WebKit's caret at the start, where backspace changes nothing.
+        name.typeKey("a", modifierFlags: .command)
+        name.typeText(XCUIKeyboardKey.delete.rawValue)
         let cleared = name.value as? String ?? ""
         XCTAssertTrue(cleared.isEmpty || cleared == "Display Name", app.debugDescription)
         name.typeText("Simulator profile")
