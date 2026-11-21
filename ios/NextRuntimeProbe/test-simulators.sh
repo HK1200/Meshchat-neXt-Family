@@ -61,6 +61,8 @@ cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_n
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 cp "$probe/voice_codec_probe.py" staged/
+cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py
+cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-runtime.py"
 if [[ "$mode" == device ]]; then
