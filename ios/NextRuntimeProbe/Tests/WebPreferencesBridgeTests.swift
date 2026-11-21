@@ -51,6 +51,15 @@ final class WebPreferencesBridgeTests: XCTestCase {
         if let error = navigation.error { throw error }
         return view
     }
+    private func javascript(_ view: WKWebView, _ source: String, arguments: [String: Any] = [:]) async throws -> Any {
+        // Force the completion-handler overload. With its default nil callback,
+        // Swift can otherwise select the Void method even beside try/await.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+            view.callAsyncJavaScript(source, arguments: arguments, in: nil, in: .page) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
     func testRealWebKitBridgePersistsRestoresAndRejectsChildFrames() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("next-webkit-preferences-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -59,7 +68,7 @@ final class WebPreferencesBridgeTests: XCTestCase {
         defer { server.cancel() }
         let view = try await page(url, folder: folder)
         let features = "{\"reticulum\":true,\"meshcore\":false,\"sip\":false}"
-        _ = try await view.callAsyncJavaScript("localStorage.setItem(key, value);", arguments: ["key": NextWebPreferences.featureKey, "value": features], in: nil, in: .page)
+        _ = try await javascript(view, "localStorage.setItem(key, value); return true;", arguments: ["key": NextWebPreferences.featureKey, "value": features])
         var persisted = false
         for _ in 0..<200 {
             if (try? NextWebPreferences(folder: folder).values[NextWebPreferences.featureKey]) == features { persisted = true; break }
@@ -70,9 +79,9 @@ final class WebPreferencesBridgeTests: XCTestCase {
         defer { secondServer.cancel() }
         XCTAssertNotEqual(url.port, secondURL.port)
         let restored = try await page(secondURL, folder: folder)
-        let value = try await restored.callAsyncJavaScript("return localStorage.getItem(key);", arguments: ["key": NextWebPreferences.featureKey], in: nil, in: .page)
+        let value = try await javascript(restored, "return localStorage.getItem(key);", arguments: ["key": NextWebPreferences.featureKey])
         XCTAssertEqual(value as? String, features)
-        let child = try await restored.callAsyncJavaScript("""
+        let child = try await javascript(restored, """
             return await new Promise((resolve, reject) => {
                 const child = document.createElement('iframe');
                 const deadline = setTimeout(() => reject(new Error('No child bridge reply')), 5000);
@@ -84,7 +93,7 @@ final class WebPreferencesBridgeTests: XCTestCase {
                 child.srcdoc = '<script>window.webkit.messageHandlers.nextPreferences.postMessage({op:"clear"}).then(()=>parent.postMessage("accepted","*"),()=>parent.postMessage("rejected","*"));<\\/script>';
                 document.body.appendChild(child);
             });
-            """, arguments: [:], in: nil, in: .page)
+            """)
         XCTAssertEqual(child as? String, "rejected", "A child frame must not change private native preferences")
         XCTAssertEqual(try NextWebPreferences(folder: folder).values[NextWebPreferences.featureKey], features)
         for web in [view, restored] {
