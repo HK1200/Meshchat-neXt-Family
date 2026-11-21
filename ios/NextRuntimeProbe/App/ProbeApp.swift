@@ -176,6 +176,10 @@ private struct ProbeScreen: View {
                 }
             }
         }
+        // The native sheet owns accessibility while it is presented. Apply
+        // this at the SwiftUI container as well as WKWebView: WebKit exposes
+        // its remote accessibility tree independently of UIKit descendants.
+        .accessibilityHidden(panel != nil || exportItem != nil)
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .onChange(of: scenePhase) { _, phase in
             appActive = phase == .active

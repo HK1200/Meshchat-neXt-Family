@@ -22,7 +22,8 @@ final class ProbeUITests: XCTestCase {
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.webViews.textViews.firstMatch.exists, "The inactive page must not be accessible behind the native form")
+        XCTAssertTrue(app.webViews.textViews.firstMatch.waitForNonExistence(timeout: 10),
+                      "The inactive page must not be accessible behind the native form")
         waitUntilLoaded(app)
         let primary = app.textFields["tcp-peer-port-peer-0"]
         reveal(primary, in: form, up: false)
