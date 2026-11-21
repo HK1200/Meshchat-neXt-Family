@@ -24,7 +24,35 @@ class MapRuntime:
         directory = self.folder / "maps"
         directory.mkdir(mode=0o700, exist_ok=True)
         if self.config.map_mbtiles_dir.get() is None: self.config.map_mbtiles_dir.set(str(directory))
-        self.map_manager = MapManager(self.config, str(self.folder))
+        from family_maps import MapStore, image_type
+        import sqlite3
+        reader = MapStore(self.folder, {}, threading.RLock(), lambda: None)
+        class NativeMapManager(MapManager):
+            # Imported SQLite is untrusted. Bound reads as well as validation;
+            # validation samples cannot certify every later tile/metadata row.
+            def get_metadata(self):
+                path = self.get_offline_path()
+                if not path: return None
+                try:
+                    with reader.connection(path) as database:
+                        rows = database.execute("SELECT substr(name,1,128),substr(value,1,2048) FROM metadata LIMIT 100")
+                        metadata = {str(key): str(value) for key, value in rows if key is not None and value is not None}
+                    if metadata.get("format", "").lower() in ("pbf", "mvt"): return None
+                    return dict(metadata, path=path)
+                except (sqlite3.Error, OSError, ValueError, TypeError): return None
+
+            def get_tile(self, z, x, y):
+                if any(type(v) is not int for v in (z, x, y)) or not 0 <= z <= 22 or not 0 <= x < 2**z or not 0 <= y < 2**z: return None
+                path = self.get_offline_path()
+                if not path: return None
+                try:
+                    with reader.connection(path) as database:
+                        row = database.execute("SELECT substr(tile_data,1,2097153) FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=? LIMIT 1", (z, x, 2**z-1-y)).fetchone()
+                    if row is None or not isinstance(row[0], bytes) or len(row[0]) > 2 * 1024**2: return None
+                    image_type(row[0])
+                    return row[0]
+                except (sqlite3.Error, OSError, ValueError, TypeError): return None
+        self.map_manager = NativeMapManager(self.config, str(self.folder))
         self.regional_map_download = None
         self.links = RnsLinkManager(self_identity_getter=lambda: identity,
                                    reticulum_getter=lambda: reticulum, broadcast_event=broadcast)

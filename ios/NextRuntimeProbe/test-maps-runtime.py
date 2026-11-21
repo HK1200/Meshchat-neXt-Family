@@ -73,6 +73,10 @@ def main(folder):
         db.execute('INSERT INTO tiles VALUES(9,1,510,?)',(pixel,))
         # Map files are not message attachments: exercise a valid upload larger
         # than the runtime's ordinary 14 MB JSON request ceiling.
+        db.execute('INSERT INTO metadata VALUES(?,?)',('bounded-note','x'*2000000))
+        for x in range(3,35): db.execute('INSERT INTO tiles VALUES(9,?,510,?)',(x,pixel))
+        # This row lies outside import validation's first 32 samples.
+        db.execute('INSERT INTO tiles VALUES(9,40,510,?)',(pixel+bytes(2097153),))
         db.execute('CREATE TABLE padding(data BLOB)')
         db.execute('INSERT INTO padding VALUES(zeroblob(15000000))')
     data=fixture.read_bytes();saved_map=None;original_identity=None;descriptor_growth=None
@@ -111,11 +115,15 @@ def main(folder):
             assert api(base,'config')[1]['config']['map_default_zoom']==9
             status,result=upload(base,token,'private.mbtiles',data)
             assert status==200,(status,result)
+            assert len(result['metadata']['bounded-note'])==2048,'Imported metadata reads must stay bounded'
             saved_map=Path(result['metadata']['path']);assert saved_map.is_relative_to(app/'map-tools/maps')
             assert saved_map.read_bytes()==data
             # TMS row 510 corresponds to XYZ y=1 at z9.
             with urlopen(private_request(base,'/api/v1/map/tiles/9/1/1.png')) as response:
                 assert response.read()==pixel and response.headers['Content-Type']=='image/png'
+            from meshchatnext.src.backend.map_manager import TRANSPARENT_TILE
+            with urlopen(private_request(base,'/api/v1/map/tiles/9/40/1.png')) as response:
+                assert response.read()==TRANSPARENT_TILE,'Oversized unsampled tile must not be loaded into the response'
             # The reported map descriptor leak must not return in this port.
             descriptors=Path('/proc')/str(worker.pid)/'fd'
             if descriptors.is_dir():
@@ -153,7 +161,7 @@ def main(folder):
     proof={'ok':True,'public_network':False,'automatic_downloads':False,'private_http':True,'signed_map_discovery_and_reticulum_catalog_transfer':True,
            'native_identity_unchanged':True,'valid_import_and_tiles':True,'map_upload_exceeded_message_body_limit':len(data)>14_000_000,'invalid_import_preserved_active_map':True,
            'duplicate_import_preserved_existing_maps':True,'settings_and_drawings_survived_restart':True,
-           'deleting_one_map_preserved_other_maps':True,'csrf_required':True,'tile_read_descriptor_growth_after_300_reads':descriptor_growth}
+           'deleting_one_map_preserved_other_maps':True,'csrf_required':True,'metadata_and_unsampled_tile_reads_bounded':True,'tile_read_descriptor_growth_after_300_reads':descriptor_growth}
     (folder/'proof.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
 
 if __name__=='__main__':
