@@ -38,7 +38,8 @@ jobs:
             xcrun xcresulttool get test-results summary --path "$bundle" > "$destination/summary.json"
             xcrun xcresulttool get test-results tests --path "$bundle" > "$destination/tests.json"
             xcrun xcresulttool export attachments --path "$bundle" \
-              --output-path "$destination/attachments" --only-failures
+              --output-path "$destination/attachments" \
+              --test-id 'ProbeUITests/testConversationSendsAndReceivesSignedLXMF()'
           done < <(find original -type d -name '*.xcresult' -print0)
           test "$count" -gt 0
       - name: Keep only this synthetic test's failure evidence
