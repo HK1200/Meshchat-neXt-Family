@@ -81,6 +81,16 @@ final class ProbeUITests: XCTestCase {
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
     }
 
+    private func waitForNativeTheme(_ theme: String, in app: XCUIApplication) {
+        // Evaluate identifier and value together in XCTest's remote query.
+        // A KVC polling expectation can time out while taking a full WebKit
+        // snapshot even when the native header already has the saved value.
+        let header = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "next-native-brand", theme
+        )).firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 60), app.debugDescription)
+    }
+
     private func verifyMeshCoreSettings(_ app: XCUIApplication) {
         let button = app.buttons["next-meshcore-settings"]
         XCTAssertTrue(button.exists)
@@ -186,16 +196,13 @@ final class ProbeUITests: XCTestCase {
         // Stop at the native header instead of asking WebKit to resolve every
         // Settings element for each polling sample. Large web accessibility
         // snapshots can exceed the wait even after the theme has applied.
-        let brand = app.staticTexts.matching(identifier: "next-native-brand").firstMatch
-        let darkApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "dark"), object: brand)
-        XCTAssertEqual(XCTWaiter.wait(for: [darkApplied], timeout: 15), .completed, app.debugDescription)
+        waitForNativeTheme("dark", in: app)
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["tcp-connections"].waitForExistence(timeout: 60), app.debugDescription)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
         XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 60), app.debugDescription)
-        let restoredDark = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "dark"), object: brand)
-        XCTAssertEqual(XCTWaiter.wait(for: [restoredDark], timeout: 15), .completed, app.debugDescription)
+        waitForNativeTheme("dark", in: app)
         settings.tap()
         XCTAssertTrue(name.waitForExistence(timeout: 15))
         let restoredName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Simulator profile"), object: name)
@@ -203,8 +210,7 @@ final class ProbeUITests: XCTestCase {
         let light = web.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "weather-sunny Light Theme")).firstMatch
         revealWebButton(light, in: web)
         light.tap()
-        let lightApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "light"), object: brand)
-        XCTAssertEqual(XCTWaiter.wait(for: [lightApplied], timeout: 15), .completed, app.debugDescription)
+        waitForNativeTheme("light", in: app)
     }
 
     private func revealWebButton(_ button: XCUIElement, in web: XCUIElement) {
