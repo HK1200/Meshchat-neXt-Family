@@ -111,9 +111,9 @@ xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRun
 python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
-test_selection=()
+test_arguments=(-xctestrun "${test_runs[0]}")
 case "${NEXT_PROBE_UNIT_ONLY:-false}" in
-    true) test_selection=(-only-testing:NextRuntimeProbeUnitTests) ;;
+    true) test_arguments+=(-only-testing:NextRuntimeProbeUnitTests) ;;
     false) ;;
     *) echo "NEXT_PROBE_UNIT_ONLY must be true or false" >&2; exit 2 ;;
 esac
@@ -131,10 +131,17 @@ for runtime in sorted(devices, key=lambda k: tuple(int(v) for v in k.split("iOS-
 else:
     raise SystemExit(f"No {family.strip()} simulator available")
 ' "$device")"
-    if xcodebuild test-without-building -xctestrun "${test_runs[0]}" "${test_selection[@]}" \
+    if xcodebuild test-without-building "${test_arguments[@]}" \
         -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
         -resultBundlePath "$result_set/$device.xcresult" \
         -parallel-testing-enabled NO; then
+        test -d "$result_set/$device.xcresult"
+        xcrun xcresulttool get test-results summary --path "$result_set/$device.xcresult" > "$result_set/$device-summary.json"
+        xcrun xcresulttool get test-results tests --path "$result_set/$device.xcresult" > "$result_set/$device-tests.json"
+        proof_arguments=("$result_set/$device-summary.json" "$result_set/$device-tests.json" "$scratch/Tests")
+        if [[ "${NEXT_PROBE_UNIT_ONLY:-false}" == true ]]; then proof_arguments+=(--unit-only); fi
+        python3 "$probe/verify-test-results.py" "${proof_arguments[@]}" > "$result_set/$device-proof.json"
+        cat "$result_set/$device-proof.json"
         # Release the previous simulator before testing the other device family.
         xcrun simctl shutdown "$destination" || true
     else
@@ -155,3 +162,5 @@ else:
         exit "$next_probe_exit"
     fi
 done
+
+for device in "${simulator_families[@]}"; do test -s "$result_set/$device-proof.json"; done
