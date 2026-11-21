@@ -26,7 +26,8 @@ printf '%s\n' '14814af6c6fb5a50236e8ad8420917bcdf51e5142818baa0419a6ca4522a6749 
 unzip -q frontend.zip -d staged/frontend
 python3 -m venv wheels-env
 wheels-env/bin/python -m pip install --disable-pip-version-check --target staged \
-    --only-binary=:all: --platform any --python-version 3.14 'aiohttp==3.14.5'
+    --only-binary=:all: --platform any --python-version 3.14 \
+    --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
 cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/

@@ -42,6 +42,8 @@ class Registrar:
         fields = {name.lower(): quoted or bare for name, quoted, bare in re.findall(r'(\w+)=(?:"([^"]*)"|([^,\s]+))', header)}
         if fields.get("username") != self.user or fields.get("realm") != self.realm or fields.get("nonce") != self.nonce:
             return False
+        # SIP's legacy Digest wire format requires MD5. This loopback-only
+        # fixture uses ephemeral test credentials, not stored user passwords.
         digest = lambda value: hashlib.md5(value.encode()).hexdigest()
         first = digest(self.user + ":" + self.realm + ":" + self.password)
         second = digest("REGISTER:" + fields.get("uri", ""))

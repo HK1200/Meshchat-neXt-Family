@@ -730,6 +730,7 @@ def test_send_posts_signed_hint_after_relay_acceptance(tmp_path, monkeypatch, se
         with HTTPServer(("127.0.0.1", 0), Handler) as server:
             server.timeout = 1
             tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls.minimum_version = ssl.TLSVersion.TLSv1_2
             tls.load_cert_chain(cert, key)
             server.socket = tls.wrap_socket(server.socket, server_side=True)
             route = {"provider": f"https://localhost:{server.server_port}",

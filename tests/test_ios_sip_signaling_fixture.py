@@ -13,6 +13,8 @@ spec.loader.exec_module(sip)
 
 def register(peer, client, *, expires=3600):
     uri = f'sip:127.0.0.1:{peer.port}'
+    # Reproduce legacy SIP Digest only with the private fixture's temporary
+    # credentials; this is a wire-compatibility check, not password storage.
     digest = lambda value: hashlib.md5(value.encode()).hexdigest()
     first = digest(f'{peer.user}:{peer.realm}:{peer.password}')
     final = digest(f'{first}:{peer.nonce}:{digest("REGISTER:" + uri)}')
