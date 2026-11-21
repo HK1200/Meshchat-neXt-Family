@@ -15,10 +15,12 @@ static void received(const char *state, const char *peer, int code, const char *
     }
 }
 int main(int argc, char **argv) {
-    if (argc != 4) return 2;
+    if (argc != 4 && argc != 5) return 2;
+    const char *host = argc == 5 ? argv[4] : "127.0.0.1";
+    if (strcmp(host, "127.0.0.1") && strcmp(host, "[::1]")) return 2;
     fprintf(stderr, "Private SIP registration fixture entered\n");
     alarm(40);
-    int result = family_sip_run(argv[1], "127.0.0.1", atoi(argv[2]), argv[3], received);
+    int result = family_sip_run(argv[1], host, atoi(argv[2]), argv[3], received);
     if (result || !registered) {
         fprintf(stderr, "SIP registration failed (%d)\n", result);
         return 1;

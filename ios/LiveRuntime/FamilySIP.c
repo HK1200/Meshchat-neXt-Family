@@ -222,8 +222,10 @@ int family_sip_run(const char *user, const char *host, int port,
         "audio_player audiounit,default\naudio_source audiounit,default\n"
         "audio_alert audiounit,default\naudio_buffer 20-160\n"
         "audio_jitter_buffer_type adaptive\naudio_jitter_buffer_ms 40-200\n"
-        "call_max_calls 1\ncall_accept yes\nnet_af ipv4\nsip_cuser_random no\n"
-        "sip_listen 0.0.0.0:0\n";
+        /* Keep Baresip's dual-stack, ephemeral-port defaults. The system
+         * resolver supplies DNS64 answers on IPv6-only Apple networks. */
+        "call_max_calls 1\ncall_accept yes\nsip_cuser_random no\n"
+        "dns_getaddrinfo yes\n";
     err = conf_configure_buf((const uint8_t *)config, strlen(config));
     if (err) goto close;
     err = baresip_init(conf_config());

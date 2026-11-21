@@ -25,7 +25,7 @@ class Registrar:
         self.nonce = secrets.token_hex(16)
         self.authenticated = False
         self.unregistered = False
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind((host, 0))
         self.socket.settimeout(0.2)
         self.port = self.socket.getsockname()[1]
@@ -92,13 +92,15 @@ class Registrar:
 
 
 
-def verify_registration(simulator, executable):
+def verify_registration(simulator, executable, host=None):
+    if host not in (None, "127.0.0.1", "::1"):
+        raise ValueError("Private SIP fixture requires a loopback address")
     for attempt in range(2):
-        registrar = Registrar()
+        registrar = Registrar(host) if host is not None else Registrar()
         try:
             try:
                 result = subprocess.run(["xcrun", "simctl", "spawn", simulator, str(executable), registrar.user,
-                                         str(registrar.port), registrar.password], capture_output=True, text=True, timeout=70)
+                                         str(registrar.port), registrar.password, "[::1]" if host == "::1" else "127.0.0.1"], capture_output=True, text=True, timeout=70)
             except subprocess.TimeoutExpired as error:
                 diagnostic = error.stderr or b""
                 if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode("utf-8", "replace")
@@ -111,7 +113,7 @@ def verify_registration(simulator, executable):
                                    f"unregistered={registrar.unregistered}; " + diagnostic) from None
             if result.returncode or not registrar.authenticated or not registrar.unregistered:
                 raise RuntimeError("Native SIP registration/unregistration test failed: " + result.stdout + result.stderr)
-            print("Native SIP registration authenticated, then unregistered cleanly")
+            print("Native SIP " + ("IPv6" if host == "::1" else "IPv4") + " registration authenticated, then unregistered cleanly")
             return
         finally:
             registrar.close()
@@ -148,6 +150,7 @@ def main():
         subprocess.run(["codesign", "--force", "--sign", "-", str(codec_executable)], check=True)
         subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(codec_executable)], check=True, timeout=30)
         verify_registration(args.simulator, executable)
+        verify_registration(args.simulator, executable, "::1")
         subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=160)
     finally:
         if booted_here:
