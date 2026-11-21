@@ -104,6 +104,12 @@ xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRun
 python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
+test_selection=()
+case "${NEXT_PROBE_UNIT_ONLY:-false}" in
+    true) test_selection=(-only-testing:NextRuntimeProbeUnitTests) ;;
+    false) ;;
+    *) echo "NEXT_PROBE_UNIT_ONLY must be true or false" >&2; exit 2 ;;
+esac
 for device in "${simulator_families[@]}"; do
     destination="$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
@@ -118,7 +124,7 @@ for runtime in sorted(devices, key=lambda k: tuple(int(v) for v in k.split("iOS-
 else:
     raise SystemExit(f"No {family.strip()} simulator available")
 ' "$device")"
-    if xcodebuild test-without-building -xctestrun "${test_runs[0]}" \
+    if xcodebuild test-without-building -xctestrun "${test_runs[0]}" "${test_selection[@]}" \
         -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
         -resultBundlePath "$result_set/$device.xcresult" \
         -parallel-testing-enabled NO; then

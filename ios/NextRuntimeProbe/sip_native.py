@@ -5,6 +5,7 @@ The native transport owns CallKit/audio and binds controls to its exact call ID.
 """
 import asyncio
 import contextlib
+from collections import deque
 import json
 import re
 import uuid
@@ -96,6 +97,8 @@ class IOSSIPEngine:
         self._opened = False
         self._task = None
         self._call_id = ''
+        self._retired = deque(maxlen=256)
+        self._received_stop = False
         self._lifecycle = asyncio.Lock()
         self._commands = asyncio.Lock()
 
@@ -111,11 +114,19 @@ class IOSSIPEngine:
             if self._running:
                 return
             await self._request('open')
+            self._received_stop = False
             self._opened = True
             self._running = True
             self._task = asyncio.create_task(self._pump())
 
+    def _retire_call(self):
+        if self._call_id:
+            self._retired.append(self._call_id)
+            self._call_id = ''
+
     def deliver(self, event):
+        if self._received_stop:
+            return
         if (not isinstance(event, dict) or not isinstance(event.get('state'), str)
                 or event['state'] not in self.STATES):
             return
@@ -127,15 +138,18 @@ class IOSSIPEngine:
         if state in self.CALL_STATES:
             if not isinstance(native_id, str) or not re.fullmatch('[A-Za-z0-9_.-]{1,80}', native_id):
                 return
+            if native_id in self._retired:
+                return
             if state in ('incoming', 'calling') and not self._call_id:
                 self._call_id = native_id
             if self._call_id != native_id:
                 return
             if state == 'ended':
-                self._call_id = ''
+                self._retire_call()
         if state == 'stopped':
             self._running = False
-            self._call_id = ''
+            self._received_stop = True
+            self._retire_call()
         if self.on_event:
             self.on_event({key: value for key, value in event.items() if key in {
                 'state', 'peer', 'code', 'sent', 'received', 'lost_rx', 'jitter_ms', 'rtt_ms'
@@ -189,7 +203,7 @@ class IOSSIPEngine:
             return await self._request(op, **values)
         except BaseException:
             if op == 'dial':
-                self._call_id = ''
+                self._retire_call()
             raise
 
     async def close(self):
@@ -210,5 +224,6 @@ class IOSSIPEngine:
                         raise TimeoutError('SIP shutdown is still pending')
                     await asyncio.sleep(0.1)
                     reply = await self._request('poll')
-                self._call_id = ''
+                self._retire_call()
+                self._received_stop = True
                 self._opened = False

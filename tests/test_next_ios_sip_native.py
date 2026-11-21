@@ -147,3 +147,49 @@ def test_close_waits_for_native_exit_and_is_idempotent():
         assert calls[-2:]==['close','poll'] and not engine.running
         before=calls.copy();await engine.close();assert calls==before
     asyncio.run(exercise())
+
+
+def test_delayed_events_cannot_resurrect_a_finished_call_or_closed_engine():
+    engine = IOSSIPEngine(request=Native())
+    seen = []
+    engine.on_event = seen.append
+    event = lambda state, identifier: dict(state=state, native_id=identifier, peer='sip:test@127.0.0.1')
+    engine.deliver(event('incoming', 'first'))
+    engine.deliver(event('ended', 'first'))
+    before = len(seen)
+    for state in ['incoming', 'calling', 'connected', 'ended']:
+        engine.deliver(event(state, 'first'))
+    assert len(seen) == before and not engine._call_id
+    engine.deliver(event('incoming', 'second'))
+    assert engine._call_id == 'second'
+    engine.deliver({'state': 'stopped'})
+    before = len(seen)
+    engine.deliver(event('incoming', 'third'))
+    engine.deliver({'state': 'registered'})
+    assert len(seen) == before and not engine._call_id
+
+
+def test_retired_call_memory_is_bounded_and_failed_dial_ids_are_retired():
+    async def exercise():
+        identifiers = []
+        def request(row):
+            if row['op'] == 'dial':
+                identifiers.append(row['call_id'])
+                raise ConnectionError('private rejection')
+            return Native()(row)
+        engine = IOSSIPEngine(request=request, poll_interval=10)
+        await engine.launch()
+        try:
+            with pytest.raises(ConnectionError):
+                await engine.command('dial', peer='sip:test@127.0.0.1')
+            assert identifiers[0] in engine._retired
+            engine.deliver(dict(state='calling', native_id=identifiers[0]))
+            assert not engine._call_id
+            for number in range(300):
+                identifier = 'private-' + str(number)
+                engine.deliver(dict(state='incoming', native_id=identifier))
+                engine.deliver(dict(state='ended', native_id=identifier))
+            assert len(engine._retired) == 256
+        finally:
+            await engine.close()
+    asyncio.run(exercise())

@@ -15,6 +15,10 @@ on:
         description: Build the unsigned Meshchat neXt preview for a physical iPhone or iPad
         type: boolean
         default: false
+      next_unit_tests:
+        description: Run neXt native lifecycle, permissions, credential and routing tests without the Messages UI
+        type: boolean
+        default: false
       next_runtime_probe:
         description: Test the Meshchat neXt Messages interface on iPhone and iPad
         type: boolean
@@ -136,8 +140,8 @@ jobs:
           retention-days: 7
 
   next-runtime-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_runtime_probe }}
-    name: ${{ matrix.device }} neXt Messages
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.next_runtime_probe || inputs.next_unit_tests) }}
+    name: ${{ matrix.device }} neXt native and Messages
     runs-on: macos-26
     timeout-minutes: 35
     strategy:
@@ -153,6 +157,7 @@ jobs:
       - name: Test neXt on the selected simulator
         env:
           NEXT_PROBE_DEVICE: ${{ matrix.device }}
+          NEXT_PROBE_UNIT_ONLY: ${{ inputs.next_unit_tests && !inputs.next_runtime_probe }}
         run: bash ios/NextRuntimeProbe/test-simulators.sh ios
       - name: Keep neXt simulator results and synthetic test crash reports
         if: always()
