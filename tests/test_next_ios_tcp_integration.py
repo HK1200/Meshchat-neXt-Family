@@ -53,10 +53,15 @@ def run_hub(folder, ports, pipe):
     RNS.Transport.register_announce_handler(ObservedNames())
     source.announce()
     pipe.send(source.hash.hex())
+    sent = {}
     while True:
         command = pipe.recv()
         if not isinstance(command, dict):
             break
+        if "delivery_status" in command:
+            message = sent[command["delivery_status"]]
+            pipe.send(message.state == LXMF.LXMessage.DELIVERED)
+            continue
         if command.get("announce"):
             source.announce()
             continue
@@ -64,21 +69,40 @@ def run_hub(folder, ports, pipe):
         identity = RNS.Identity.recall(address)
         assert identity is not None
         target = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
-        router.handle_outbound(LXMF.LXMessage(target, source, command["content"], desired_method=LXMF.LXMessage.DIRECT))
+        message = LXMF.LXMessage(target, source, command["content"], desired_method=LXMF.LXMessage.DIRECT)
+        sent[command["content"]] = message
+        router.handle_outbound(message)
 
 
 def run_server(folder, ready, settings, pipe):
     run_server_mode(folder, ready, settings, True, pipe)
 
 
-def run_server_mode(folder, ready, settings, device, pipe):
+def run_policy_server(folder, ready, settings, pipe):
+    run_server_mode(folder, ready, settings, True, pipe, policy=True)
+
+
+def run_server_mode(folder, ready, settings, device, pipe, *, policy=False):
     import asyncio
     sys.path[:0] = [str(ROOT / "ios/NextRuntimeProbe"), str(ROOT / "app/src/main/python")]
     from loopback_probe import serve
     frontend = folder / "frontend"
     frontend.mkdir(exist_ok=True)
     (frontend / "index.html").write_text("<html>Private test</html>")
-    asyncio.run(serve(ready, frontend, settings, device=device))
+    voice_factory = None
+    if policy:
+        from voice_runtime import ReticulumVoice
+        def voice_factory(*args):
+            voice = ReticulumVoice(*args, native=lambda request: {"ok": True, "events": []})
+            original = voice.message_allowed
+            def allowed(peer):
+                result = original(peer)
+                with (folder / "policy-checks.jsonl").open("a") as stream:
+                    stream.write(json.dumps({"allowed": result, "blocked": voice.call_policy["block_all_from_strangers"]}) + "\n")
+                return result
+            voice.message_allowed = allowed
+            return voice
+    asyncio.run(serve(ready, frontend, settings, device=device, voice_factory=voice_factory))
 
 
 def start(stack, target, *args):
@@ -524,3 +548,71 @@ def test_mailbox_controls_require_private_session_and_csrf_and_preserve_profile(
         assert api(base, "preview/mailbox", body={"address": ""}, token=token)[1]["status"] == "off"
         assert api(base, "telephone/contacts")[1]["contacts"] == []
         assert api(base, "preview/reticulum-connections")[1]["peers"] == []
+
+
+def test_stranger_dm_policy_survives_contact_changes_and_restart_with_calling_off(tmp_path):
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    app = tmp_path / "policy-app"
+    app.mkdir()
+    settings = app / "settings.json"
+    settings.write_text(json.dumps({"peers": [dict(id="private", host="127.0.0.1", port=port, enabled=True)]}))
+    with ExitStack() as stack:
+        _, hub = start(stack, run_hub, tmp_path / "hub", [port])
+        assert hub.poll(10)
+        sender = hub.recv()
+        def send_verified(base, own, content):
+            trace = app / "policy-checks.jsonl"
+            count = len(trace.read_text().splitlines()) if trace.exists() else 0
+            hub.send({"send_to": own, "content": content})
+            def delivered():
+                hub.send({"delivery_status": content})
+                assert hub.poll(10)
+                return hub.recv()
+            wait(delivered)
+            wait(lambda: trace.exists() and len(trace.read_text().splitlines()) > count)
+        with ExitStack() as first:
+            ready = app / "first.url"
+            start(first, run_policy_server, app, ready, settings)
+            wait(ready.exists)
+            base = backend(ready)
+            cfg = api(base, "config")[1]["config"]
+            own = cfg["lxmf_address_hash"]
+            assert cfg["telephone_allow_calls_from_contacts_only"] is True
+            assert cfg["telephone_enabled"] is False
+            wait(lambda: (tmp_path / "hub/observed-name.json").exists())
+            token = api(base, "auth/csrf")[1]["csrf_token"]
+            def policy(value):
+                assert api(base, "config", body={"block_all_from_strangers": value}, method="PATCH", token=token)[0] == 200
+            def rows():
+                return api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]
+            hub.send({"announce": True})
+            wait(lambda: any(row["destination_hash"] == sender for row in api(base, "announces")[1]["announces"]))
+            policy(True)
+            send_verified(base, own, "blocked first")
+            assert rows() == []
+            assert api(base, "preview/unread-messages")[1]["messages"] == []
+            policy(False)
+            send_verified(base, own, "allowed stranger")
+            wait(lambda: len(rows()) == 1)
+            policy(True)
+            send_verified(base, own, "blocked existing conversation")
+            assert len(rows()) == 1
+            assert api(base, "telephone/contacts", body={"name": "Approved private sender", "lxmf_address": sender}, token=token)[0] == 200
+            send_verified(base, own, "allowed saved contact")
+            wait(lambda: len(rows()) == 2)
+        ready = app / "second.url"
+        start(stack, run_policy_server, app, ready, settings)
+        wait(ready.exists)
+        base = backend(ready)
+        cfg = api(base, "config")[1]["config"]
+        assert cfg["block_all_from_strangers"] is True and cfg["telephone_enabled"] is False
+        send_verified(base, own, "allowed saved contact after restart")
+        wait(lambda: len(api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]) == 3)
+        contact = api(base, "telephone/contacts")[1]["contacts"][0]
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "telephone/contacts/" + str(contact["id"]), body={}, method="DELETE", token=token)[0] == 200
+        send_verified(base, own, "blocked removed contact")
+        messages = api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]
+        assert {row["content"] for row in messages} == {"allowed stranger", "allowed saved contact", "allowed saved contact after restart"}

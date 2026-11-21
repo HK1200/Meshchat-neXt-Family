@@ -138,11 +138,12 @@ class ReticulumVoice:
                 raise ValueError("Invalid saved call settings")
         except (ValueError, TypeError):
             values = {}
-            saved_error = "Saved call settings could not be read. Calling is off; messaging is unchanged."
+            saved_error = "Saved call settings could not be read. Calling is off; review privacy settings."
         self.config = Configuration(values.get("enabled", False), values.get("profile"), values.get("mode"))
         self.policy_contacts = frozenset()
-        self.call_policy = {key: values.get(key, False) for key in
-                            ("do_not_disturb_enabled", "telephone_allow_calls_from_contacts_only", "block_all_from_strangers")}
+        self.call_policy = {key: values.get(key, default) for key, default in
+                            (("do_not_disturb_enabled", False), ("telephone_allow_calls_from_contacts_only", True),
+                             ("block_all_from_strangers", False))}
         self.blocked_callers = values.get("blocked_callers", [])
         if (any(type(value) is not bool for value in self.call_policy.values())
                 or not isinstance(self.blocked_callers, list)
@@ -150,7 +151,7 @@ class ReticulumVoice:
             self.config.telephone_enabled.value = False
             self.call_policy = {key: True for key in self.call_policy}
             self.blocked_callers = []
-            saved_error = "Saved caller policy could not be read. Calling is off; messaging is unchanged."
+            saved_error = "Saved caller policy could not be read. Calling is off; review privacy settings."
         self.session = uuid.uuid4().hex
         self.engine = None
         self.call = None
@@ -172,6 +173,7 @@ class ReticulumVoice:
         self.poller = None
         self.available = False
         self.on_settings = None
+        self.refresh_call_contacts()
         try:
             self.native(dict(op="open", session=self.session))
             if native is native_request:
@@ -256,6 +258,11 @@ class ReticulumVoice:
         # SQLite is owned by the app loop. LXST invokes the allowed callback
         # on its network worker, which reads only this immutable snapshot.
         self.policy_contacts = frozenset(self.contacts())
+
+    def message_allowed(self, peer):
+        # Global stranger blocking applies to received DMs even with calling off.
+        return (isinstance(peer, str) and re.fullmatch(r"[a-f0-9]{32}", peer) is not None
+                and (not self.call_policy["block_all_from_strangers"] or peer in self.policy_contacts))
 
     def caller_allowed(self, identity_hash):
         # neXt's normal incoming-call policy must be explicitly installed.

@@ -336,12 +336,16 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
+    voice = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
         if not re.fullmatch(r"[a-f0-9]{32}", address):
             return None, False
         if address == own:
+            return None, True
+        if not row["is_outbound"] and voice is not None and not voice.message_allowed(address):
+            # Acknowledge the verified packet without creating history or alerts.
             return None, True
         if address not in contacts and not history.has_conversation(address):
             # Deliberately consume unwanted telemetry without creating a chat.
@@ -765,7 +769,6 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
-    voice = None
     if voice_factory:
         def voice_interfaces():
             import RNS

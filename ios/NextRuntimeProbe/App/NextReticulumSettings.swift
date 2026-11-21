@@ -52,7 +52,7 @@ struct NextReticulumSettings: View {
                         set: { command("preview/reticulum-call-policy", ["do_not_disturb_enabled": $0]) }))
                         .accessibilityIdentifier("next-voice-dnd")
                     Toggle("Only allow calls from contacts", isOn: Binding(
-                        get: { snapshot?.telephone_allow_calls_from_contacts_only ?? false },
+                        get: { snapshot?.telephone_allow_calls_from_contacts_only ?? true },
                         set: { command("preview/reticulum-call-policy", ["telephone_allow_calls_from_contacts_only": $0]) }))
                         .accessibilityIdentifier("next-voice-contacts-only")
                 }.disabled(busy || snapshot == nil)

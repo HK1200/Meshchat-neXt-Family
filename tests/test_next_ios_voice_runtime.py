@@ -307,6 +307,8 @@ def test_real_engine_installs_live_caller_policy_and_preserves_restrictions():
             assert not voice.caller_allowed(caller.hash)
             await voice.configure(True)
             allowed=voice.engine.call_policy["allowed_fn"]
+            assert not allowed(caller.hash)  # Matches desktop neXt on a fresh install.
+            voice.set_call_policy({"telephone_allow_calls_from_contacts_only":False})
             assert allowed(caller.hash)
             voice.set_call_policy({"telephone_allow_calls_from_contacts_only":True})
             assert not allowed(caller.hash)
@@ -459,5 +461,39 @@ def test_native_speaker_requires_a_connected_exact_call_and_real_boolean():
             assert native.requests[-1]["op"]=="speaker" and native.requests[-1]["value"] is True
             voice.control("speaker",{"call_id":identifier,"value":False})
             assert native.requests[-1]["value"] is False
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_explicit_saved_open_caller_policy_is_preserved_instead_of_reset_to_default():
+    async def run():
+        voice,native,db=fixture()
+        voice.set_call_policy({"telephone_allow_calls_from_contacts_only":False})
+        await voice.close()
+        restored=ReticulumVoice(db,RNS.Identity(),lambda:{},lambda:[],lambda:"Private test",
+                               native=Native(),engine_factory=Engine)
+        try:
+            assert restored.call_policy["telephone_allow_calls_from_contacts_only"] is False
+            assert not restored.snapshot()["enabled"]
+        finally:await restored.close();db.close()
+    asyncio.run(run())
+
+
+def test_global_message_policy_uses_initial_contacts_without_starting_voice():
+    async def run():
+        db=sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE next_voice_settings (key TEXT PRIMARY KEY,value TEXT)")
+        db.execute("INSERT INTO next_voice_settings VALUES ('block_all_from_strangers','true')")
+        native=Native();known="a"*32
+        voice=ReticulumVoice(db,RNS.Identity(),lambda:{known:{"name":"Private contact"}},lambda:[],lambda:"Private test",
+                             native=native,engine_factory=Engine)
+        try:
+            assert voice.engine is None and not voice.config.telephone_enabled.get()
+            assert voice.message_allowed(known)
+            assert not voice.message_allowed("b"*32)
+            for invalid in (None,True,"", "g"*32):assert not voice.message_allowed(invalid)
+            voice.set_call_policy({"block_all_from_strangers":False})
+            assert voice.message_allowed("b"*32)
+            assert [row["op"] for row in native.requests]==["open"]
         finally:await voice.close();db.close()
     asyncio.run(run())
