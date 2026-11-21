@@ -19,13 +19,15 @@ from voice_codec_probe import check_voice_codecs
 def native_codec2(monkeypatch):
     # Use the actual production adapter, backed by the local native Codec2
     # library. Xcode separately verifies the bundled iOS framework variant.
+    # Import the real codec first so monkeypatch restores its original module
+    # reference even when this fixture is the first code to import LXST.
+    module = importlib.import_module("LXST.Codecs.Codec2")
     library = ctypes.CDLL(ctypes.util.find_library("codec2"))
     monkeypatch.setitem(sys.modules, "family_ios_codecs", SimpleNamespace(library=lambda: library))
     spec = importlib.util.spec_from_file_location("pycodec2", ROOT / "ios/VoiceRuntime/pycodec2.py")
     adapter = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adapter)
     monkeypatch.setitem(sys.modules, "pycodec2", adapter)
-    module = importlib.import_module("LXST.Codecs.Codec2")
     monkeypatch.setattr(module, "pycodec2", adapter)
     return module
 
