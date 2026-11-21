@@ -159,6 +159,10 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
                 reply = any(not row["is_outbound"] and row["content"] == "Echo: " + text for row in messages)
                 return messages if delivered and reply else None
             wait(arrived, 45)
+            discovered = wait(lambda: api(base, "announces?aspect=lxmf.delivery&search=Private")[1].get("announces"))
+            assert discovered[0]["destination_hash"] == address
+            assert discovered[0]["display_name"] == "Private neXt echo"
+            assert api(base, "announces?limit=100000")[0] == 400
             # Native AppStorage passes the saved peer list back on the next launch.
             settings.write_text(json.dumps(dict(peers=result["peers"])))
         observed.unlink(missing_ok=True)

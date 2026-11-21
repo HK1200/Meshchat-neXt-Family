@@ -130,3 +130,21 @@ integration cases passed, including simulator signed-history persistence.
 The actual released frontend's name save/reload and all three theme controls
 passed an isolated browser check with public networking disabled. New native
 profile/theme/restart checks still require owner review and Xcode.
+
+## neXt passive client discovery (local verification)
+
+The next local patch connects the released Contacts → Add Contact → Discover
+contacts picker to signed Reticulum LXMF client announces. It supports name and
+address search, bounded pagination, and a private on-device cache capped at 1,000
+clients with 30-day expiry. It excludes the local identity, rejects a destination
+that does not match the announcing identity, and does not create contacts or
+change saved nicknames when an announce arrives. Only LXMF messaging clients are
+included; this does not implement voice, relay, or radio discovery.
+
+The private integration test received a real signed path-response announce over
+loopback, while unit checks covered malformed names, identity mismatch, expiry,
+restart and bounded queries. The actual released 0.1.20 frontend also searched a
+private peer by name, filled the matching address and saved it through an explicit
+Add Contact action, with no page errors. No regular device app was involved.
+Native archive and iPhone/iPad simulator verification remain pending owner review
+and upload of this patch.

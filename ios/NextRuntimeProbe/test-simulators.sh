@@ -28,7 +28,7 @@ python3 -m venv wheels-env
 wheels-env/bin/python -m pip install --disable-pip-version-check --target staged \
     --only-binary=:all: --platform any --python-version 3.14 'aiohttp==3.14.5'
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
-cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" staged/
+cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 if [[ "$mode" == device ]]; then
     # The device project excludes the simulator test target and its echo fixture.

@@ -7,6 +7,7 @@ import LXMF
 import RNS
 
 from tcp_peers import TCPPeers, normalize_peers
+from discovery import ClientDiscovery
 
 
 def reply_fields_for(hash_hex, quote):
@@ -63,8 +64,15 @@ class MessagingProbe:
             identity, display_name="neXt iOS" if device else "neXt simulator probe", stamp_cost=0,
         )
         self.router.register_delivery_callback(self.receive)
+        self.discovery = ClientDiscovery(folder / "discovered-clients.sqlite3", self.source.hash.hex())
+        RNS.Transport.register_announce_handler(self.discovery)
         self.connections = TCPPeers(self.reticulum, self.router, self.source, device=device)
         self.connections.apply(peer)
+
+    def close(self):
+        self.connections.close()
+        RNS.Transport.deregister_announce_handler(self.discovery)
+        self.discovery.close()
 
     @property
     def online(self):

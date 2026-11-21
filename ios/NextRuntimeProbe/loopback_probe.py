@@ -261,6 +261,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def api(request):
         path = request.match_info["path"]
         if request.method == "GET":
+            if path == "announces":
+                try:
+                    return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})
+                except ValueError as error:
+                    raise web.HTTPBadRequest(text=str(error))
             if path == "preview/reticulum-connections":
                 return web.json_response({"peers": probe.connections.snapshot()}, headers={"Cache-Control": "no-store"})
             if path == "preview/reticulum-connection":
@@ -487,7 +492,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await asyncio.to_thread(probe.connections.announce_due)
             await asyncio.sleep(1)
     finally:
-        probe.connections.close()
+        probe.close()
         await runner.cleanup()
         if tasks:
             await asyncio.gather(*tasks)
