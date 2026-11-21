@@ -21,10 +21,10 @@ into the app; physical verification is stated separately.
 | Individual TCP peers | Four editable peers, independent toggles and saved settings; native controls/restart tests and physical saved-state checks pass | Repeat real Wi-Fi changes, offline recovery and route failover; connected sockets alone do not prove message traffic |
 | RNode | Native editor, shared Bluetooth transport, saved settings, batteries and bounded radio wake handling are integrated | Actual neXt pairing, LoRa exchange, locked delivery and radio power-cycle checks |
 | MeshCore | Released service/fleet routes, Bluetooth bridge, own-app Keychain passwords and native DM alert routing are integrated | Physical neXt DMs, channels, rooms, node administration, reconnect and repeat reporting |
-| Profile and appearance | Saved display name/theme, private web preferences and native theme propagation are implemented | Finish the iPad profile-edit UI regression; verify physical editing and all saved web choices |
+| Profile and appearance | Saved display name/theme, private web preferences and native theme propagation are implemented | Both simulator profile-edit/restart regressions pass; verify physical editing and all saved web choices |
 | Message notifications | Generic private notifications and native permission controls are integrated | Physical neXt notification delivery/navigation; fully suspended internet delivery needs the mailbox/push integration |
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
-| SIP | Compiled native engine, IPv4/IPv6 fixtures, isolated Keychain adapter and actual app-hosted registration/logout pass | Connect the account/command HTTP routes and interface; add CallKit, microphone/audio, answer/end/mute/speaker and interruption handling; then live calls |
+| SIP | Compiled native engine, IPv4/IPv6 fixtures, isolated Keychain adapter and actual app-hosted registration/logout pass. Native account management and protected HTTP lifecycle routes are now integrated | Verify the account screen on Xcode; add CallKit, microphone/audio, answer/end/mute/speaker and interruption handling; then live calls |
 | Reticulum voice | Family's shared native engine is available in the repository | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
 | Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
@@ -51,9 +51,8 @@ service integrations.
 
 ## Native verification checkpoint
 
-The native suite now contains 43 cases, including external-link isolation. All
-43 cases and both UI cases passed on each simulator at `f7aa0e4` (run
-44908982459). The hostname test now waits for the exact settled accessibility
+At `0870519` (run 44913566807), all 44 native cases and both UI cases
+passed on each simulator, with source-case execution verified. The hostname test now waits for the exact settled accessibility
 value. Profile editing, identity preservation and restart assertions passed on
 both devices. The separate physical preview then upgraded to 276.1 with all
 12 messages, both contacts, its identity and saved settings intact. Both Family
@@ -103,9 +102,31 @@ which could hide a later notification after first enabling alerts. The new
 regression fails on the old code. A persistent counter now survives deletion and
 restart; the native app also carries its existing Reticulum baseline into the
 backend when upgrading a preview. Existing messages, contacts and read state
-remain intact. All 193 Python checks pass; the added native case awaits Xcode.
+remain intact. All 193 Python checks and all 46 native/UI cases per simulator passed. The
+separate physical preview upgraded to 277.1 with its identity, message database
+and native preferences byte-identical before launch. All 12 messages and both
+contacts remain; regular Family 47.6 and Family Mailbox Test 218.1 are unchanged.
 
 A separate read-only physical-device test runner builds successfully. It permits
 only the separate neXt preview and Family Mailbox Test, and never accepts regular
 Family as a target. Actual device execution is not yet proven. It is not a store
 build and does not replace any existing install during compilation.
+
+
+## SIP account integration checkpoint
+
+The preview now has native SIP account management backed by the released neXt
+account service, its own iOS Keychain and the current OS route. Saving alone does
+not register; connecting is explicit, and saved enabled accounts can recover
+when an allowed connection returns. The native screen preserves unsaved edits
+and supports secure password replacement, removal and per-network choices.
+The released web dialer remains unavailable until calling is integrated.
+
+All six staged-runtime checks pass, including actual protected HTTP routes,
+credential omission from metadata/status, logout, corruption preservation and
+route changes. These checks use synthetic accounts and no external registrar.
+The 193 backend checks pass; the new native account form cases await Xcode.
+
+The read-only physical UI runner still fails before executing its test. The
+normal neXt preview and original saved-window state were restored afterward.
+It has not established physical UI automation.

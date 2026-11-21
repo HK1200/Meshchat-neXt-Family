@@ -47,10 +47,11 @@ wheels-env/bin/python -m pip install --disable-pip-version-check --target staged
     --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
 cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
-cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/runtime_access.py" staged/
+cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
+PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-runtime.py"
 if [[ "$mode" == device ]]; then
     # The device project excludes the simulator test target and its echo fixture.
     awk '/^  NextRuntimeProbeUnitTests:/ {exit} {print}' project.yml > device.yml

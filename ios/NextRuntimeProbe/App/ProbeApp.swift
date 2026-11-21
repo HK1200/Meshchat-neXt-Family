@@ -23,7 +23,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions
+        case alerts, rnode, connections, myContact, permissions, sip
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -105,6 +105,9 @@ private struct ProbeScreen: View {
                                   systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
                                 .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-meshcore-settings")
+                        Button { panel = .sip } label: {
+                            Label("SIP accounts", systemImage: "phone.connection").labelStyle(.iconOnly).frame(width: 44, height: 44)
+                        }.accessibilityIdentifier("next-sip-settings")
                         Button("TCP connections") { panel = .connections }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
@@ -186,6 +189,8 @@ private struct ProbeScreen: View {
         }
         .sheet(item: $panel) { selected in
             switch selected {
+            case .sip:
+                if let url { NextSIPSettings(base: url).interactiveDismissDisabled() }
             case .rnode:
                 if let url { NextRNodeSettings(base: url).interactiveDismissDisabled() }
             case .alerts:

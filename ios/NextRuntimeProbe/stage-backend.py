@@ -52,6 +52,19 @@ def stage(wheel, destination, family_ios):
                     if payload.count(before) != 1:
                         raise ValueError("The pinned repeat-fingerprint source changed")
                     payload = payload.replace(before, after)
+            if entry.filename == "meshchatnext/src/backend/sip_desktop_network.py":
+                # iOS injects NWPathMonitor routes and has no psutil extension.
+                # Desktop discovery can still import its own dependency lazily.
+                before = b"import psutil\n"
+                after = b""
+                if payload.count(before) != 1:
+                    raise ValueError("The pinned SIP network source changed")
+                payload = payload.replace(before, after)
+                before = b"    try:\n        if route_text is None:"
+                after = b"    import psutil\n    try:\n        if route_text is None:"
+                if payload.count(before) != 1:
+                    raise ValueError("The pinned SIP discovery source changed")
+                payload = payload.replace(before, after)
             target.write_bytes(payload)
     import shutil
     shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",

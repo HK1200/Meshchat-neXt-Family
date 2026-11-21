@@ -329,7 +329,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -711,6 +711,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     if meshcore:
         meshcore.register(app.router)
         await meshcore.start()
+    sip = sip_factory(ready_file.parent, device=device) if sip_factory else None
+    if sip:
+        sip.register(app.router)
+        async def start_sip(_app):
+            await sip.start()
+        async def stop_sip(_app):
+            await sip.close()
+        app.on_startup.append(start_sip)
+        app.on_cleanup.append(stop_sip)
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)
@@ -759,8 +768,9 @@ def run_for_app(ready_file):
         if fixture == simulator and ready.with_suffix(".json").is_file():
             overrides = json.loads(ready.with_suffix(".json").read_text(encoding="utf-8"))
         from meshcore_runtime import NextMeshCore
+        from sip_runtime import NextSIPRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise
