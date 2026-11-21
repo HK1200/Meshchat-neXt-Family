@@ -16,7 +16,7 @@ def verify(summary, tree, sources, *, unit_only=False):
     total, passed = summary.get('totalTestCount'), summary.get('passedTests')
     if (type(total) is not int or type(passed) is not int or total < len(expected)
             or passed != total or summary.get('failedTests') != 0
-            or summary.get('skippedTests') != 0 or summary.get('testStatus') != 'Passed'):
+            or summary.get('skippedTests') != 0 or summary.get('result') != 'Passed'):
         raise ValueError('XCTest summary is missing, incomplete or unsuccessful')
     observed = set()
     def walk(value):

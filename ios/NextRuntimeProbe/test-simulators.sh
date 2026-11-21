@@ -149,6 +149,7 @@ else:
         -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
         -resultBundlePath "$result_set/$device.xcresult" \
         -parallel-testing-enabled NO; then
+        if [[ -f "$scratch/sip/observed.json" ]]; then cp "$scratch/sip/observed.json" "$result_set/$device-sip-observed.json"; fi
         test -d "$result_set/$device.xcresult"
         xcrun xcresulttool get test-results summary --path "$result_set/$device.xcresult" > "$result_set/$device-summary.json"
         xcrun xcresulttool get test-results tests --path "$result_set/$device.xcresult" > "$result_set/$device-tests.json"
@@ -179,6 +180,7 @@ PYTHON
                 codesign -d --entitlements :- "$bundle" > "$result_set/$app_name-entitlements.plist" 2> "$result_set/$app_name-codesign.log" || true
             fi
         done
+        if [[ -f "$scratch/sip/observed.json" ]]; then cp "$scratch/sip/observed.json" "$result_set/$device-sip-observed.json"; fi
         cp "$scratch/echo.log" "$result_set/echo.log"
         cat "$scratch/echo.log"
         exit "$next_probe_exit"
