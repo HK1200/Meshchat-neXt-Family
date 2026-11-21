@@ -1,9 +1,10 @@
 # neXt iOS completion status
 
 neXt for iPhone and iPad is a development preview. Reticulum messaging works in
-the released neXt interface, including signed replies and attachments. Calling,
-location and the remaining desktop services still need integration before this
-is a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
+the released neXt interface, including signed replies and attachments. Native
+SIP calling and optional mailbox receiving are integrated and under verification.
+Reticulum voice, location and remaining desktop services still need integration
+before this is a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
 This checkpoint is dated November 21, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -24,11 +25,11 @@ into the app; physical verification is stated separately.
 | Profile and appearance | Saved display name/theme, private web preferences and native theme propagation are implemented | Both simulator profile-edit/restart regressions pass; verify physical editing and all saved web choices |
 | Message notifications | Generic private notifications and native permission controls are integrated | Physical neXt notification delivery/navigation; fully suspended internet delivery needs the mailbox/push integration |
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
-| SIP | Compiled native engine, IPv4/IPv6 fixtures, isolated Keychain adapter and actual app-hosted registration/logout pass. Native account management and protected HTTP lifecycle routes are now integrated | Verify the account screen on Xcode; add CallKit, microphone/audio, answer/end/mute/speaker and interruption handling; then live calls |
+| SIP | Native Keychain accounts, registration, CallKit, microphone/audio, answer/end/mute/speaker and interruption handling are integrated. Private app-hosted incoming/outgoing signaling checks pass on iPad; matching iPhone and current mailbox builds are running | Complete native screen coverage and real neXt iPad/Android calls, locked alerts and audio/routing checks |
 | Reticulum voice | Family's shared native engine is available in the repository | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
 | Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
-| Offline mailbox and push | Shared project components and signed-hint infrastructure exist | Add neXt iOS enrollment, mailbox/session lifecycle and notification routing; real APNs verification needs Apple signing entitlements and a deployed provider |
+| Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
 ## Physical iPad checkpoint
