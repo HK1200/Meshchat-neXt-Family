@@ -247,7 +247,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -304,11 +304,24 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         "lxmf/folders": {"folders": []},
     }
 
+    async def meshcore_broadcast(event):
+        for client in tuple(clients):
+            try:
+                await client.send_json(event)
+            except (ConnectionError, RuntimeError):
+                clients.discard(client)
+
+    meshcore = (meshcore_factory(ready_file.parent, probe.source.identity,
+                                history.contacts, meshcore_broadcast, device=device)
+                if meshcore_factory else None)
+
     @web.middleware
     async def local_only(request, handler):
         if request.host != authority:
             raise web.HTTPBadRequest()
         if request.headers.get("Origin") not in (None, f"http://{authority}"):
+            raise web.HTTPForbidden()
+        if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
         return await handler(request)
 
@@ -532,6 +545,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
+    if meshcore:
+        meshcore.register(app.router)
+        await meshcore.start()
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)
@@ -556,6 +572,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await asyncio.to_thread(probe.rnode.announce_due)
             await asyncio.sleep(1)
     finally:
+        if meshcore:
+            try:
+                async with asyncio.timeout(30):
+                    await meshcore.close()
+            except (TimeoutError, ConnectionError, RuntimeError):
+                pass
         probe.close()
         await runner.cleanup()
         if tasks:
@@ -572,7 +594,9 @@ def run_for_app(ready_file):
         overrides = None
         if fixture == simulator and ready.with_suffix(".json").is_file():
             overrides = json.loads(ready.with_suffix(".json").read_text(encoding="utf-8"))
-        asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator, peer_settings=overrides))
+        from meshcore_runtime import NextMeshCore
+        asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
+                          peer_settings=overrides, meshcore_factory=NextMeshCore))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

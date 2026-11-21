@@ -73,6 +73,15 @@ private struct ProbeScreen: View {
                         Button { showRNode = true } label: {
                             Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly)
                         }.accessibilityIdentifier("next-rnode-settings")
+                        Button {
+                            var route = URLComponents(url: url, resolvingAgainstBaseURL: true)
+                            route?.fragment = url.fragment == "/settings/meshcore" ? "/messages" : "/settings/meshcore"
+                            if let destination = route?.url { self.url = destination }
+                        } label: {
+                            Label(url.fragment == "/settings/meshcore" ? "Messages" : "MeshCore",
+                                  systemImage: url.fragment == "/settings/meshcore" ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
+                                .labelStyle(.iconOnly)
+                        }.accessibilityIdentifier("next-meshcore-settings")
                         Button("TCP connections") { showConnections = true }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)

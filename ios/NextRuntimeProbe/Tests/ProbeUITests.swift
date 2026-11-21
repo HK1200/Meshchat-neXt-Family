@@ -17,6 +17,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         verifyMessageAlertSettings(app)
         verifyRNodeEditor(app)
+        verifyMeshCoreSettings(app)
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -77,6 +78,19 @@ final class ProbeUITests: XCTestCase {
         verifyOwnContactQR(app)
         verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyMeshCoreSettings(_ app: XCUIApplication) {
+        let button = app.buttons["next-meshcore-settings"]
+        XCTAssertTrue(button.exists)
+        button.tap()
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.staticTexts["MeshCore settings"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(web.staticTexts["Disconnected"].waitForExistence(timeout: 10), app.debugDescription)
+        // Viewing an unconfigured radio must not request Bluetooth or transmit.
+        XCTAssertFalse(app.alerts.firstMatch.exists, app.debugDescription)
+        button.tap()
+        XCTAssertTrue(web.textViews.firstMatch.waitForExistence(timeout: 20), app.debugDescription)
     }
 
     private func verifyRNodeEditor(_ app: XCUIApplication) {

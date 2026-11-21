@@ -23,7 +23,7 @@ targets:
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
         NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
         UIBackgroundModes: [bluetooth-central]
-        NSBluetoothAlwaysUsageDescription: Connect to your chosen RNode radio for Reticulum messaging.
+        NSBluetoothAlwaysUsageDescription: Connect to the RNode or MeshCore companion you choose for mesh messaging.
         NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
         NSAppTransportSecurity:
           NSExceptionDomains:

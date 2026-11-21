@@ -25,12 +25,17 @@ curl --fail --silent --show-error --location --retry 3 \
 printf '%s\n' '1b1e8a9b77c64c780bc748167f22d879e739de58f861994612826612d92a950d  frontend.zip' \
     | shasum -a 256 -c -
 unzip -q frontend.zip -d staged/frontend
+curl --fail --silent --show-error --location --retry 3 \
+    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
+    --output next-backend.whl
+python3 "$probe/stage-backend.py" next-backend.whl staged "$family_ios"
 python3 -m venv wheels-env
 wheels-env/bin/python -m pip install --disable-pip-version-check --target staged \
     --only-binary=:all: --platform any --python-version 3.14 \
     --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
 cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
+cp "$probe/meshcore_runtime.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 if [[ "$mode" == device ]]; then
