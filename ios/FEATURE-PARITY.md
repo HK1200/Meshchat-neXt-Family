@@ -222,3 +222,42 @@ Regular Family remains untouched, and Apple enrollment remains on hold.
 The separate neXt iPad preview now includes RNode Bluetooth LE/Wi-Fi configuration, saved radio settings, radio status/battery, startup/reconnect/hourly radio announces and bounded Bluetooth inbox wake handling. The iPhone and iPad simulator runs each passed 18 native checks, and the device archive passed. Build 235.1 was installed over the separate neXt preview on the stock iPad: its identity, seven messages, two contacts and preferences remained byte-identical; regular Family 47.6 and Family Mailbox Test 218.1 were unchanged. The real-device interface started and retained its saved conversation and TCP connection. Physical RNode transmission from neXt itself still needs verification; Family radio tests are not proof for neXt.
 
 neXt's incoming signed private messages may begin a conversation without automatically adding the sender to its phonebook. Existing conversations can receive replies and unread alerts and survive a restart. Family's guardian-approved contact restrictions are unchanged. A new sender must have a verified LXMF identity; unsigned messages are rejected and telemetry alone does not create a new conversation.
+
+## neXt 0.1.21 integration and remaining native checks
+
+The public neXt release is now **0.1.21 across platforms**, source `21f977d`.
+Its publication verification passed in `44881960193`. The signed updater feeds
+were fetched and verified for Android, Linux x64/arm64, Windows x64 and macOS
+x64/arm64. Play code 26 was submitted for closed-test review; submission does
+not mean Google has approved it.
+
+The iOS Messages app now pins that release's frontend and backend wheel by
+checksum. Baseline `73e3f8f` passed both native simulator suites and its unsigned
+device build in `44881981054`. Subsequent MeshCore integration adds explicit
+Bluetooth companion selection, the existing neXt service/settings interface,
+own-app Keychain node-password storage and metadata-only native private-message
+alerts. Removed radios and already-read messages are excluded from alerts.
+These additions still need their final native and physical-radio checks; the
+successful earlier Family radio tests do not verify the separate neXt app.
+
+Repeat-fingerprint repair `3ec43a2` uses the bundled Reticulum AES/X25519
+providers instead of unavailable iOS Crypto imports. Twelve AES/RFC7748 and
+input-rejection tests passed. A separate staged-runtime comparison matched all
+26 reference packet payloads, with Crypto/cryptography imports blocked and no
+radio transmissions. This verifies fingerprint compatibility, not RF repeat
+reception. Encrypted radio identity backup and the remaining cryptography
+consumers require separate iOS integration; they are not covered by this repair.
+
+Native run `44887514505` verifies the actual simulator executable signatures
+before running real Keychain tests. It builds the host simulator architecture
+explicitly because the Python packager cannot consume a combined architecture
+name. Run `44888091878` includes the repeat repair. At the time of this entry,
+both simulator results are pending; the earlier `3f2a991` unsigned device build
+has passed. No check has been skipped to obtain a passing result.
+
+The physical iPad's separate neXt preview remains build **236.1**, with its
+identity, two contacts, eight messages and saved peers preserved. Regular
+Family **47.6** and Family Mailbox Test **218.1** have not been updated. neXt SIP
+calling, Reticulum voice, maps/location, complete native permissions/background
+behavior and a physical iPhone verification matrix remain unfinished. Apple
+enrollment and real APNs verification remain on hold.
