@@ -4,6 +4,8 @@ import UserNotifications
 @MainActor
 private final class FakeNextAlerts: NextAlertPosting {
     var status: UNAuthorizationStatus = .authorized
+    var lockScreenStatus: UNNotificationSetting = .disabled
+    func lockScreen() async -> UNNotificationSetting { lockScreenStatus }
     var requests = 0
     var attempts = 0
     var fail = false
@@ -27,6 +29,23 @@ final class MessageAlertTests: XCTestCase {
     private func notice(_ id: Int, peer: String = String(repeating: "a", count: 32)) -> NextUnreadNotice {
         let hex = String(id, radix: 16)
         return NextUnreadNotice(id: id, hash: String(repeating: "0", count: 64 - hex.count) + hex, peer: peer)
+    }
+
+    @MainActor
+    func testAuthorizationDoesNotClaimThatLockScreenAlertsAreEnabled() async throws {
+        let suite = "next-alert-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = FakeNextAlerts()
+        let alerts = NextMessageAlerts(center: center, defaults: defaults)
+        await alerts.refreshAuthorization()
+        XCTAssertTrue(alerts.enabled)
+        XCTAssertEqual(alerts.lockScreenSetting, .disabled)
+        XCTAssertEqual(center.requests, 0)
+        center.lockScreenStatus = .enabled
+        await alerts.refreshAuthorization()
+        XCTAssertEqual(alerts.lockScreenSetting, .enabled)
+        XCTAssertEqual(center.requests, 0)
     }
 
     @MainActor

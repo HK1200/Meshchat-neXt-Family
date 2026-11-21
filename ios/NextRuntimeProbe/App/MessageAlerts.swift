@@ -20,7 +20,12 @@ struct NextUnreadNotice: Codable, Equatable {
 protocol NextAlertPosting {
     func authorization() async -> UNAuthorizationStatus
     func requestAuthorization() async throws -> Bool
+    func lockScreen() async -> UNNotificationSetting
     func post(_ notice: NextUnreadNotice) async throws
+}
+
+extension NextAlertPosting {
+    func lockScreen() async -> UNNotificationSetting { .notSupported }
 }
 
 @MainActor
@@ -28,6 +33,10 @@ private struct NextSystemAlerts: NextAlertPosting {
     func authorization() async -> UNAuthorizationStatus {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         return settings.authorizationStatus
+    }
+    func lockScreen() async -> UNNotificationSetting {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        return settings.lockScreenSetting
     }
     func requestAuthorization() async throws -> Bool {
         try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
@@ -48,6 +57,7 @@ private struct NextSystemAlerts: NextAlertPosting {
 
 @MainActor
 final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    @Published private(set) var lockScreenSetting: UNNotificationSetting = .notSupported
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @Published private(set) var requestedAddress: String?
     @Published private(set) var requestedMeshCoreKey: String?
@@ -74,7 +84,10 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
         return true
     }
     var enabled: Bool { [.authorized, .provisional, .ephemeral].contains(authorization) }
-    func refreshAuthorization() async { authorization = await center.authorization() }
+    func refreshAuthorization() async {
+        authorization = await center.authorization()
+        lockScreenSetting = await center.lockScreen()
+    }
 
     func authorize(existing: [NextUnreadNotice]) async throws {
         guard !authorizing else { return }
@@ -148,6 +161,7 @@ struct NextMessageAlertSettings: View {
     @Environment(\.dismiss) private var dismiss
     @State private var busy = false
     @State private var error = ""
+    var onPermissionCheckup: (() -> Void)? = nil
 
     var body: some View {
         NavigationStack {
@@ -173,6 +187,9 @@ struct NextMessageAlertSettings: View {
                         }
                     }
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
+                }
+                if let onPermissionCheckup {
+                    Section { Button("Permission checkup", action: onPermissionCheckup).accessibilityIdentifier("next-open-permission-checkup") }
                 }
                 Section("When iOS pauses the app") {
                     Text("iOS may pause neXt after you switch apps or lock the screen. A connected Bluetooth radio can wake it when iOS permits. Internet-only alerts while fully suspended are not yet supported.")

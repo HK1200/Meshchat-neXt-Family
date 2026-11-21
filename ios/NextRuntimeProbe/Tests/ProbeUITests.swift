@@ -150,6 +150,39 @@ final class ProbeUITests: XCTestCase {
         navigation.buttons["Done"].tap()
         XCTAssertTrue(navigation.waitForNonExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.buttons["tcp-connections"].exists)
+        app.buttons["next-message-alerts"].tap()
+        let checkup = app.buttons["next-open-permission-checkup"]
+        reveal(checkup, in: app.collectionViews.firstMatch)
+        checkup.tap()
+        verifyPermissionSteps(app)
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
+    }
+
+    func testSetupPermissionCheckupDoesNotRequestOptionalAccess() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = ["--review-setup-permissions"]
+        app.launch()
+        let review = app.buttons["next-setup-permission-checkup"]
+        XCTAssertTrue(review.waitForExistence(timeout: 30), app.debugDescription)
+        review.tap()
+        verifyPermissionSteps(app)
+        XCTAssertTrue(review.exists, app.debugDescription)
+        app.terminate()
+    }
+
+    private func verifyPermissionSteps(_ app: XCUIApplication) {
+        let guide = app.navigationBars["Permission checkup"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 10), app.debugDescription)
+        for index in 1...6 {
+            XCTAssertEqual(app.staticTexts["next-permission-step"].label, "Step \(index) of 6")
+            // Reviewing explanations must not request access, scan or connect.
+            XCTAssertFalse(app.alerts.firstMatch.exists, app.debugDescription)
+            if index < 6 { app.buttons["Next"].tap() }
+        }
+        app.buttons["Finish checkup"].tap()
+        XCTAssertTrue(guide.waitForNonExistence(timeout: 10), app.debugDescription)
     }
 
     private func verifyAttachmentExport(_ app: XCUIApplication) {

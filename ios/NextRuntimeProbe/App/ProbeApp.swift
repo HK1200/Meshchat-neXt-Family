@@ -21,7 +21,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact
+        case alerts, rnode, connections, myContact, permissions
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -50,6 +50,12 @@ private struct ProbeScreen: View {
     private var simulator: Bool {
         guard let file = Bundle.main.resourceURL?.appendingPathComponent("staged/peer.json") else { return false }
         return FileManager.default.fileExists(atPath: file.path)
+    }
+
+    private var setupReviewFixture: Bool {
+        // Only disposable simulator bundles contain peer.json. This displays
+        // the real setup form without starting a transport for its UI test.
+        simulator && ProcessInfo.processInfo.arguments.contains("--review-setup-permissions")
     }
 
     private var configuredPeers: [NextTCPPeer] {
@@ -133,10 +139,14 @@ private struct ProbeScreen: View {
                                            description: Text(error))
                     Button("Review connection settings") { self.error = nil; starting = false }
                 }
-            } else if simulator || starting {
+            } else if (simulator && !setupReviewFixture) || starting {
                 ProgressView("Starting neXt…")
             } else {
                 Form {
+                    Section("Get started") {
+                        Button("Review device permissions") { panel = .permissions }
+                            .accessibilityIdentifier("next-setup-permission-checkup")
+                    }
                     Section("Reticulum TCP connections") {
                         Text("\(configuredPeers.filter(\.enabled).count) enabled peers")
                         Button("Edit TCP connections") { panel = .connections }
@@ -179,6 +189,11 @@ private struct ProbeScreen: View {
                 NextMessageAlertSettings(alerts: alerts) {
                     guard let url else { throw URLError(.notConnectedToInternet) }
                     return try await Self.unreadMessages(at: url)
+                } onPermissionCheckup: { panel = .permissions }
+            case .permissions:
+                NextPermissionCheckup(alerts: alerts) {
+                    guard let url else { return [] }
+                    return try await Self.unreadMessages(at: url)
                 }
             case .connections:
                 NextTCPConnections(base: url, initial: configuredPeers) { peers in
@@ -203,7 +218,7 @@ private struct ProbeScreen: View {
             set: { if !$0 { notificationRouteError = nil } }
         )) { Button("OK", role: .cancel) { notificationRouteError = nil } } message: { Text(notificationRouteError ?? "") }
         .task {
-            guard url == nil, error == nil, !starting else { return }
+            guard url == nil, error == nil, !starting, !setupReviewFixture else { return }
             if simulator {
                 starting = true
                 await launch(savedPeers.isEmpty ? nil : settings)
