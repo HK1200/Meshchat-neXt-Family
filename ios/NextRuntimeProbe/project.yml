@@ -31,7 +31,7 @@ targets:
         NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
         UIBackgroundModes: [bluetooth-central, audio]
         NSBluetoothAlwaysUsageDescription: Connect to the RNode or MeshCore companion you choose for mesh messaging.
-        NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
+        NSLocalNetworkUsageDescription: Connect to the local Reticulum peers, radios or SIP providers you choose.
         NSAppTransportSecurity:
           NSExceptionDomains:
             "127.0.0.1":

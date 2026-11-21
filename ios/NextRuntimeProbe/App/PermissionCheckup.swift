@@ -121,8 +121,8 @@ struct NextPermissionCheckup: View {
             Text("Choose the individual files or photos you want to attach using the system picker. You do not need to grant access to your entire photo library to choose an attachment.")
             Text("When saving a received file or photo, choose its destination in the system share sheet. No permission is requested just by reading this guide.").foregroundStyle(.secondary)
         case 5:
-            Text("iOS may ask for Local Network access when you connect to a TCP peer on your home network. Public internet peers do not require that permission.")
-            Text("Make that connection from TCP connections first. If iOS has blocked local access, enable Local Network for neXt in device settings. The switch may be absent until the app has made a local connection attempt.").foregroundStyle(.secondary)
+            Text("iOS may ask for Local Network access when you connect to a Reticulum peer, radio or SIP provider on your home network. Public internet services do not require that permission.")
+            Text("Make the local connection from TCP connections, RNode or SIP accounts first, then tap Allow when iOS asks. If local access was blocked, enable Local Network for neXt in device settings. The switch may be absent until the first local connection attempt.").foregroundStyle(.secondary)
             settingsButton
         default:
             Text("iOS can suspend neXt after you leave it or lock the screen. A connected Bluetooth radio can wake it briefly when iOS permits. There is no always-running iOS service.")

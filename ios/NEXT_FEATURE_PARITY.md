@@ -232,3 +232,36 @@ prepared for Xcode.
 This is receiving support while the runtime runs. It does not make iOS wake
 neXt while fully suspended; background scheduling, push enrollment and sending
 offline still require integration. The screen explains these limits explicitly.
+
+
+## Qualified native mailbox and protected physical upgrade
+
+At `fd3969d` (run 44924314202), both iPhone and iPad passed all 60 required
+source-matched native/UI cases, including actual signed replies, peer persistence,
+private native SIP signaling, and the mailbox editor. All 231 backend cases
+passed on the exact source. Main CI, Security and Scorecard are green.
+
+The actual iPad preview upgraded from 277.1 to 285.1. A complete 10,800-file
+support backup was retained. Immediately before and after upgrading, all 755
+current non-cache support files—including identity, message history, web choices,
+radio data and every current ratchet key—matched byte for byte. Native preferences
+matched too. The running authenticated API confirms all 12 messages, both contacts,
+the existing notification counter and all four peers. The mailbox defaults off;
+native SIP is available. Regular Family 47.6 and Family Mailbox Test 218.1 remain
+untouched.
+
+Apple rejected iLoader's initial login with error -22410. The local upgrade instead
+used the existing vault signing key and an already valid same-app, same-team,
+same-device profile expiring November 28. The key was matched to the profile's
+certificate; all 69 signed native binaries and 4,333 ordinary sealed-resource
+digests passed verification before installation. The temporary key file was
+removed, and the Apple password was not read. This did not enroll a developer
+account, renew a profile or create an App Store signing identity.
+
+The first private physical SIP attempt was blocked by iOS's visible Local Network
+permission dialog. Its temporary account was removed. Microphone permission is
+also still undetermined. Those OS prompts need the device owner's taps before
+live incoming/audio verification; they are not evidence of an audio-engine
+failure. The usage explanation and voluntary permission checkup now cover local
+SIP providers and radios as well as TCP peers. No physical neXt speech result is
+claimed yet.
