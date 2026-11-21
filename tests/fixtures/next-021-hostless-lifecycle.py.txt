@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: 0BSD
+# Unmodified lifecycle functions from the verified neXt 0.1.21 backend.
+# Whole upstream bridge SHA256: 402f4fd9d8598ab9c2c5342644c63df947bff9f6c38c8919bfc8e14f6b5ea89e
+import contextlib
+import threading
+import RNS
+_HOSTLESS_AUDIO_INSTALLED = False
+_ORIG_LINE_SOURCE = None
+_ORIG_LINE_SINK = None
+WEB_AUDIO_SAMPLE_RATE = 48000
+class HostlessAudioSource: pass
+class HostlessAudioSink: pass
+
+def install_hostless_lxst_audio() -> bool:
+    """Replace LXST LineSource/LineSink with hostless stand-ins (idempotent)."""
+    global _HOSTLESS_AUDIO_INSTALLED, _ORIG_LINE_SOURCE, _ORIG_LINE_SINK
+    if _HOSTLESS_AUDIO_INSTALLED:
+        return True
+    try:
+        from LXST.Primitives import Telephony as lxst_telephony
+    except Exception as exc:
+        RNS.log(
+            f"WebAudioBridge: cannot install hostless audio backends: {exc}",
+            RNS.LOG_ERROR,
+        )
+        return False
+
+    _ORIG_LINE_SOURCE = getattr(lxst_telephony, "LineSource", None)
+    _ORIG_LINE_SINK = getattr(lxst_telephony, "LineSink", None)
+    lxst_telephony.LineSource = HostlessAudioSource
+    lxst_telephony.LineSink = HostlessAudioSink
+    _HOSTLESS_AUDIO_INSTALLED = True
+    RNS.log(
+        "WebAudioBridge: installed hostless LXST audio backends (no PulseAudio)",
+        RNS.LOG_INFO,
+    )
+    return True
+
+def reset_hostless_lxst_audio_for_tests() -> None:
+    """Restore original LXST LineSource/LineSink (tests only)."""
+    global _HOSTLESS_AUDIO_INSTALLED, _ORIG_LINE_SOURCE, _ORIG_LINE_SINK
+    if not _HOSTLESS_AUDIO_INSTALLED:
+        return
+    with contextlib.suppress(Exception):
+        from LXST.Primitives import Telephony as lxst_telephony
+
+        if _ORIG_LINE_SOURCE is not None:
+            lxst_telephony.LineSource = _ORIG_LINE_SOURCE
+        if _ORIG_LINE_SINK is not None:
+            lxst_telephony.LineSink = _ORIG_LINE_SINK
+    _HOSTLESS_AUDIO_INSTALLED = False
+    _ORIG_LINE_SOURCE = None
+    _ORIG_LINE_SINK = None

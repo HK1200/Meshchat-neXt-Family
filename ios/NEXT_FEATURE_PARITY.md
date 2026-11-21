@@ -265,3 +265,15 @@ live incoming/audio verification; they are not evidence of an audio-engine
 failure. The usage explanation and voluntary permission checkup now cover local
 SIP providers and radios as well as TCP peers. No physical neXt speech result is
 claimed yet.
+
+
+The continued voice audit reproduced `NoneType ... SAMPLERATE` in neXt's real
+LXST Null mixer with its host backend absent. The shared repair at `a714c4d`
+supplies only 48 kHz metadata when that backend is missing, preserves any real
+backend and restores only its own fallback in test cleanup. All 96 related neXt
+audio checks passed. The iOS stager carries the same repair into the pinned
+0.1.21 wheel; its actual packaged payload matches the reviewed shared source
+structurally. All 235 iOS backend checks pass, including a regression using the
+real Null mixer before and after the backport. Native packing is being rerun.
+This does not claim that neXt's Reticulum call screen or native PCM bridge is
+already integrated.

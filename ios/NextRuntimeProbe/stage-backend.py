@@ -6,6 +6,8 @@ import importlib.util
 from pathlib import Path, PurePosixPath
 import zipfile
 
+from hostless_audio_patch import backport_hostless_mixer
+
 NEXT_WHEEL_SHA256 = "bd67437f00d62323d5d12718832bf24a90d5c8d32556dfe15ebc88c8b2f0d294"
 
 
@@ -65,6 +67,8 @@ def stage(wheel, destination, family_ios):
                 if payload.count(before) != 1:
                     raise ValueError("The pinned SIP discovery source changed")
                 payload = payload.replace(before, after)
+            if entry.filename == "meshchatnext/src/backend/web_audio_bridge.py":
+                payload = backport_hostless_mixer(payload)
             target.write_bytes(payload)
     import shutil
     shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",
