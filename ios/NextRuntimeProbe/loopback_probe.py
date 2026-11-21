@@ -23,6 +23,7 @@ from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_fo
 import attachment_fields
 from runtime_access import RuntimeAccess, COOKIE, CSP
 from durable_inbox import DurableInbox
+from offline_mailbox import OfflineMailbox
 
 
 def record(message, state):
@@ -39,7 +40,7 @@ def record(message, state):
         "fields": fields,
         "reply_to_hash": reply,
         "state": state,
-        "method": "direct",
+        "method": {LXMF.LXMessage.PROPAGATED: "propagated", LXMF.LXMessage.OPPORTUNISTIC: "opportunistic"}.get(getattr(message, "method", None), "direct"),
         "created_at": datetime.fromtimestamp(message.timestamp, timezone.utc).isoformat(),
         "progress": 100 if state == "delivered" else 0,
         "is_outbound": state != "received",
@@ -393,6 +394,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     own = probe.source.hash.hex()
     history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3",
                                   notification_floor=settings.get("notification_floor", 0))
+    def mailbox_session():
+        # Reconnects invalidate the relay link even if another parallel peer
+        # stays online. Include only live, attached interfaces and their epochs.
+        import RNS
+        sessions = tuple(sorted((id(interface), getattr(interface, "family_connection_epoch", 0))
+            for interface in tuple(RNS.Transport.interfaces)
+            if getattr(interface, "online", False) and not getattr(interface, "detached", False)))
+        return sessions or None
+    mailbox = OfflineMailbox(history.db, probe.router, probe.source.identity, mailbox_session)
     token = secrets.token_urlsafe(32)
     access = RuntimeAccess(ready_file.parent)
     contact = "Test contact" if device else "Simulator Echo"
@@ -471,6 +481,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         path = request.match_info["path"]
         responses["status"]["inbox_error"] = inbox.error
         if request.method == "GET":
+            if path == "preview/mailbox":
+                return web.json_response(mailbox.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/rnode":
                 return web.json_response(probe.rnode.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/unread-messages":
@@ -549,6 +561,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     raise web.HTTPBadRequest(text="Invalid history pagination")
         if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
+        if request.method == "POST" and path in ("preview/mailbox", "preview/mailbox/sync"):
+            try:
+                if path.endswith("/sync"):
+                    result = mailbox.tick(force=True)
+                else:
+                    result = mailbox.configure(await request.json())
+                return web.json_response(result, headers={"Cache-Control": "no-store"})
+            except ValueError as error:
+                return web.json_response({"message": str(error)}, status=400)
         contact_path = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})", path)
         if contact_path and request.method in ("PATCH", "DELETE"):
             try:
@@ -766,9 +787,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Simulator profiles are separately restricted to loopback only.
         while True:
             await announce_routes()
+            mailbox.tick()
             await asyncio.sleep(1)
     finally:
         inbox.close()
+        mailbox.close()
         access.clear_info()
         if meshcore:
             try:

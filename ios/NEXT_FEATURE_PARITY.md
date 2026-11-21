@@ -210,3 +210,24 @@ placeholder-clearing poll before typing. The helper now polls for clearing only
 after actually deleting existing text, using the built-in value predicate. It
 still requires the exact replacement, saved peer values, restart preservation
 and signed replies. The combined retry must pass before qualification.
+
+
+## Optional offline mailbox controls
+
+neXt now has a native Offline mailbox editor beside its contact QR controls.
+It accepts a propagation-node address, offers explicit Check now, shows progress
+and the last completed check, and allows blank-and-save to turn receiving off.
+The setting defaults off, is stored in the existing private SQLite database,
+and does not change contacts, identity, TCP peers or outbound message routing.
+
+While the runtime executes, it checks an enabled mailbox every five minutes,
+cancels stale downloads when live transport sessions change, limits each request
+to 50 messages and retries failed/timed-out checks with a bounded delay. The
+real encrypted relay regression now exercises this controller as well as the
+durable inbox. All 227 backend checks passed before the additional retry-error
+case, which also passes. Native address validation and real editor tests are
+prepared for Xcode.
+
+This is receiving support while the runtime runs. It does not make iOS wake
+neXt while fully suspended; background scheduling, push enrollment and sending
+offline still require integration. The screen explains these limits explicitly.

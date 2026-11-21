@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run_recipient(folder, port, mailbox, known_sender, pipe):
     sys.path[:0] = [str(ROOT/'ios/NextRuntimeProbe'), str(ROOT/'app/src/main/python')]
     from durable_inbox import DurableInbox
+    from offline_mailbox import OfflineMailbox
     from loopback_probe import ConversationHistory, record
     from messaging_probe import MessagingProbe
     import RNS
@@ -30,6 +31,9 @@ def run_recipient(folder, port, mailbox, known_sender, pipe):
         probe = MessagingProbe(dict(peers=[dict(id='private',host='127.0.0.1',port=port,enabled=True)]),
                                folder, lambda message: inbox.receive(record(message, 'received')), device=False)
         history = ConversationHistory(folder/'history.sqlite3')
+        receiver = OfflineMailbox(history.db, probe.router, probe.source.identity,
+                                  lambda: ('test-peer', 1) if probe.connections.online else None)
+        receiver.configure({'address': mailbox})
         address, public_key = known_sender
         identity = RNS.Identity(create_keys=False); identity.load_public_key(bytes.fromhex(public_key))
         assert RNS.Destination.hash_from_name_and_identity('lxmf.delivery', identity).hex() == address
@@ -50,14 +54,11 @@ def run_recipient(folder, port, mailbox, known_sender, pipe):
                 if command == 'status': pipe.send(snapshot())
                 elif command == 'allow-save': fail = False; pipe.send(True)
                 elif command == 'sync':
-                    probe.router.cancel_propagation_node_requests()
-                    probe.router.set_outbound_propagation_node(bytes.fromhex(mailbox))
-                    await asyncio.to_thread(probe.router.request_messages_from_propagation_node,
-                                            probe.source.identity, max_messages=50)
+                    receiver.tick(force=True)
                     pipe.send(snapshot())
                 else: break
         finally:
-            inbox.close(); probe.close(); history.close()
+            inbox.close(); receiver.close(); probe.close(); history.close()
     asyncio.run(run())
 
 

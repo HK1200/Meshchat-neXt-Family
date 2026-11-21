@@ -490,3 +490,37 @@ def test_phonebook_edit_delete_and_conversation_labels_through_authenticated_api
         assert api(base, "telephone/contacts/check/" + address)[1]["is_contact"] is False
         assert api(base, label + "/update", body={"display_name": ""}, token=token)[0] == 200
         assert api(base, label)[1] == {"custom_display_name": None}
+
+
+@pytest.mark.parametrize("device", [True, False])
+def test_mailbox_controls_require_private_session_and_csrf_and_preserve_profile(tmp_path, device):
+    app = tmp_path / "mailbox-controls"
+    app.mkdir()
+    settings = app / "settings.json"
+    settings.write_text(json.dumps({"peers": []}))
+    with ExitStack() as stack:
+        with ExitStack() as first:
+            ready = app / "first.url"
+            start(first, run_server_mode, app, ready, settings, device)
+            wait(ready.exists)
+            base = backend(ready)
+            token = api(base, "auth/csrf")[1]["csrf_token"]
+            address = "ab" * 16
+            identity = (app / ("reticulum" if device else "reticulum-simulator") / "identity").read_bytes()
+            assert api(base, "preview/mailbox")[1]["status"] == "off"
+            assert api(base, "preview/mailbox", body={"address": address})[0] == 403
+            assert api(base, "preview/mailbox/sync", body={})[0] == 403
+            assert api(base, "preview/mailbox", body={"address": "wrong"}, token=token)[0] == 400
+            assert api(base, "preview/mailbox", body={"address": address}, token=token)[1]["address"] == address
+            assert api(base, "preview/mailbox/sync", body={}, token=token)[1]["status"] == "waiting"
+            assert api(base, "preview/reticulum-connections")[1]["peers"] == []
+        ready = app / "second.url"
+        start(stack, run_server_mode, app, ready, settings, device)
+        wait(ready.exists)
+        base = backend(ready)
+        assert api(base, "preview/mailbox")[1]["address"] == address
+        assert (app / ("reticulum" if device else "reticulum-simulator") / "identity").read_bytes() == identity
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "preview/mailbox", body={"address": ""}, token=token)[1]["status"] == "off"
+        assert api(base, "telephone/contacts")[1]["contacts"] == []
+        assert api(base, "preview/reticulum-connections")[1]["peers"] == []

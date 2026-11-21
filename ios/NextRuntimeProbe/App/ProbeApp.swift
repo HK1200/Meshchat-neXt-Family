@@ -23,7 +23,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -113,6 +113,9 @@ private struct ProbeScreen: View {
                     }.padding(.horizontal)
                     if let address {
                         HStack {
+                            Button { panel = .mailbox } label: {
+                                Label("Offline mailbox", systemImage: "tray.and.arrow.down").labelStyle(.iconOnly)
+                            }.accessibilityIdentifier("next-mailbox-settings")
                             Text("My LXMF address")
                             Spacer()
                             Button { panel = .myContact } label: {
@@ -189,6 +192,8 @@ private struct ProbeScreen: View {
         }
         .sheet(item: $panel) { selected in
             switch selected {
+            case .mailbox:
+                if let url { NextMailboxSettings(base: url).interactiveDismissDisabled() }
             case .sip:
                 if let url { NextSIPSettings(base: url).interactiveDismissDisabled() }
             case .rnode:

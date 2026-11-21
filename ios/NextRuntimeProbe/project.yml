@@ -75,6 +75,7 @@ targets:
       - path: App/NextHTTP.swift
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift
+      - path: App/NextMailboxAddress.swift
       - path: App/NextSIPAccountDraft.swift
       - path: App/NextSIPRegistration.swift
       - path: App/NextSIPCallSession.swift

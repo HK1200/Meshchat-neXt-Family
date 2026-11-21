@@ -15,6 +15,7 @@ final class ProbeUITests: XCTestCase {
         app.launch()
         let connections = app.buttons["tcp-connections"]
         XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
+        verifyMailboxSettings(app)
         verifyMessageAlertSettings(app)
         verifyRNodeEditor(app)
         verifyMeshCoreSettings(app)
@@ -79,6 +80,26 @@ final class ProbeUITests: XCTestCase {
         verifyOwnContactQR(app)
         verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyMailboxSettings(_ app: XCUIApplication) {
+        app.buttons["next-mailbox-settings"].tap()
+        let form = app.collectionViews["next-mailbox-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
+        let off = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "next-mailbox-status", "Off")).firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        let field = app.textFields["next-mailbox-address"]
+        replace(field, with: "not-a-propagation-address", in: app)
+        XCTAssertFalse(app.buttons["next-mailbox-save"].isEnabled)
+        XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
+        // Dismiss the invalid unsaved draft. It must never select a relay.
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        app.navigationBars["Offline mailbox"].buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
+        app.buttons["next-mailbox-settings"].tap()
+        XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
+        app.navigationBars["Offline mailbox"].buttons["Done"].tap()
     }
 
     private func waitForNativeTheme(_ theme: String, in app: XCUIApplication) {
