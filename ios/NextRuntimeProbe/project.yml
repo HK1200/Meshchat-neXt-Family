@@ -50,6 +50,7 @@ targets:
       OTHER_LDFLAGS: "$(inherited) -lFamilySIP -lresolv -lz -framework AudioToolbox -framework CoreAudio -framework Security -framework SystemConfiguration"
       TARGETED_DEVICE_FAMILY: "1,2"
       ENABLE_USER_SCRIPT_SANDBOXING: NO
+    putResourcesBeforeSourcesBuildPhase: true
     postCompileScripts:
       - name: Package Python standard library
         script: |
@@ -75,6 +76,7 @@ targets:
       - path: App/NextWebPreferences.swift
       - path: App/NextWebPreferencesBridge.swift
       - path: App/NextExternalLinks.swift
+      - path: App/NextModalPage.swift
       - path: App/NextHTTP.swift
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift

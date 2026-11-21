@@ -26,14 +26,17 @@ private final class RadioWakeHarness {
         }, end: { self.ends.append($0) }, now: { self.time }, active: { self.foreground },
         prepare: { self.prepared += 1; await self.onPrepare?() },
         refresh: { self.refreshed += 1; await self.onRefresh?() },
-        pause: { self.time += 1; self.onPause?(); await Task.yield() })
+        pause: { self.time += 1; self.onPause?(); await Task.yield() },
+        // A virtual-clock test must not expire because the app host is busy
+        // starting WebKit. The dedicated deadline case verifies expiration.
+        timeout: { try await Task.sleep(for: .seconds(60)) })
     }
 }
 
 final class FamilyRadioWakeTests: XCTestCase {
     @MainActor
     private func settle(_ predicate: () -> Bool) async {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
         while !predicate() && ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(1)) }
         XCTAssertTrue(predicate())
     }

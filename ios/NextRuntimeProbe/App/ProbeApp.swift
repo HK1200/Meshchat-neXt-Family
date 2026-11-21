@@ -449,6 +449,7 @@ private struct ProbeWebView: UIViewRepresentable {
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.accessibilityElementsHidden = modalPresented
         view.navigationDelegate = context.coordinator
+        context.coordinator.setModal(modalPresented, on: view)
         if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
         return view
     }
@@ -457,6 +458,7 @@ private struct ProbeWebView: UIViewRepresentable {
         // A presented native form owns interaction; keep its inactive WebKit
         // page out of VoiceOver and accessibility snapshots until dismissal.
         view.accessibilityElementsHidden = modalPresented
+        context.coordinator.setModal(modalPresented, on: view)
         // React only to an explicit native route request. Comparing view.url
         // itself would overwrite ordinary in-page navigation on every redraw.
         if context.coordinator.requestedURL != url {
@@ -477,6 +479,21 @@ private struct ProbeWebView: UIViewRepresentable {
         let preferences: NextWebPreferencesBridge
         let downloads: NextAttachmentDownloads
         var requestedURL: URL
+        private var modalPresented = false
+
+        func setModal(_ active: Bool, on view: WKWebView) {
+            guard modalPresented != active else { return }
+            modalPresented = active
+            applyModal(to: view)
+        }
+
+        private func applyModal(to view: WKWebView) {
+            // The isolated content world prevents page scripts from changing
+            // the saved pre-modal accessibility state. DOM attributes remain
+            // visible to WebKit's own accessibility and input systems.
+            view.callAsyncJavaScript(NextModalPage.script, arguments: ["active": modalPresented],
+                                     in: nil, in: .defaultClient) { _ in }
+        }
         init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void, onExternalLink: @escaping (URL) -> Void) {
             self.url = url
             self.onExternalLink = onExternalLink
@@ -497,6 +514,7 @@ private struct ProbeWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            applyModal(to: webView)
             // Log only the local access result, never credentials or message data.
             webView.callAsyncJavaScript("return (await fetch('/api/v1/status', {cache:'no-store'})).status",
                                         arguments: [:], in: nil, in: .page) { result in
