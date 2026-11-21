@@ -301,14 +301,28 @@ final class ProbeUITests: XCTestCase {
 
     private func replace(_ field: XCUIElement, with value: String, in app: XCUIApplication) {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
-        let previous = field.value as? String ?? ""
+        let reported = field.value as? String ?? ""
+        let previous = reported == field.placeholderValue ? "" : reported
         XCTAssertTrue(field.isEnabled, app.debugDescription)
         field.tap()
         // The first touch after scrolling may stop deceleration rather than
         // focus the field. Require the real keyboard before sending any text.
         if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + value)
+        if !previous.isEmpty {
+            app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+        }
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            let text = field.value as? String ?? ""
+            return text.isEmpty || text == field.placeholderValue
+        }, object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 10), .completed, app.debugDescription)
+        app.typeText(value)
+        // The video shows the complete hostname before accessibility finishes
+        // publishing it. Wait for the exact value, never accept a prefix.
+        let updated = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", value), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed, app.debugDescription)
         XCTAssertEqual(field.value as? String, value, app.debugDescription)
         let done = app.buttons["Done typing"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
