@@ -110,76 +110,84 @@ struct NextTCPConnections: View {
     @State private var statusUnavailable = false
     @State private var busy = false
     @State private var loaded = false
+    @State private var scrollTarget: String?
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text("Each enabled peer connects independently. Turn off services you don’t use, edit a peer, or add another hostname and port.")
-                }
-                ForEach($drafts) { $draft in
+            ScrollViewReader { reader in
+                Form {
                     Section {
-                        Toggle("Enabled", isOn: $draft.enabled)
-                            .accessibilityIdentifier("tcp-peer-enabled-\(draft.id)")
-                        TextField("Hostname or IP address", text: $draft.host)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                            .accessibilityIdentifier("tcp-peer-host-\(draft.id)")
-                        TextField("Port", text: $draft.port).keyboardType(.numberPad)
-                            .accessibilityIdentifier("tcp-peer-port-\(draft.id)")
-                        Text(status(for: draft)).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("tcp-peer-status-\(draft.id)")
-                        Button("Remove peer", role: .destructive) { drafts.removeAll { $0.id == draft.id } }
+                        Text("Each enabled peer connects independently. Turn off services you don’t use, edit a peer, or add another hostname and port.")
                     }
-                }
-                Section {
-                    Button("Add TCP peer", systemImage: "plus") {
-                        drafts.append(NextTCPDraft(NextTCPPeer(id: UUID().uuidString, host: "", port: 4343, enabled: false)))
-                    }.accessibilityIdentifier("add-tcp-peer").disabled(drafts.count >= 32)
-                    if lastSaved == drafts {
-                        Text("Connections saved").accessibilityIdentifier("tcp-peers-saved")
+                    ForEach($drafts) { $draft in
+                        Section {
+                            Toggle("Enabled", isOn: $draft.enabled)
+                                .accessibilityIdentifier("tcp-peer-enabled-\(draft.id)")
+                            TextField("Hostname or IP address", text: $draft.host)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                                .accessibilityIdentifier("tcp-peer-host-\(draft.id)")
+                            TextField("Port", text: $draft.port).keyboardType(.numberPad)
+                                .accessibilityIdentifier("tcp-peer-port-\(draft.id)")
+                            Text(status(for: draft)).foregroundStyle(.secondary)
+                                .accessibilityIdentifier("tcp-peer-status-\(draft.id)")
+                            Button("Remove peer", role: .destructive) { drafts.removeAll { $0.id == draft.id } }
+                        }.id(draft.id)
                     }
-                    if !error.isEmpty { Text(error).foregroundStyle(.red) }
-                }
-            }
-            .accessibilityIdentifier("next-tcp-form")
-            .disabled(busy || !loaded)
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("TCP connections")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(busy || !loaded).accessibilityIdentifier("save-tcp-peers")
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done typing") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
-                }
-            }
-            .task {
-                guard let base else {
-                    drafts = initial.map(NextTCPDraft.init)
-                    loaded = true
-                    return
-                }
-                while !Task.isCancelled {
-                    do {
-                        let fresh = try await NextTCPAPI.load(base)
-                        if Task.isCancelled { return }
-                        statuses = fresh
-                        if !loaded {
-                            drafts = fresh.map(NextTCPDraft.init)
-                            loaded = true
-                            error = ""
+                    Section {
+                        Button("Add TCP peer", systemImage: "plus") {
+                            let peer = NextTCPPeer(id: UUID().uuidString, host: "", port: 4343, enabled: false)
+                            drafts.append(NextTCPDraft(peer))
+                            scrollTarget = peer.id
+                        }.accessibilityIdentifier("add-tcp-peer").disabled(drafts.count >= 32)
+                        if lastSaved == drafts {
+                            Text("Connections saved").accessibilityIdentifier("tcp-peers-saved")
                         }
-                        statusUnavailable = false
-                    } catch {
-                        if Task.isCancelled { return }
-                        statusUnavailable = true
-                        if !loaded { self.error = error.localizedDescription }
+                        if !error.isEmpty { Text(error).foregroundStyle(.red) }
                     }
-                    do { try await Task.sleep(for: .seconds(3)) }
-                    catch { return }
+                }
+                .onChange(of: scrollTarget) { _, target in
+                    if let target { withAnimation { reader.scrollTo(target, anchor: .top) } }
+                }
+                .accessibilityIdentifier("next-tcp-form")
+                .disabled(busy || !loaded)
+                .scrollDismissesKeyboard(.interactively)
+                .navigationTitle("TCP connections")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { Task { await save() } }
+                            .disabled(busy || !loaded).accessibilityIdentifier("save-tcp-peers")
+                    }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done typing") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                    }
+                }
+                .task {
+                    guard let base else {
+                        drafts = initial.map(NextTCPDraft.init)
+                        loaded = true
+                        return
+                    }
+                    while !Task.isCancelled {
+                        do {
+                            let fresh = try await NextTCPAPI.load(base)
+                            if Task.isCancelled { return }
+                            statuses = fresh
+                            if !loaded {
+                                drafts = fresh.map(NextTCPDraft.init)
+                                loaded = true
+                                error = ""
+                            }
+                            statusUnavailable = false
+                        } catch {
+                            if Task.isCancelled { return }
+                            statusUnavailable = true
+                            if !loaded { self.error = error.localizedDescription }
+                        }
+                        do { try await Task.sleep(for: .seconds(3)) }
+                        catch { return }
+                    }
                 }
             }
         }

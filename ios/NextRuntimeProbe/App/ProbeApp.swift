@@ -170,7 +170,7 @@ private struct ProbeScreen: View {
         .sheet(item: $panel) { selected in
             switch selected {
             case .rnode:
-                if let url { NextRNodeSettings(base: url) }
+                if let url { NextRNodeSettings(base: url).interactiveDismissDisabled() }
             case .alerts:
                 NextMessageAlertSettings(alerts: alerts) {
                     guard let url else { throw URLError(.notConnectedToInternet) }
@@ -179,7 +179,7 @@ private struct ProbeScreen: View {
             case .connections:
                 NextTCPConnections(base: url, initial: configuredPeers) { peers in
                     savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
-                }
+                }.interactiveDismissDisabled()
             case .myContact:
                 NextMyContactQR(address: address ?? "")
             }

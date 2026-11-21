@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER).xctrunner</string>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).xctrunner</string>
 	</array>
 </dict>
 </plist>
