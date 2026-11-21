@@ -122,14 +122,10 @@ simulators in `44807183946`. Its private signed-message test also verifies
 unread state after restart, mark-read authorization and message previews.
 Regular Family is still 47.6 and the separate Family test app is 218.1.
 
-The next local profile/theme change is not uploaded yet. It saves the existing
-Settings controls, announces the saved display name and keeps simulator
-identity/history in the simulator's private sandbox for genuine restart checks.
-The full backend suite passed 198 tests, and the subsequent two real TCP
-integration cases passed, including simulator signed-history persistence.
-The actual released frontend's name save/reload and all three theme controls
-passed an isolated browser check with public networking disabled. New native
-profile/theme/restart checks still require owner review and Xcode.
+The profile/theme changes are now uploaded and verified by the final native
+baseline below. They save the existing Settings controls and display name while
+preserving identity/history across genuine simulator restarts. Earlier local
+browser checks were preparation, not substitutes for the native results.
 
 ## neXt passive client discovery (local verification)
 
@@ -146,8 +142,8 @@ loopback, while unit checks covered malformed names, identity mismatch, expiry,
 restart and bounded queries. The actual released 0.1.20 frontend also searched a
 private peer by name, filled the matching address and saved it through an explicit
 Add Contact action, with no page errors. No regular device app was involved.
-Native archive and iPhone/iPad simulator verification remain pending owner review
-and upload of this patch.
+The discovery patch was subsequently uploaded and included in the final native
+baseline below; it does not establish physical-radio discovery verification.
 
 ## neXt native message alerts
 
@@ -261,3 +257,47 @@ Family **47.6** and Family Mailbox Test **218.1** have not been updated. neXt SI
 calling, Reticulum voice, maps/location, complete native permissions/background
 behavior and a physical iPhone verification matrix remain unfinished. Apple
 enrollment and real APNs verification remain on hold.
+
+
+## Verified checkpoint — 2026-11-21
+
+neXt source `cefa5c7` passed **34 actual source test cases on each simulator** in
+`44899096919`. This includes the complete released Messages interface, signed
+replies, attachments, saved profile/theme and restart assertions. Native SIP
+registration and authenticated logout run through the actual compiled app
+adapter against a temporary private registrar. This is registration verification,
+not a claim that neXt's user-facing SIP calls or CallKit/audio are complete.
+
+The result verifier checks Apple's actual `result` field and requires every
+source test case to have a passing record. Run `44896028153` is invalid as test
+proof: an empty-array shell error skipped the test invocation despite a green
+workflow. Its package was held back and never installed. Later genuine native
+results supersede it; no assertion was removed to obtain those results.
+
+Privacy-only source `525aaa0` passed the neXt device build and both Family device
+and App Store archives in `44900079229`. Downloaded archives contain the exact
+privacy manifests and upstream SIP notices. neXt app code at that source is
+identical to the fully tested `cefa5c7` baseline. The Family App Store archive
+continues to compile with rooms and Relay Chat excluded. No Apple enrollment or
+App Store submission has occurred.
+
+Subsequent neXt interface-preference source `fb281f9` passed the full local suite
+(330 passed, seven optional skips, three subtests) and its unsigned device build.
+Five new native tests cover private preference-file persistence, multi-window
+merging, invalid/secret-key rejection, identity isolation and corrupt-file
+preservation. A browser execution test additionally checks origin isolation,
+ordered acknowledgements and rollback after consecutive failed writes. Its
+both-simulator run `44901168607` is still in progress at this checkpoint.
+
+The physical iPad upgraded only the separate neXt preview from **236.1** to
+**264.1**. Regular Family **47.6** and Family Mailbox Test **218.1** stayed unchanged. The new consistent backup
+contains 10,549 files, a verified identity, eight messages and two contacts. A
+live-cache copy failed on an expired announce and was replaced by a complete
+copy after stopping only the separate neXt preview. No regular Family data has
+been changed. Identity/history bytes and saved preferences matched exactly after
+installation. A real signed TCP message with a file arrived; the iPad returned a
+signed quoted reply with byte-identical file contents. Both messages survived an
+actual app restart, all original message/contact rows remained, and the private
+runtime capability rotated. The physical test used Chicago and a temporary
+private counterpart; it does not prove physical RMAP availability or observed OS
+notifications.
