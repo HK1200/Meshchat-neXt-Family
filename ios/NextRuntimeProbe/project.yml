@@ -7,7 +7,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      - App
+      - path: App
+        excludes: [next-web-preferences.js]
+      - path: App/next-web-preferences.js
+        buildPhase: resources
       - path: SIP-NOTICES.txt
         buildPhase: resources
       - path: PrivacyInfo.xcprivacy
@@ -66,6 +69,7 @@ targets:
       - path: App/NextMeshCoreSecrets.swift
       - path: App/NextSIPPasswords.swift
       - path: App/NextCredentials.swift
+      - path: App/NextWebPreferences.swift
       - path: App/NextHTTP.swift
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift

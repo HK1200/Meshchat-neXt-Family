@@ -35,6 +35,8 @@ private struct ProbeScreen: View {
     @State private var exportFolder: URL?
     @State private var exportError = ""
     @State private var showExportError = false
+    @State private var showPreferencesError = false
+    @State private var preferencesError = ""
     @State private var routingMeshCoreAlert = false
     @State private var notificationRouteError: String?
     @State private var url: URL?
@@ -121,6 +123,8 @@ private struct ProbeScreen: View {
                         exportItem = NextExportItem(file: file)
                     }, onExportError: { problem in
                         exportError = problem; showExportError = true
+                    }, onPreferencesError: { problem in
+                        preferencesError = problem; showPreferencesError = true
                     })
                 }
             } else if let error {
@@ -188,6 +192,9 @@ private struct ProbeScreen: View {
             if let exportFolder { try? FileManager.default.removeItem(at: exportFolder) }
             exportFolder = nil
         }) { item in NextAttachmentExport(item: item) }
+        .alert("Settings couldn’t be saved", isPresented: $showPreferencesError) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(preferencesError) }
         .alert("Attachment couldn’t be saved", isPresented: $showExportError) {
             Button("OK", role: .cancel) { }
         } message: { Text(exportError) }
@@ -373,12 +380,15 @@ private struct ProbeWebView: UIViewRepresentable {
     let url: URL
     let onExport: (URL) -> Void
     let onExportError: (String) -> Void
+    let onPreferencesError: (String) -> Void
 
-    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError) }
+    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError, onPreferencesError: onPreferencesError) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        do { try context.coordinator.preferences.install(in: configuration) }
+        catch { onPreferencesError("Your interface settings could not be restored. Please reopen neXt before changing them.") }
         if UIDevice.current.userInterfaceIdiom == .pad {
             // Use neXt's built-in compact panes when the iPad viewport is narrow.
             let compactSidebarDefaults = """
@@ -409,16 +419,23 @@ private struct ProbeWebView: UIViewRepresentable {
         }
     }
 
-    static func dismantleUIView(_ view: WKWebView, coordinator: NavigationGuard) { coordinator.downloads.cancel() }
+    static func dismantleUIView(_ view: WKWebView, coordinator: NavigationGuard) {
+        coordinator.downloads.cancel()
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "nextPreferences", contentWorld: .page)
+    }
 
     @MainActor
     final class NavigationGuard: NSObject, WKNavigationDelegate {
         let url: URL
+        let preferences: NextWebPreferencesBridge
         let downloads: NextAttachmentDownloads
         var requestedURL: URL
-        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void) {
+        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void) {
             self.url = url
             requestedURL = url
+            preferences = NextWebPreferencesBridge(base: url, folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
+                onPreferencesError("Your interface settings could not be saved. Please try again before closing neXt.")
+            }
             downloads = NextAttachmentDownloads(base: url, onComplete: onExport, onError: onError)
             super.init()
         }
