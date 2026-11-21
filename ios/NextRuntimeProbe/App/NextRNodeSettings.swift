@@ -65,10 +65,12 @@ struct NextRNodeSettings: View {
                 Section {
                     Button("Save RNode settings") {
                         editing = false; saving = true; message = ""; failure = ""
+                        let submitted = profile
                         Task {
                             defer { saving = false }
                             do {
-                                let state = try await fetch(profile: profile)
+                                let state = try await fetch(profile: submitted)
+                                if profile == submitted, let saved = state.settings { profile = saved }
                                 runtime = state.runtime
                                 message = "RNode settings saved"
                             } catch { failure = "RNode settings could not be saved. Check the address and radio settings, then try again." }
@@ -91,7 +93,7 @@ struct NextRNodeSettings: View {
                 while !Task.isCancelled {
                     do {
                         let state = try await fetch()
-                        if !loaded { profile = state.settings ?? NextRNodeProfile(); loaded = true }
+                        if !loaded { profile = state.settings ?? NextRNodeProfile(); loaded = true; failure = "" }
                         runtime = state.runtime
                     } catch { if !loaded { failure = "RNode settings are unavailable. Check that neXt is running." } }
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -105,6 +107,17 @@ struct NextRNodeSettings: View {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         if let profile {
+            struct Token: Decodable { let csrf_token: String }
+            guard let tokenURL = URL(string: "/api/v1/auth/csrf", relativeTo: base),
+                  let port = base.port else { throw URLError(.badURL) }
+            var tokenRequest = URLRequest(url: tokenURL)
+            tokenRequest.timeoutInterval = 10
+            tokenRequest.cachePolicy = .reloadIgnoringLocalCacheData
+            let (tokenData, tokenResponse) = try await URLSession.shared.data(for: tokenRequest)
+            guard (tokenResponse as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+            let token = try JSONDecoder().decode(Token.self, from: tokenData).csrf_token
+            request.setValue(token, forHTTPHeaderField: "X-CSRF-Token")
+            request.setValue("http://127.0.0.1:\(port)", forHTTPHeaderField: "Origin")
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(profile)

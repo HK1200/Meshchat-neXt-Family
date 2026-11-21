@@ -133,6 +133,15 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
             assert base.endswith("/#/messages")  # No typed test address required.
             assert api(base, "telephone/contacts")[1]["contacts"] == []
             token = api(base, "auth/csrf")[1]["csrf_token"]
+            radio = dict(enabled=False, transport="tcp", endpoint="127.0.0.1",
+                         frequency=914.875, bandwidth=125, sf=8, cr=7, power=17)
+            assert api(base, "preview/rnode")[1]["settings"] is None
+            assert api(base, "preview/rnode", body=radio)[0] == 403
+            status, saved_radio = api(base, "preview/rnode", body=radio, token=token)
+            assert status == 200 and saved_radio["settings"] == radio
+            assert not saved_radio["runtime"]["online"]
+            assert api(base, "preview/rnode", body=dict(radio, sf=99), token=token)[0] == 400
+            assert api(base, "preview/rnode")[1]["settings"] == radio
             def connected():
                 rows = api(base, "preview/reticulum-connections")[1]["peers"]
                 return rows if len(rows) == 2 and all(row["online"] for row in rows) else None
@@ -185,6 +194,7 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
         assert (app / "reticulum/identity").read_bytes() == identity
         current = api(base, "config")[1]["config"]
         assert current["display_name"] == "Private iOS name" and current["theme"] == "dark"
+        assert api(base, "preview/rnode")[1]["settings"] == radio
         observed = tmp_path / "hub/observed-name.json"
         def restarted_name():
             try:
@@ -231,6 +241,10 @@ def test_simulator_profile_identity_and_signed_history_survive_actual_restart(tm
             base = ready.read_text()
             own = ready.with_suffix(".address").read_text()
             token = api(base, "auth/csrf")[1]["csrf_token"]
+            radio = dict(enabled=True, transport="tcp", endpoint="127.0.0.1",
+                         frequency=914.875, bandwidth=125, sf=8, cr=7, power=17)
+            assert api(base, "preview/rnode", body=radio, token=token)[0] == 400
+            assert api(base, "preview/rnode")[1]["settings"] is None
             assert api(base, "config", body={"display_name": "Private simulator", "theme": "dark"}, method="PATCH", token=token)[0] == 200
             assert api(base, "lxmf-messages/send", body={"lxmf_message": {"destination_hash": address, "content": "Simulator persistence"}}, token=token)[0] == 200
             def received():
