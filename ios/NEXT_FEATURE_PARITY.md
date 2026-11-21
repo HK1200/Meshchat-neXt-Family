@@ -25,7 +25,7 @@ into the app; physical verification is stated separately.
 | Profile and appearance | Saved display name/theme, private web preferences and native theme propagation are implemented | Both simulator profile-edit/restart regressions pass; verify physical editing and all saved web choices |
 | Message notifications | Generic private notifications and native permission controls are integrated | Physical neXt notification delivery/navigation; fully suspended internet delivery needs the mailbox/push integration |
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
-| SIP | Native Keychain accounts, registration, CallKit, microphone/audio, answer/end/mute/speaker and interruption handling are integrated. Private app-hosted incoming/outgoing signaling checks pass on iPad; matching iPhone and current mailbox builds are running | Complete native screen coverage and real neXt iPad/Android calls, locked alerts and audio/routing checks |
+| SIP | Native Keychain accounts, registration, CallKit and audio controls are integrated. Both native simulator suites passed; physical iPad foreground calls, answering, test-tone output, bidirectional RTP and clean ending/logout passed | Locked incoming alert failed on the iPad. Complete VoIP push/wake integration and physical phone, speech, route and interruption tests |
 | Reticulum voice | Family's shared native engine is available in the repository | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
 | Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
@@ -378,3 +378,18 @@ declined and logged out successfully. Temporary accounts were removed. The
 locked-call/background wake path remains incomplete; a VoIP background declaration
 alone is not proof that suspended calls are available. Real PushKit/APNs
 qualification is still held with Apple enrollment.
+
+The identical retransmitting SIP peer succeeded with neXt open on build 291.1.
+The owner answered and heard its quiet tone; the peer observed ringing, exchanged
+648 outgoing/623 incoming RTP packets and confirmed the remote ending. The
+account and Keychain entry were removed and logout was observed. An administrator
+subsequently verified both temporary firewall labels absent, removing the one
+remaining test rule while preserving unrelated rules.
+
+A further resume hardening checks call ownership in the native controller before
+retiring an idle SIP transport: native iOS can receive a call before Python polls
+its event. A conditional close refuses a native active call and leaves its event
+pump running; the explicit end/disconnect path remains unchanged. All 239 backend
+checks, 12 staged account/HTTP/lifecycle checks and 13 native-adapter Python checks
+passed locally. The new app-hosted native ownership check still requires Xcode.
+This addresses a resume race; it does not establish suspended call availability.

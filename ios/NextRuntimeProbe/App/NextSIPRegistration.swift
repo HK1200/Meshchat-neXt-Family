@@ -73,7 +73,13 @@ final class NextSIPRegistration {
             current.events.removeAll(keepingCapacity: true)
             return ["ok": true, "events": events, "closed": current.closed]
         }
-        if operation == "close" {
+        if operation == "close" || operation == "close_idle" {
+            // The native controller can know about an incoming call before
+            // Python polls its event. Check and retire atomically on this actor.
+            if operation == "close_idle", !current.closing, !current.closed,
+               current.calls?.hasActiveCall == true {
+                return ["ok": true, "closed": false, "busy": true]
+            }
             if !current.closing && !current.closed {
                 current.closing = true
                 current.calls?.close()

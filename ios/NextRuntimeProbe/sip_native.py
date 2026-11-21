@@ -207,6 +207,36 @@ class IOSSIPEngine:
                 self._retire_call()
             raise
 
+    async def _finish_close(self, reply):
+        deadline = asyncio.get_running_loop().time() + 5
+        while not reply.get('closed'):
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError('SIP shutdown is still pending')
+            await asyncio.sleep(0.1)
+            reply = await self._request('poll')
+        self._retire_call()
+        self._received_stop = True
+        self._opened = False
+
+    async def close_if_idle(self):
+        async with self._lifecycle:
+            if not self._opened:
+                return True
+            async with self._commands:
+                if self._call_id:
+                    return False
+                reply = await self._request('close_idle')
+                if reply.get('busy') is True:
+                    return False
+                self._running = False
+                task, self._task = self._task, None
+                if task:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+                await self._finish_close(reply)
+                return True
+
     async def close(self):
         async with self._lifecycle:
             if not self._opened:
@@ -219,12 +249,4 @@ class IOSSIPEngine:
                     await task
             async with self._commands:
                 reply = await self._request('close')
-                deadline = asyncio.get_running_loop().time() + 5
-                while not reply.get('closed'):
-                    if asyncio.get_running_loop().time() >= deadline:
-                        raise TimeoutError('SIP shutdown is still pending')
-                    await asyncio.sleep(0.1)
-                    reply = await self._request('poll')
-                self._retire_call()
-                self._received_stop = True
-                self._opened = False
+                await self._finish_close(reply)

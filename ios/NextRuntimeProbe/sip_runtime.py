@@ -21,6 +21,10 @@ def native_service_factory(accounts, executable, **options):
                         or self.call_state != "idle" or self.call_id
                         or time.monotonic() - self._last_resume < 5):
                     return False
+                if self.engine:
+                    close_idle = getattr(self.engine, "close_if_idle", None)
+                    if close_idle is None or not await close_idle():
+                        return False
                 self._last_resume = time.monotonic()
                 await self._stop()
                 self._retry_at = 0

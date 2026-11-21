@@ -29,6 +29,9 @@ class Engine:
         self.commands.append((op, values))
         if op == 'start': self.on_event({'state': 'registered'})
     async def close(self): self.running = False; self.closed = True
+    async def close_if_idle(self):
+        if getattr(self, 'native_call_waiting', False): return False
+        await self.close(); return True
 
 
 def adapter(folder, route=None):
@@ -274,6 +277,23 @@ def test_foreground_refresh_rechecks_calls_after_waiting_for_the_service_lock(tm
     asyncio.run(run())
 
 
+def test_native_incoming_not_yet_polled_blocks_registration_recovery(tmp_path):
+    async def run():
+        runtime=adapter(tmp_path)
+        await runtime.service.command('save',account=dict(extension='9001',host='127.0.0.1',port=55162),password='synthetic')
+        await runtime.service.command('connect')
+        engine=runtime.service.engine
+        engine.native_call_waiting=True
+        assert runtime.service.call_state=='idle' and not runtime.service.call_id
+        assert not await runtime.foreground()
+        assert runtime.service.engine is engine and engine.running and not engine.closed
+        engine.native_call_waiting=False
+        assert await runtime.foreground()
+        assert engine.closed and runtime.service.engine is not engine
+        await runtime.close()
+    asyncio.run(run())
+
+
 def test_system_call_failures_are_visible_and_clear_without_connecting(tmp_path):
     Engine.instances.clear()
     capability = {'calling_available': True, 'microphone_permission': 'granted',
@@ -301,7 +321,8 @@ if __name__ == "__main__":
               test_reading_microphone_status_never_connects_or_requests_access,
               test_system_call_failures_are_visible_and_clear_without_connecting,
               test_foreground_refresh_preserves_active_calls_and_disabled_accounts,
-              test_foreground_refresh_rechecks_calls_after_waiting_for_the_service_lock]
+              test_foreground_refresh_rechecks_calls_after_waiting_for_the_service_lock,
+              test_native_incoming_not_yet_polled_blocks_registration_recovery]
     for check in checks:
         with tempfile.TemporaryDirectory(prefix="next-private-sip-runtime-") as folder:
             check(Path(folder))

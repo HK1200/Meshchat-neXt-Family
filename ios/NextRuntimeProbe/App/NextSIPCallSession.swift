@@ -7,6 +7,7 @@ import UIKit
 @MainActor
 protocol NextSIPCallManaging: AnyObject {
     var diagnostic: String { get }
+    var hasActiveCall: Bool { get }
     func perform(_ value: [String: Any]) -> Bool
     func receive(_ state: String, peer: String, code: Int32, id: String)
     func close()
@@ -14,6 +15,7 @@ protocol NextSIPCallManaging: AnyObject {
 
 extension NextSIPCallManaging {
     var diagnostic: String { "" }
+    var hasActiveCall: Bool { true }
 }
 
 @MainActor
@@ -69,6 +71,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
     private var closed = false
     private var observations = Set<AnyCancellable>()
     var diagnostic: String { system.error }
+    var hasActiveCall: Bool { current != nil }
 
     init(driver: any NextSIPDriving, system: FamilySystemCalls,
          audio: any NextSIPCallAudio, observeAudio: Bool = true,

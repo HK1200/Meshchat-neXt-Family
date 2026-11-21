@@ -193,3 +193,28 @@ def test_retired_call_memory_is_bounded_and_failed_dial_ids_are_retired():
         finally:
             await engine.close()
     asyncio.run(exercise())
+
+
+def test_conditional_close_preserves_native_incoming_until_the_poll_delivers_it():
+    async def run():
+        native=Native();busy=[True]
+        def request(row):
+            if row['op']=='close_idle':
+                native.calls.append(row.copy())
+                return {'ok':True,'closed':not busy[0],'busy':busy[0]}
+            return native(row)
+        engine=IOSSIPEngine(request=request,poll_interval=10)
+        await engine.launch()
+        assert not engine._call_id
+        assert not await engine.close_if_idle()
+        assert engine.running and engine._opened and not engine._task.done()
+        engine.deliver(dict(state='incoming',native_id='queued-native-call',peer='sip:test@127.0.0.1'))
+        before=len([r for r in native.calls if r['op']=='close_idle'])
+        assert not await engine.close_if_idle()
+        assert len([r for r in native.calls if r['op']=='close_idle'])==before
+        engine.deliver(dict(state='ended',native_id='queued-native-call',peer=''))
+        busy[0]=False
+        assert await engine.close_if_idle()
+        assert not engine.running and not engine._opened and engine._task is None
+        await engine.close()
+    asyncio.run(run())

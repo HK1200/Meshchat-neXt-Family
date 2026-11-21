@@ -93,6 +93,7 @@ final class SIPRegistrationTests: XCTestCase {
 @MainActor
 private final class LinkedSIPCalls: NextSIPCallManaging {
     var diagnostic = ""
+    var hasActiveCall = false
     var controls: [[String: Any]] = []
     var received: [(String, String, String)] = []
     var closes = 0
@@ -107,6 +108,29 @@ private final class LinkedSIPCalls: NextSIPCallManaging {
 }
 
 extension SIPRegistrationTests {
+    @MainActor
+    func testIdleResumePreservesANativeCallBeforePythonPollsIt() throws {
+        let network = NextSIPNetwork(start: false); network.update(.wifi)
+        let context = try XCTUnwrap(network.snapshot().first?["interface"])
+        let driver = FakeNextSIPDriver(), id = String(repeating: "d", count: 32)
+        var calls: LinkedSIPCalls?
+        let service = NextSIPRegistration(network: network, driver: { driver }, calls: { _, emit in
+            let value = LinkedSIPCalls(emit: emit); calls = value; return value
+        })
+        XCTAssertEqual(service.perform(["op":"open","session":id,"interface":context])["ok"] as? Bool, true)
+        XCTAssertEqual(service.perform(["op":"start","session":id,"user":"9001","host":"127.0.0.1","port":55162,"password":"synthetic"])["ok"] as? Bool, true)
+        calls?.hasActiveCall = true
+        let refused = service.perform(["op":"close_idle","session":id])
+        XCTAssertEqual(refused["busy"] as? Bool, true)
+        XCTAssertEqual(refused["closed"] as? Bool, false)
+        XCTAssertEqual(driver.stops, 0); XCTAssertEqual(calls?.closes, 0)
+        calls?.hasActiveCall = false
+        XCTAssertEqual(service.perform(["op":"close_idle","session":id])["ok"] as? Bool, true)
+        XCTAssertEqual(driver.stops, 1); XCTAssertEqual(calls?.closes, 1)
+        driver.exit?(0)
+        XCTAssertEqual(service.perform(["op":"close_idle","session":id])["closed"] as? Bool, true)
+    }
+
     @MainActor
     func testLinkedCallingRequiresRegistrationAndClosesOnRouteRetirement() throws {
         let network = NextSIPNetwork(start:false); network.update(.wifi)
