@@ -12,8 +12,10 @@ fi
 probe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/next-runtime-probe.XXXXXXXX")"
 peer_pid=
+sip_pid=
 cleanup() {
     if [[ -n "$peer_pid" ]]; then kill "$peer_pid" 2>/dev/null || true; wait "$peer_pid" 2>/dev/null || true; fi
+    if [[ -n "$sip_pid" ]]; then kill "$sip_pid" 2>/dev/null || true; wait "$sip_pid" 2>/dev/null || true; fi
     rm -rf -- "$scratch"
 }
 trap cleanup EXIT
@@ -70,6 +72,7 @@ YAML
     test -f "$app/staged/frontend/index.html"
     test -s "$app/SIP-NOTICES.txt"
     test ! -e "$app/staged/peer.json"
+    test ! -e "$app/sip-account.json"
     /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
     /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
@@ -96,6 +99,15 @@ done
 [[ -f "$scratch/echo/peer.json" ]] || { cat "$scratch/echo.log"; exit 1; }
 cp "$scratch/echo/peer.json" staged/
 cp "$scratch/echo/peer.json" Tests/peer.json
+python3 "$family_ios/sip-simulator-registrar.py" "$scratch/sip" > "$scratch/sip.log" 2>&1 &
+sip_pid=$!
+for ((i=0; i<100; i++)); do
+    [[ ! -f "$scratch/sip/account.json" ]] || break
+    kill -0 "$sip_pid" 2>/dev/null || { cat "$scratch/sip.log"; exit 1; }
+    sleep 0.1
+done
+[[ -f "$scratch/sip/account.json" ]] || { cat "$scratch/sip.log"; exit 1; }
+cp "$scratch/sip/account.json" Tests/sip-account.json
 
 xcodegen generate
 mkdir -p "$family_ios/RuntimeBuild/next-results"
@@ -117,7 +129,9 @@ case "${NEXT_PROBE_UNIT_ONLY:-false}" in
     false) ;;
     *) echo "NEXT_PROBE_UNIT_ONLY must be true or false" >&2; exit 2 ;;
 esac
+sip_expected=0
 for device in "${simulator_families[@]}"; do
+    sip_expected=$((sip_expected + 1))
     destination="$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
 family = sys.argv[1] + " "
@@ -142,6 +156,14 @@ else:
         if [[ "${NEXT_PROBE_UNIT_ONLY:-false}" == true ]]; then proof_arguments+=(--unit-only); fi
         python3 "$probe/verify-test-results.py" "${proof_arguments[@]}" > "$result_set/$device-proof.json"
         cat "$result_set/$device-proof.json"
+        python3 - "$scratch/sip/observed.json" "$result_set/$device-sip-proof.json" "$sip_expected" <<'PYTHON'
+import json, sys
+from pathlib import Path
+value=json.loads(Path(sys.argv[1]).read_text())
+assert value.get("authenticated") is True and value.get("unregistered") is True and value.get("host")=="127.0.0.1", "The native app did not authenticate and unregister"
+assert value.get("registrations",0)>=int(sys.argv[3]) and value.get("unregistrations",0)>=int(sys.argv[3]), "A simulator reused a previous account proof"
+Path(sys.argv[2]).write_text(json.dumps(value,sort_keys=True)+"\n")
+PYTHON
         # Release the previous simulator before testing the other device family.
         xcrun simctl shutdown "$destination" || true
     else

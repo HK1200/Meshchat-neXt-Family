@@ -15,6 +15,39 @@ private final class FakeNextSIPDriver: NextSIPDriving {
 
 final class SIPRegistrationTests: XCTestCase {
     @MainActor
+    func testActualNativeRegistrationAuthenticatesAndClosesThroughTheAppAdapter() async throws {
+        struct Account: Decodable { let user: String; let host: String; let port: Int; let password: String }
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "sip-account", withExtension: "json"))
+        let account = try JSONDecoder().decode(Account.self, from: Data(contentsOf: url))
+        guard account.host == "127.0.0.1", (1...65535).contains(account.port) else {
+            XCTFail("Native SIP fixture must stay on loopback"); return
+        }
+        let network = NextSIPNetwork(start: false); network.update(.wifi)
+        let context = try XCTUnwrap(network.snapshot().first?["interface"])
+        let service = NextSIPRegistration(network: network, driver: { NextSIPNativeDriver() })
+        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        XCTAssertEqual(service.perform(["op": "open", "session": id, "interface": context])["ok"] as? Bool, true)
+        defer { _ = service.perform(["op": "close", "session": id]) }
+        XCTAssertEqual(service.perform(["op": "start", "session": id, "user": account.user,
+            "host": account.host, "port": account.port, "password": account.password])["ok"] as? Bool, true)
+        var registered = false
+        for _ in 0..<150 {
+            let events = service.perform(["op": "poll", "session": id])["events"] as? [[String: Any]] ?? []
+            if events.contains(where: { $0["state"] as? String == "registered" }) { registered = true; break }
+            if events.contains(where: { ["engine_failed", "stopped"].contains($0["state"] as? String ?? "") }) { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(registered, "The app adapter did not authenticate with the private registrar")
+        _ = service.perform(["op": "close", "session": id])
+        var closed = false
+        for _ in 0..<60 {
+            if service.perform(["op": "poll", "session": id])["closed"] as? Bool == true { closed = true; break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(closed, "The native account has not fully exited")
+    }
+
+    @MainActor
     func testSessionOwnershipLogoutAndLateEventsCannotAffectTheReplacement() throws {
         let network = NextSIPNetwork(start: false); network.update(.wifi)
         let context = try XCTUnwrap(network.snapshot().first?["interface"])
