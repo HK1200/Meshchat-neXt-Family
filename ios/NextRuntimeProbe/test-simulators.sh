@@ -88,9 +88,13 @@ cp "$scratch/echo/peer.json" Tests/peer.json
 xcodegen generate
 mkdir -p "$family_ios/RuntimeBuild/next-results"
 result_set="$(mktemp -d "$family_ios/RuntimeBuild/next-results/run.XXXXXXXX")"
+# The embedded Python packager selects lib-$ARCHS. Build the host slice only;
+# generic simulator destinations otherwise request "arm64 x86_64" as one path.
+simulator_arch="$(uname -m)"
+case "$simulator_arch" in arm64|x86_64) ;; *) echo "Unsupported simulator host architecture" >&2; exit 1 ;; esac
 xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
-    -parallel-testing-enabled NO CODE_SIGN_IDENTITY=-
+    -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- "ARCHS=$simulator_arch" ONLY_ACTIVE_ARCH=YES
 python3 "$probe/sign-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
