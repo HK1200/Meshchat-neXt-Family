@@ -11,6 +11,13 @@ from test_next_ios_tcp_integration import api,backend,start,wait,SESSIONS,privat
 
 
 def server(folder,ready,settings,pipe):
+    import importlib.abc
+    class NoDesktopImports(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname in ('psutil', 'meshchatnext.src.backend.http.routes.app_info'):
+                raise ModuleNotFoundError('Desktop module must not load in the mobile map runtime: '+fullname)
+            return None
+    sys.meta_path.insert(0,NoDesktopImports())
     from loopback_probe import serve
     from map_runtime import MapRuntime
     frontend=folder/'frontend';frontend.mkdir(exist_ok=True)

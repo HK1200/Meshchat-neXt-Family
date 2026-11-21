@@ -38,6 +38,11 @@ def stage(wheel, destination, family_ios, *, voice_only=False):
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             payload = archive.read(entry)
+            if entry.filename == "meshchatnext/src/backend/http/routes/__init__.py":
+                # Desktop eagerly registers every route, including process and
+                # system-monitor tools. iOS explicitly registers only its real
+                # services and must not import desktop-only native dependencies.
+                payload = b'# SPDX-License-Identifier: 0BSD\n"""iOS registers supported routes explicitly in its runtime."""\n'
             if entry.filename == "meshchatnext/src/backend/meshcore_credentials.py":
                 before = b'                if transport_platform() == "linux":'
                 after = b'                import sys\n                if sys.platform == "ios":\n                    from meshcore_keychain import IOSNodePasswords\n                    self._provider = IOSNodePasswords()\n                elif transport_platform() == "linux":'
