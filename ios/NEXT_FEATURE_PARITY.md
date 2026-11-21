@@ -353,3 +353,11 @@ established. The follow-up targets the now-empty input explicitly and waits for
 the exact complete WebKit value before retaining the equality, save/restart and
 signed-reply checks. Its recording is retained for further diagnosis; a passing
 rerun is still required.
+
+The retained final iPad recording shows the complete “Simulator profile” name in
+both the input and sidebar while XCTest reported a prefix. This confirms that
+failure was an accessibility observation delay, rather than a truncated saved
+name. A separate iPhone retry failed before entering any text because its software
+keyboard never appeared after focusing a valid visible native field. Simulator
+jobs now explicitly disable the runner's hardware-keyboard attachment and verify
+that preference before boot/testing; all real keyboard assertions remain.

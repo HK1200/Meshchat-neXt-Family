@@ -104,6 +104,12 @@ PYTHON
     exit
 fi
 
+# These UI checks require an actual software keyboard. A hosted runner's
+# hardware-keyboard attachment can suppress it even when the field is focused.
+# Set and verify this only on disposable simulator jobs, never a device build.
+defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
+test "$(defaults read com.apple.iphonesimulator ConnectHardwareKeyboard)" = 0
+
 cp -R "$probe/Tests" .
 # The shared wake type is compiled into this test target; do not import the Family app.
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
