@@ -26,7 +26,7 @@ struct NextRNodeSettings: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("RNode connection") {
+                Section {
                     Text(!profile.enabled ? "Off" : runtime?.online == true ? "Connected" : runtime?.connecting == true ? "Connecting…" : "Not connected")
                         .accessibilityIdentifier("next-rnode-status")
                     if let battery = runtime?.battery {
@@ -48,6 +48,8 @@ struct NextRNodeSettings: View {
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .focused($editing).accessibilityIdentifier("next-rnode-endpoint")
                     }
+                } header: {
+                    Text("RNode connection")
                 } footer: {
                     Text(profile.transport == "ble" ? "For a first connection, enable pairing mode on the radio itself and enter its PIN when iOS asks. Disconnect other apps from that radio before connecting neXt." : "Enter the radio hostname without a port. RNode uses TCP port 7633.")
                 }
