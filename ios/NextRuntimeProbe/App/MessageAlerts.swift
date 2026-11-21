@@ -150,7 +150,7 @@ struct NextMessageAlertSettings: View {
                                     let baseline = try await existing()
                                     try await alerts.authorize(existing: baseline)
                                 }
-                                catch { error = "Message alerts could not be prepared. Check that neXt is connected and try again." }
+                                catch { self.error = "Message alerts could not be prepared. Check that neXt is connected and try again." }
                             }
                         }.disabled(busy)
                     } else {
