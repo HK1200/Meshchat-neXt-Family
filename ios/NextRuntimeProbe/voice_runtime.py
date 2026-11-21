@@ -5,9 +5,10 @@ app loop; only PCM exchange crosses from AVAudioEngine's serial worker.
 """
 import asyncio
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
+import sqlite3
 import threading
 import time
 import uuid
@@ -57,6 +58,8 @@ class Call:
     requested_peer: str = ""
     muted: bool = False
     receive_muted: bool = False
+    started_at: float = field(default_factory=time.time)
+    connected_at: float = 0.
 
 
 class VoiceEngine:
@@ -123,6 +126,11 @@ class ReticulumVoice:
         self.loop = asyncio.get_running_loop()
         with database:
             database.execute("CREATE TABLE IF NOT EXISTS next_voice_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            database.execute("""CREATE TABLE IF NOT EXISTS next_voice_calls (
+                id TEXT PRIMARY KEY, peer TEXT NOT NULL, identity_hash TEXT NOT NULL,
+                name TEXT NOT NULL, incoming INTEGER NOT NULL, status TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL, timestamp REAL NOT NULL,
+                missed_unread INTEGER NOT NULL)""")
         saved_error = ""
         try:
             values = {k: json.loads(v) for k, v in database.execute("SELECT key, value FROM next_voice_settings")}
@@ -191,9 +199,9 @@ class ReticulumVoice:
     def request(self, operation, **values):
         return self.native(dict(op=operation, session=self.session, **values))
 
-    def name_for(self, peer):
+    def name_for(self, peer, identity=None):
         import RNS
-        identity = RNS.Identity.recall(bytes.fromhex(peer))
+        identity = identity or RNS.Identity.recall(bytes.fromhex(peer))
         lxmf = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity).hex() if identity else None
         return next((row["name"] for key, row in self.contacts().items()
                      if key in (peer, lxmf)), "Reticulum caller")
@@ -324,7 +332,7 @@ class ReticulumVoice:
         peer = RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity.hash).hex() if identity else None
         call = self.call
         if event == "ringing" and call is None:
-            call = Call(uuid.uuid4().hex, peer, self.name_for(peer), True, "incoming", identity.hash.hex())
+            call = Call(uuid.uuid4().hex, peer, self.name_for(peer, identity), True, "incoming", identity.hash.hex())
             self.call = call
             try: self.request("state", state="incoming", call_id=call.id, peer=call.peer, name=call.name)
             except RuntimeError:
@@ -346,6 +354,7 @@ class ReticulumVoice:
         elif event == "established":
             if call.phase == "ending": return
             call.phase, call.identity = "connected", identity.hash.hex()
+            if not call.connected_at: call.connected_at = time.time()
             self.client = PCMClient(self, call.id)
             if not engine.bridge.attach_client(self.client):
                 self.error = "The native Reticulum audio bridge could not attach"
@@ -433,6 +442,9 @@ class ReticulumVoice:
                 await asyncio.gather(self.task, return_exceptions=True)
                 self.task = None
         finally:
+            try: self.record_call(call)
+            except sqlite3.Error:
+                self.error = "The call ended, but its history could not be saved."
             if self.call is call: self.call = None
             self.ending = None
         if not self.closed and self.config.telephone_enabled.get():
@@ -523,12 +535,49 @@ class ReticulumVoice:
                     active_call=active, call_status=active["status"] if active else 3, is_busy=call is not None or self.ending is not None,
                     initiation_status=self.engine.manager.initiation_status if self.engine else None,
                     initiation_target_hash=call.peer if call else None, initiation_target_name=call.name if call else None,
-                    error=self.error, missed_calls_unread_count=0,
+                    error=self.error, missed_calls_unread_count=self.missed_count(),
                     preferred_audio_profile_id=self.config.telephone_audio_profile_id.get(),
                     voicemail=dict(is_recording=False, unread_count=0, latest_id=None),
                     web_audio=dict(enabled=False, required=False, allow_fallback=False, native_audio=True),
                     sent_frames=self.sent_frames, received_frames=self.received_frames, playback_dropped_bytes=self.dropped_bytes,
                     call_targets=[{"address": key, "name": row["name"]} for key, row in self.contacts().items()])
+
+    def record_call(self, call):
+        status = "Completed" if call.connected_at else "Missed" if call.incoming else "Failed"
+        duration = max(0, int(time.time() - call.connected_at)) if call.connected_at else 0
+        with self.database:
+            self.database.execute("INSERT OR IGNORE INTO next_voice_calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (call.id, call.peer, call.identity, call.name, int(call.incoming), status,
+                 duration, call.started_at, int(call.incoming and not call.connected_at)))
+
+    def missed_count(self):
+        return self.database.execute("SELECT COUNT(*) FROM next_voice_calls WHERE missed_unread = 1").fetchone()[0]
+
+    def call_history(self, query):
+        try:
+            limit = int(query.get("limit", 10)); offset = int(query.get("offset", 0))
+        except (TypeError, ValueError): raise ValueError("Use valid call-history page numbers") from None
+        search = query.get("search", "")
+        if (not 0 <= limit <= 250 or not 0 <= offset <= 1_000_000
+                or not isinstance(search, str) or len(search) > 512):
+            raise ValueError("Use valid call-history page and search limits")
+        rows = self.database.execute("""SELECT id, peer, identity_hash, name, incoming, status,
+            duration_seconds, timestamp FROM next_voice_calls
+            WHERE name LIKE ? OR identity_hash LIKE ? OR peer LIKE ?
+            ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?""",
+            ("%"+search+"%", "%"+search+"%", "%"+search+"%", limit, offset))
+        import RNS
+        contacts = self.contacts()
+        result = []
+        for call_id, peer, identity, name, incoming, status, duration, timestamp in rows:
+            lxmf = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", bytes.fromhex(identity)).hex() if identity else None
+            contact = contacts.get(lxmf) or contacts.get(peer)
+            result.append(dict(id=call_id, remote_identity_hash=identity or peer,
+                               remote_identity_name=contact["name"] if contact else name,
+                               remote_telephony_hash=peer, remote_destination_hash=lxmf,
+                               is_incoming=bool(incoming), status=status, duration_seconds=duration,
+                               timestamp=timestamp, is_contact=bool(contact)))
+        return {"call_history": result}
 
     async def close(self):
         self.closed = True
@@ -630,6 +679,14 @@ class ReticulumVoice:
             except (ValueError, RuntimeError) as error:
                 return web.json_response({"message": str(error)[:240]}, status=400)
         async def status(request): return self.snapshot()
+        async def history(request):
+            if request.method == "DELETE":
+                with self.database: self.database.execute("DELETE FROM next_voice_calls")
+                return {"message": "ok"}
+            return self.call_history(request.query)
+        async def missed_viewed(request):
+            with self.database: self.database.execute("UPDATE next_voice_calls SET missed_unread = 0 WHERE missed_unread = 1")
+            return {"message": "ok"}
         async def configure(request):
             value = await request.json()
             if not isinstance(value, dict) or set(value) != {"enabled"}: raise ValueError("Choose whether calling is enabled")
@@ -660,6 +717,9 @@ class ReticulumVoice:
         add("GET", "preview/reticulum-call-policy", policy)
         add("POST", "preview/reticulum-call-policy", policy)
         add("GET", "telephone/status", status)
+        add("GET", "telephone/history", history)
+        add("DELETE", "telephone/history", history)
+        add("POST", "telephone/missed-calls/mark-viewed", missed_viewed)
         add("GET", "telephone/audio-profiles", profiles)
         add("POST", "telephone/call/{peer}", dial)
         add("POST", "telephone/switch-audio-profile/{profile}", profile)

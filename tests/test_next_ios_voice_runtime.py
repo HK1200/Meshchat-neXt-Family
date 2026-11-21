@@ -347,3 +347,95 @@ def test_dial_failure_remains_visible_after_the_engine_recovers():
             assert not voice.snapshot()["error"]
         finally:await voice.close();db.close()
     asyncio.run(run())
+
+
+def test_call_history_records_once_and_uses_authenticated_identity_for_contact_name():
+    async def run():
+        voice,native,db=fixture()
+        caller,peer=connect(voice)
+        lxmf=RNS.Destination.hash_from_name_and_identity("lxmf.delivery",caller.hash).hex()
+        try:
+            await voice.configure(True)
+            voice.transport_event(voice.engine,"ringing",caller)
+            call=voice.call
+            await voice.end(call.id)
+            voice.record_call(call)
+            rows=voice.call_history({})["call_history"]
+            assert len(rows)==1 and rows[0]["status"]=="Missed"
+            assert voice.snapshot()["missed_calls_unread_count"]==1
+            voice.contacts=lambda:{lxmf:{"name":"Renamed contact"}}
+            rows=voice.call_history({})["call_history"]
+            assert rows[0]["remote_identity_name"]=="Renamed contact"
+            assert rows[0]["remote_destination_hash"]==lxmf and rows[0]["is_contact"]
+            await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",caller)
+            await voice.end(voice.call.id)
+            rows=voice.call_history({})["call_history"]
+            assert len(rows)==2 and rows[0]["status"]=="Completed"
+            assert rows[0]["duration_seconds"]>=0 and not rows[0]["is_incoming"]
+            assert voice.call_history({"search":"no match"})=={"call_history":[]}
+            assert len(voice.call_history({"limit":"1","offset":"1"})["call_history"])==1
+            for query in ({"limit":"bad"},{"limit":-1},{"limit":251},{"offset":-1},{"search":"a"*513}):
+                with pytest.raises(ValueError):voice.call_history(query)
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_call_history_routes_mark_missed_viewed_and_clear_only_voice_history():
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient,TestServer
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            caller,peer=connect(voice)
+            voice.transport_event(voice.engine,"ringing",caller)
+            await voice.end(voice.call.id)
+            app=web.Application();voice.register(app.router)
+            async with TestClient(TestServer(app)) as client:
+                response=await client.get("/api/v1/telephone/history")
+                assert response.status==200 and len((await response.json())["call_history"])==1
+                response=await client.post("/api/v1/telephone/missed-calls/mark-viewed")
+                assert response.status==200 and voice.missed_count()==0
+                response=await client.get("/api/v1/telephone/history?offset=-1")
+                assert response.status==400
+                response=await client.delete("/api/v1/telephone/history")
+                assert response.status==200 and not voice.call_history({})["call_history"]
+                assert db.execute("SELECT COUNT(*) FROM next_voice_settings").fetchone()[0]>0
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_history_storage_failure_never_keeps_the_microphone_or_call_alive():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            caller,peer=connect(voice)
+            await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",caller)
+            old=voice.engine
+            db.execute("CREATE TRIGGER reject_voice_history BEFORE INSERT ON next_voice_calls BEGIN SELECT RAISE(FAIL, 'synthetic disk failure'); END")
+            await voice.end(voice.call.id)
+            assert old.closed and voice.call is None and voice.engine is not old
+            assert not voice.pcm_ready
+            assert "history could not be saved" in voice.snapshot()["error"]
+            assert not voice.snapshot()["is_busy"]
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_incoming_caller_name_uses_link_identity_without_requiring_an_announce():
+    async def run():
+        voice,native,db=fixture()
+        caller,peer=connect(voice)
+        lxmf=RNS.Destination.hash_from_name_and_identity("lxmf.delivery",caller.hash).hex()
+        voice.contacts=lambda:{lxmf:{"name":"Known LXMF contact"}}
+        try:
+            await voice.configure(True)
+            voice.transport_event(voice.engine,"ringing",caller)
+            assert voice.call.name=="Known LXMF contact"
+            incoming=[row for row in native.requests if row.get("state")=="incoming"]
+            assert incoming[0]["name"]=="Known LXMF contact"
+        finally:await voice.close();db.close()
+    asyncio.run(run())

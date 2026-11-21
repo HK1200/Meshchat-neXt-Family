@@ -454,3 +454,13 @@ running that proof. The native device archive builds after the settings error
 handler correction; both simulator suites and the policy follow-up still need
 their final GitHub result before a new device install is qualified. Regular
 Family remains unchanged. Apple enrollment remains on hold.
+
+
+The calling follow-up implements durable Reticulum history, search/pagination,
+missed-call counts, mark-viewed and clear-history actions through the released
+telephone API. It deduplicates late end callbacks, resolves current contact
+names from authenticated identities and keeps a failed history write from
+leaving a call or microphone active. The full preceding suite passed 274 tests;
+additional focused storage-failure and no-announce caller-name regressions pass.
+The 12-check encrypted-media test also passes through the new hangup/history
+path. These do not establish SIP history or locked-screen VoIP wake support.
