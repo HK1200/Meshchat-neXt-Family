@@ -1,0 +1,50 @@
+name: Inspect synthetic iPad test failure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Export the verified synthetic simulator result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          gh api "repos/$RESULT_REPO/actions/runs/44902819390" > run.json
+          python3 - <<'PYTHON'
+          import json
+          run = json.load(open('run.json'))
+          assert run['head_sha'] == 'd970a40e4442c2e2e75acaa1d55aa06ff84521f9'
+          assert run['event'] == 'workflow_dispatch'
+          assert run['path'] == '.github/workflows/ios-preview.yml'
+          assert run['head_repository']['full_name'] == 'HK1200/Meshchat-neXt-Family'
+          PYTHON
+          gh run download 44902819390 --repo "$RESULT_REPO" \
+            --name next-ios-simulator-results-iPad-1 --dir original
+          count=0
+          while IFS= read -r -d '' bundle; do
+            count=$((count + 1))
+            destination="inspection/result-$count"
+            mkdir -p "$destination"
+            xcrun xcresulttool get test-results summary --path "$bundle" > "$destination/summary.json"
+            xcrun xcresulttool get test-results tests --path "$bundle" > "$destination/tests.json"
+            xcrun xcresulttool export attachments --path "$bundle" \
+              --output-path "$destination/attachments" --only-failures
+          done < <(find original -type d -name '*.xcresult' -print0)
+          test "$count" -gt 0
+      - name: Keep only this synthetic test's failure evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ios-test-inspection-44902819390
+          path: inspection
+          if-no-files-found: error
+          retention-days: 3
