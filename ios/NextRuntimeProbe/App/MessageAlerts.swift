@@ -84,6 +84,11 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
         return true
     }
     var enabled: Bool { [.authorized, .provisional, .ephemeral].contains(authorization) }
+    var reticulumBaselineID: Int {
+        // The backend seeds its durable sequence above any older native
+        // baseline, including previews that deleted unread history already.
+        max(0, min(defaults.integer(forKey: baselineKey), 9_000_000_000_000_000))
+    }
     func refreshAuthorization() async {
         authorization = await center.authorization()
         lockScreenSetting = await center.lockScreen()

@@ -14,6 +14,7 @@ private struct PeerSettings: Encodable {
     let port: Int
     let address: String
     let peers: [NextTCPPeer]
+    let notification_floor: Int
 }
 
 private struct ProbeScreen: View {
@@ -68,7 +69,8 @@ private struct ProbeScreen: View {
 
     private var settings: PeerSettings? {
         guard contact.isEmpty || contact.range(of: "^[0-9A-Fa-f]{32}$", options: .regularExpression) != nil else { return nil }
-        return PeerSettings(host: host, port: Int(port) ?? 4343, address: contact.lowercased(), peers: configuredPeers)
+        return PeerSettings(host: host, port: Int(port) ?? 4343, address: contact.lowercased(), peers: configuredPeers,
+                            notification_floor: alerts.reticulumBaselineID)
     }
 
     var body: some View {

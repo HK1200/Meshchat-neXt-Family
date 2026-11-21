@@ -26,6 +26,26 @@ private final class FakeNextAlerts: NextAlertPosting {
 }
 
 final class MessageAlertTests: XCTestCase {
+    @MainActor
+    func testReticulumCounterFloorSurvivesReopenAndNeverUsesTheMeshCoreBaseline() async throws {
+        let suite = "next-alert-floor-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = FakeNextAlerts()
+        center.status = .notDetermined
+        let alerts = NextMessageAlerts(center: center, defaults: defaults)
+        XCTAssertEqual(alerts.reticulumBaselineID, 0)
+        try await alerts.authorize(existing: [notice(9)])
+        defaults.set(80, forKey: "next.meshcoreNotificationBaselineID.v1")
+        XCTAssertEqual(alerts.reticulumBaselineID, 9)
+        let reopened = NextMessageAlerts(center: center, defaults: defaults)
+        XCTAssertEqual(reopened.reticulumBaselineID, 9)
+        defaults.set(Int.max, forKey: "next.notificationBaselineID.v1")
+        XCTAssertEqual(reopened.reticulumBaselineID, 9_000_000_000_000_000)
+        defaults.set(-1, forKey: "next.notificationBaselineID.v1")
+        XCTAssertEqual(reopened.reticulumBaselineID, 0)
+    }
+
     private func notice(_ id: Int, peer: String = String(repeating: "a", count: 32)) -> NextUnreadNotice {
         let hex = String(id, radix: 16)
         return NextUnreadNotice(id: id, hash: String(repeating: "0", count: 64 - hex.count) + hex, peer: peer)

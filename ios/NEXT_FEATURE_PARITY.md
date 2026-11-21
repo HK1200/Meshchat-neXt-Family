@@ -52,14 +52,15 @@ service integrations.
 ## Native verification checkpoint
 
 The native suite now contains 43 cases, including external-link isolation. All
-43 cases and both UI cases passed on the iPhone at `36bd820`. The iPad passed all
-43 native cases and the setup permission checkup. Its remaining failure read a
-partial hostname immediately after typing; the recording shows the complete
-hostname on screen. The follow-up waits for the exact settled accessibility
-value before continuing. Profile editing, identity preservation and restart
-assertions remain mandatory; the candidate is not yet installed on the iPad.
+43 cases and both UI cases passed on each simulator at `f7aa0e4` (run
+44908982459). The hostname test now waits for the exact settled accessibility
+value. Profile editing, identity preservation and restart assertions passed on
+both devices. The separate physical preview then upgraded to 276.1 with all
+12 messages, both contacts, its identity and saved settings intact. Both Family
+installs remained unchanged. Actual authenticated API checks also passed for
+contact rename/removal/labels, manual announces and fresh rapid-announce times.
 
-The backend passed all 183 neXt iOS Python checks, including authenticated
+The backend passed all 193 neXt iOS Python checks, including authenticated
 contact edits in both device and isolated simulator modes. Contact removal keeps
 messages, read state and independent conversation labels. It never creates a
 new contact or conversation from a label alone.
@@ -93,3 +94,18 @@ records is never sufficient release proof.
 Apple enrollment remains on hold. Simulator success cannot establish real APNs
 or physical iPhone behavior. Android/desktop public releases remain separate
 from this unfinished iOS preview.
+
+
+## Notification sequence repair
+
+Deleting the newest unread message previously allowed its number to be reused,
+which could hide a later notification after first enabling alerts. The new
+regression fails on the old code. A persistent counter now survives deletion and
+restart; the native app also carries its existing Reticulum baseline into the
+backend when upgrading a preview. Existing messages, contacts and read state
+remain intact. All 193 Python checks pass; the added native case awaits Xcode.
+
+A separate read-only physical-device test runner builds successfully. It permits
+only the separate neXt preview and Family Mailbox Test, and never accepts regular
+Family as a target. Actual device execution is not yet proven. It is not a store
+build and does not replace any existing install during compilation.

@@ -76,3 +76,54 @@ def test_deleting_last_read_message_does_not_hide_next_arrival(tmp_path):
     assert summary["failed_messages_count"] == 1
     assert summary["latest_message_preview"] == "Unsent"
     history.close()
+
+
+def test_deleting_latest_unread_message_cannot_reuse_the_permission_baseline_id(tmp_path):
+    path = tmp_path / "history.sqlite3"
+    history = ConversationHistory(path)
+    peer = "ab" * 16
+    history.save(peer, message("01" * 32))
+    newest = history.save(peer, message("02" * 32))
+    permission_baseline = newest["id"]
+    history.delete(newest["hash"])
+    history.close()
+    history = ConversationHistory(path)
+    arrival = history.save(peer, message("03" * 32))
+    assert arrival["id"] > permission_baseline
+    history.close()
+
+
+def test_legacy_native_baseline_seeds_future_ids_without_changing_old_rows(tmp_path):
+    path = tmp_path / "history.sqlite3"
+    history = ConversationHistory(path)
+    original = history.save("ab" * 16, message("01" * 32))
+    history.ensure_contact("ab" * 16, "Saved contact")
+    history.close()
+    history = ConversationHistory(path, notification_floor=50)
+    assert history.page("ab" * 16, {})[0] == original
+    assert len(history.contacts()) == 1
+    arrival = history.save("ab" * 16, message("02" * 32))
+    assert arrival["id"] > 50
+    updated = history.save("ab" * 16, message("02" * 32, content="Updated receipt"))
+    assert updated["id"] == arrival["id"]
+    history.delete(arrival["hash"])
+    history.close()
+    history = ConversationHistory(path, notification_floor=0)
+    later = history.save("ab" * 16, message("03" * 32))
+    assert later["id"] > arrival["id"]
+    history.close()
+
+
+def test_counter_migration_keeps_preexisting_messages_and_read_watermarks(tmp_path):
+    path = tmp_path / "history.sqlite3"
+    history = ConversationHistory(path)
+    original = history.save("ab" * 16, message("01" * 32))
+    history.mark_read("ab" * 16)
+    history.db.execute("DROP TABLE next_runtime_counters")
+    history.db.commit()
+    history.close()
+    history = ConversationHistory(path)
+    assert history.page("ab" * 16, {})[0] == original
+    assert not history.summary("ab" * 16)["is_unread"]
+    assert history.save("ab" * 16, message("02" * 32))["id"] > original["id"]
+    history.close()

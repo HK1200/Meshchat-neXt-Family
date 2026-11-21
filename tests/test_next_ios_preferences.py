@@ -69,3 +69,11 @@ def test_successful_announce_time_survives_restart_is_not_editable_and_keeps_pro
     assert history.last_announce_time() == 1_800_000_000
     assert history.preferences()["auto_announce_interval_seconds"] == 3600
     history.close()
+
+
+@pytest.mark.parametrize("floor", [True, False, -1, 9_000_000_000_000_001, 1.0, "1", None])
+def test_invalid_native_notification_floor_never_opens_or_changes_history(tmp_path, floor):
+    path = tmp_path / "history.sqlite3"
+    with pytest.raises(ValueError):
+        ConversationHistory(path, notification_floor=floor)
+    assert not path.exists()

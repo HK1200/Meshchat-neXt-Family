@@ -51,7 +51,9 @@ def record(message, state):
 
 
 class ConversationHistory:
-    def __init__(self, path):
+    def __init__(self, path, *, notification_floor=0):
+        if type(notification_floor) is not int or not 0 <= notification_floor <= 9_000_000_000_000_000:
+            raise ValueError("Invalid local notification baseline")
         self.db = sqlite3.connect(path)
         with self.db:
             self.db.execute("""
@@ -83,6 +85,14 @@ class ConversationHistory:
                 INSERT OR IGNORE INTO conversation_reads(peer, through_id)
                 SELECT peer, MAX(id) FROM messages GROUP BY peer
             """)
+            # Keep IDs monotonic even when the newest unread messages are
+            # deleted. Native notification baselines must never hide a new DM.
+            self.db.execute("CREATE TABLE IF NOT EXISTS next_runtime_counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL)")
+            self.db.execute("INSERT OR IGNORE INTO next_runtime_counters VALUES ('message_id', 0)")
+            self.db.execute("""UPDATE next_runtime_counters SET value = MAX(value,
+                COALESCE((SELECT MAX(id) FROM messages), 0),
+                COALESCE((SELECT MAX(through_id) FROM conversation_reads), 0), ?)
+                WHERE name = 'message_id'""", (notification_floor,))
             self.db.execute("CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             self.db.execute("""CREATE TABLE IF NOT EXISTS notification_metadata (
                 hash TEXT PRIMARY KEY, eligible INTEGER NOT NULL
@@ -212,13 +222,20 @@ class ConversationHistory:
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO conversation_reads VALUES (?, 0)", (peer,))
             payload = json.dumps({k: v for k, v in row.items() if k not in ("id", "state")})
+            existing = self.db.execute("SELECT id FROM messages WHERE hash = ?", (row["hash"],)).fetchone()
+            if existing is None:
+                self.db.execute("""UPDATE next_runtime_counters SET value = MAX(value,
+                    COALESCE((SELECT MAX(id) FROM messages), 0),
+                    COALESCE((SELECT MAX(through_id) FROM conversation_reads), 0)) + 1
+                    WHERE name = 'message_id'""")
+                message_id = self.db.execute("SELECT value FROM next_runtime_counters WHERE name = 'message_id'").fetchone()[0]
+            else:
+                message_id = existing[0]
             self.db.execute("""
                 INSERT INTO messages(id, hash, peer, state, payload)
-                VALUES (MAX(COALESCE((SELECT MAX(id) FROM messages), 0),
-                            COALESCE((SELECT MAX(through_id) FROM conversation_reads), 0)) + 1,
-                        ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(hash) DO UPDATE SET state = excluded.state, payload = excluded.payload
-            """, (row["hash"], peer, row["state"], payload))
+            """, (message_id, row["hash"], peer, row["state"], payload))
             message_id, = self.db.execute(
                 "SELECT id FROM messages WHERE hash = ?", (row["hash"],)
             ).fetchone()
@@ -347,10 +364,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Native persistence may alter only loopback peer settings in simulator tests.
         # Keep the signed echo fixture's identity/address; the transport validates every host.
         settings["peers"] = peer_settings["peers"]
+        settings["notification_floor"] = peer_settings.get("notification_floor", 0)
     probe = MessagingProbe(settings, ready_file.parent, inbound, device=device)
     peer = probe.address.hex() if probe.address else None
     own = probe.source.hash.hex()
-    history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3")
+    history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3",
+                                  notification_floor=settings.get("notification_floor", 0))
     token = secrets.token_urlsafe(32)
     access = RuntimeAccess(ready_file.parent)
     contact = "Test contact" if device else "Simulator Echo"
