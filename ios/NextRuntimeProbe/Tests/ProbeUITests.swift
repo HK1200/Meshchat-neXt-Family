@@ -260,7 +260,14 @@ final class ProbeUITests: XCTestCase {
         app.typeText(XCUIKeyboardKey.delete.rawValue)
         let cleared = name.value as? String ?? ""
         XCTAssertTrue(cleared.isEmpty || cleared == "Display Name", app.debugDescription)
-        app.typeText("Simulator profile")
+        // The field is now empty, so retargeting it cannot disturb a
+        // selection. Keep the keyboard event attached to the intended input
+        // and wait for WebKit's settled accessibility value before comparing.
+        name.typeText("Simulator profile")
+        let completeName = web.textFields.matching(NSPredicate(
+            format: "label == %@ AND value == %@", "Display Name", "Simulator profile"
+        )).firstMatch
+        XCTAssertTrue(completeName.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(name.value as? String, "Simulator profile", app.debugDescription)
         settings.tap()
         // Allow the released UI's 600 ms debounce to finish. The saved name

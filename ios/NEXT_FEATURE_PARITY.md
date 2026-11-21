@@ -344,3 +344,12 @@ incoming call that arrives during recovery. Active calls and disabled accounts
 are untouched; repeated restarts retain the existing five-second bound. Eleven
 staged account/HTTP/lifecycle checks passed, including that race and a fresh
 registration after an idle resume. Live post-lock SIP alerts still need testing.
+
+Run 44932961783 passed all 62 checks on iPhone. Its iPad UI run reached profile
+replacement but read a partial accessibility value immediately after typing.
+The overlapping-save regression against the actual shared Settings component
+passed without any application change, so an application save race has not been
+established. The follow-up targets the now-empty input explicitly and waits for
+the exact complete WebKit value before retaining the equality, save/restart and
+signed-reply checks. Its recording is retained for further diagnosis; a passing
+rerun is still required.
