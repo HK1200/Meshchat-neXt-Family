@@ -4,6 +4,8 @@ Audited 2026-11-20 against the Android assets and shared runtime in this checkou
 “Present” means native wiring exists, not that a physical-device end-to-end test passed.
 Regular Family on the iPad is excluded from testing. Apple enrollment remains on hold.
 
+For the separate neXt port, see [neXt iOS completion status](NEXT_FEATURE_PARITY.md).
+
 | Area | iOS status | Remaining verification or work |
 |---|---|---|
 | Guardian setup, nickname, approved contacts | Present | Setup/unlock visibility checks passed on both native simulators |
