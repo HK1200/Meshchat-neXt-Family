@@ -328,3 +328,19 @@ keyboard already hidden and an Apple Intelligence system banner remaining over
 the TCP form. The follow-up test dismisses only that positively identified
 simulator notice and retains the keyboard-absence, saved-peer, profile and signed
 reply assertions. A passing rerun is still required.
+
+The same-key personal upgrade from 285.2 to compiled recovery build 289.1 preserved
+all 851 current non-cache support files and native preferences byte for byte,
+including twelve messages, two contacts, identity and four peers. The owner then
+locked the iPad for approximately twenty seconds and reopened neXt: the
+conversation returned normally. An authenticated check confirmed the same runtime
+instance and local port responded after the cycle; a fresh data check passed.
+This is one successful physical resume, not proof of sustained suspended delivery.
+
+The SIP follow-up also refreshes an enabled, idle registration after resume,
+because its UDP socket may have been reclaimed independently of the UI listener.
+The decision is checked again under the existing service lock, preserving an
+incoming call that arrives during recovery. Active calls and disabled accounts
+are untouched; repeated restarts retain the existing five-second bound. Eleven
+staged account/HTTP/lifecycle checks passed, including that race and a fresh
+registration after an idle resume. Live post-lock SIP alerts still need testing.

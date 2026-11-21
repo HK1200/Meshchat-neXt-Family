@@ -21,6 +21,7 @@ private final class WireSystemDriver: FamilySystemCallDriver {
 }
 
 final class SIPNativeWireTests: XCTestCase {
+    @MainActor
     func testForegroundRecoverySignalReachesTheEmbeddedRuntime() {
         let before = next_probe_listener_generation()
         next_probe_request_listener_recovery()

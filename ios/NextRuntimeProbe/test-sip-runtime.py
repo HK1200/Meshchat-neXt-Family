@@ -223,6 +223,57 @@ def test_reading_microphone_status_never_connects_or_requests_access(tmp_path):
     assert not Engine.instances and not (tmp_path/'sip/accounts.json').exists()
 
 
+def test_foreground_refresh_preserves_active_calls_and_disabled_accounts(tmp_path):
+    async def run():
+        class Service:
+            def __init__(self, status): self.current=status; self.commands=[]
+            def status(self): return dict(self.current)
+            async def resume_foreground(self): self.commands.append("resume"); return True
+        runtime=NextSIPRuntime.__new__(NextSIPRuntime)
+        runtime.service=None
+        assert not await runtime.foreground()
+        for state in ['incoming','calling','ringing','progress','connected','ending']:
+            runtime.service=Service(dict(enabled=True,call_state=state,call_id='exact-live-call'))
+            assert not await runtime.foreground()
+            assert runtime.service.commands==[]
+            assert runtime.service.current['call_id']=='exact-live-call'
+        for status in [dict(enabled=False,call_state='idle',call_id=''),
+                       dict(enabled=True,call_state='idle',call_id='retiring-call')]:
+            runtime.service=Service(status)
+            assert not await runtime.foreground() and runtime.service.commands==[]
+        runtime.service=Service(dict(enabled=True,call_state='idle',call_id=''))
+        assert await runtime.foreground()
+        assert runtime.service.commands==['resume']
+    asyncio.run(run())
+
+
+def test_foreground_refresh_rechecks_calls_after_waiting_for_the_service_lock(tmp_path):
+    async def run():
+        runtime=adapter(tmp_path)
+        await runtime.service.command('save',account=dict(extension='9001',host='127.0.0.1',port=55162),password='synthetic')
+        await runtime.service.command('connect')
+        engine=runtime.service.engine
+        assert runtime.service.status()['registered']
+        await runtime.service._lock.acquire()
+        pending=asyncio.create_task(runtime.foreground())
+        await asyncio.sleep(0)
+        runtime.service._event(engine,dict(state='incoming',peer='sip:9002@127.0.0.1:55162'))
+        call_id=runtime.service.call_id
+        runtime.service._lock.release()
+        assert not await pending
+        assert runtime.service.engine is engine and not engine.closed
+        assert runtime.service.call_id==call_id and runtime.service.call_state=='incoming'
+        runtime.service._event(engine,dict(state='ended'))
+        assert await runtime.foreground()
+        assert engine.closed and runtime.service.engine is not engine
+        assert runtime.service.status()['registered']
+        replacement=runtime.service.engine
+        assert not await runtime.foreground()  # existing five-second restart bound
+        assert runtime.service.engine is replacement
+        await runtime.close()
+    asyncio.run(run())
+
+
 def test_system_call_failures_are_visible_and_clear_without_connecting(tmp_path):
     Engine.instances.clear()
     capability = {'calling_available': True, 'microphone_permission': 'granted',
@@ -248,7 +299,9 @@ if __name__ == "__main__":
               test_actual_private_server_protects_sip_routes,
               test_linked_call_routes_require_the_displayed_call_identity,
               test_reading_microphone_status_never_connects_or_requests_access,
-              test_system_call_failures_are_visible_and_clear_without_connecting]
+              test_system_call_failures_are_visible_and_clear_without_connecting,
+              test_foreground_refresh_preserves_active_calls_and_disabled_accounts,
+              test_foreground_refresh_rechecks_calls_after_waiting_for_the_service_lock]
     for check in checks:
         with tempfile.TemporaryDirectory(prefix="next-private-sip-runtime-") as folder:
             check(Path(folder))

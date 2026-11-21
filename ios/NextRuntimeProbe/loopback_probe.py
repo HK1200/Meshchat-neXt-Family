@@ -787,7 +787,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Simulator profiles are separately restricted to loopback only.
         while True:
             try:
-                await listener.recover()
+                recovered = await listener.recover()
+                if recovered and sip:
+                    await sip.foreground()
             except OSError:
                 # A failed foreground bind must not tear down messaging.
                 pass

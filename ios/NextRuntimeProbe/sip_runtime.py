@@ -5,6 +5,7 @@ OS default route. Call controls require the linked native adapter and the exact
 displayed call identity. Simulator profiles never open accounts.
 """
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 from sip_native import IOSPasswords, IOSSIPEngine, networks, native_request
@@ -14,6 +15,18 @@ def native_service_factory(accounts, executable, **options):
     from meshchatnext.src.backend.sip_desktop_service import DesktopSipService
 
     class NativeService(DesktopSipService):
+        async def resume_foreground(self):
+            async with self._lock:
+                if (self._closed or not self.store.enabled or self._denied or not self._permitted()
+                        or self.call_state != "idle" or self.call_id
+                        or time.monotonic() - self._last_resume < 5):
+                    return False
+                self._last_resume = time.monotonic()
+                await self._stop()
+                self._retry_at = 0
+                await self._reconcile()
+                return True
+
         async def command(self, operation, **fields):
             if operation not in {"answer", "hangup", "mute", "hold", "dtmf", "speaker"}:
                 return await super().command(operation, **fields)
@@ -112,6 +125,22 @@ class NextSIPRuntime:
     async def start(self):
         if self.service:
             await self.service.start()
+
+    async def foreground(self):
+        """Refresh an idle registration after iOS may have reclaimed its UDP socket."""
+        if self.service is None:
+            return False
+        current = self.service.status()
+        if (current.get("enabled") is not True or current.get("call_state") != "idle"
+                or current.get("call_id")):
+            return False
+        # The shared service bounds restart frequency and preserves the saved
+        # account. Never replace a connecting, ringing or established call.
+        try:
+            return await self.service.resume_foreground()
+        except (OSError, RuntimeError, ValueError):
+            # A SIP recovery failure must not take the messaging server down.
+            return False
 
     async def close(self):
         if self.service:
