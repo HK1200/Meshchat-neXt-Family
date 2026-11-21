@@ -13,3 +13,13 @@ unsigned long next_probe_listener_generation(void);
 
 /* Caller frees the returned synthetic test report; NULL means not ready. */
 char *next_probe_check_voice_codecs(void);
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+void next_probe_set_voice(NextBluetoothRequest request);
+size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
+                                     size_t input_size, bool native_processing,
+                                     uint8_t *output, size_t capacity);
+
+void next_probe_set_voice_muted(bool muted);

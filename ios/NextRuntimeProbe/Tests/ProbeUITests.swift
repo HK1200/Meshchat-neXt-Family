@@ -19,6 +19,7 @@ final class ProbeUITests: XCTestCase {
         verifyMessageAlertSettings(app)
         verifyRNodeEditor(app)
         verifyMeshCoreSettings(app)
+        verifyReticulumCallingOff(app)
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -87,6 +88,23 @@ final class ProbeUITests: XCTestCase {
         verifyOwnContactQR(app)
         verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyReticulumCallingOff(_ app: XCUIApplication) {
+        app.buttons["next-calling-menu"].tap()
+        XCTAssertTrue(app.buttons["next-sip-settings"].waitForExistence(timeout: 10))
+        app.buttons["next-reticulum-calling"].tap()
+        let form = app.collectionViews["next-voice-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
+        let off = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "next-voice-status", "Reticulum calling off")).firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        let enabled = app.switches["next-voice-enabled"]
+        XCTAssertEqual(enabled.value as? String, "0")
+        let target = app.textFields["next-voice-target"]
+        reveal(target, in: form)
+        replace(target, with: String(repeating: "a", count: 32), in: app)
+        XCTAssertFalse(app.buttons["next-voice-call"].isEnabled)
+        app.navigationBars["Reticulum calling"].buttons["Done"].tap()
     }
 
     private func verifyMailboxSettings(_ app: XCUIApplication) {

@@ -26,7 +26,7 @@ into the app; physical verification is stated separately.
 | Message notifications | Generic private notifications and native permission controls are integrated | Physical neXt notification delivery/navigation; fully suspended internet delivery needs the mailbox/push integration |
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
 | SIP | Native Keychain accounts, registration, CallKit and audio controls are integrated. Both native simulator suites passed; physical iPad foreground calls, answering, test-tone output, bidirectional RTP and clean ending/logout passed | Locked incoming alert failed on the iPad. Complete VoIP push/wake integration and physical phone, speech, route and interruption tests |
-| Reticulum voice | Shared native engine and pinned LXST/Opus/Codec2 runtime are available; actual embedded codec round trips pass on both simulators | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
+| Reticulum voice | Native CallKit controls, AVAudioEngine PCM, existing neXt telephone actions, contact identities, profiles and duplex/PTT are integrated; codec round trips pass on both simulators | New call integration still needs Xcode, actual encrypted media tests and physical calls both ways; it is not release-qualified yet |
 | Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
@@ -410,3 +410,19 @@ and restoration without losing a draft, radio lifecycle bounds, and signed
 message replies after settings edits and restart.
 This is a prerequisite for neXt Reticulum calls; call setup, native PCM exchange
 and system call controls are not connected by this packaging change.
+
+
+## Reticulum call integration under verification
+
+The new integration uses neXt's existing identity and TelephoneManager, with
+native permission checks and call controls. The sender's displayed call ID is
+captured before any permission await; a delayed action cannot answer or end its
+replacement. Microphone muting takes effect at the C audio boundary immediately.
+Playback is bounded and stale call clients cannot deliver audio into a later
+call. Voice announces use startup, reconnect and hourly scheduling.
+
+The native Calls menu contains both Reticulum calling and SIP accounts. Existing
+neXt telephone controls use the same protected backend. Voice quality can be set
+before dialing, and existing contacts can be selected without retyping their
+addresses. This implementation is being tested; the installed 299.1 preview does
+not yet contain it. The earlier locked-screen SIP alert failure remains open.

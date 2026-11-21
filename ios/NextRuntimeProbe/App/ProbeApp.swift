@@ -23,7 +23,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -105,9 +105,14 @@ private struct ProbeScreen: View {
                                   systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
                                 .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-meshcore-settings")
-                        Button { panel = .sip } label: {
-                            Label("SIP accounts", systemImage: "phone.connection").labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("next-sip-settings")
+                        Menu {
+                            Button("Reticulum calling") { panel = .reticulum }
+                                .accessibilityIdentifier("next-reticulum-calling")
+                            Button("SIP accounts") { panel = .sip }
+                                .accessibilityIdentifier("next-sip-settings")
+                        } label: {
+                            Label("Calling", systemImage: "phone").labelStyle(.iconOnly).frame(width: 44, height: 44)
+                        }.accessibilityIdentifier("next-calling-menu")
                         Button("TCP connections") { panel = .connections }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
@@ -201,6 +206,8 @@ private struct ProbeScreen: View {
             switch selected {
             case .mailbox:
                 if let url { NextMailboxSettings(base: url).interactiveDismissDisabled() }
+            case .reticulum:
+                if let url { NextReticulumSettings(base: url).interactiveDismissDisabled() }
             case .sip:
                 if let url { NextSIPSettings(base: url).interactiveDismissDisabled() }
             case .rnode:
@@ -386,6 +393,10 @@ private struct ProbeScreen: View {
         next_probe_set_sip { request in
             guard let request else { return nil }
             return strdup(NextSIPBridge.request(String(cString: request)))
+        }
+        next_probe_set_voice { request in
+            guard let request else { return nil }
+            return strdup(NextReticulumBridge.request(String(cString: request)))
         }
         next_probe_set_bluetooth { request in
             guard let request else { return nil }

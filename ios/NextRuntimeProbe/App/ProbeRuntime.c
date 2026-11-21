@@ -9,6 +9,8 @@
 
 static _Atomic unsigned long listener_generation;
 static _Atomic int runtime_initialized;
+static _Atomic bool voice_muted;
+void next_probe_set_voice_muted(bool muted) { atomic_store_explicit(&voice_muted, muted, memory_order_release); }
 void next_probe_request_listener_recovery(void) {
     atomic_fetch_add_explicit(&listener_generation, 1, memory_order_relaxed);
 }
@@ -31,6 +33,80 @@ static PyObject *init_lifecycle(void) { return PyModule_Create(&lifecycle_module
 static NextBluetoothRequest bluetooth_request;
 static NextBluetoothRequest credentials_request;
 static NextBluetoothRequest sip_request;
+static NextBluetoothRequest voice_request;
+static PyObject *voice_push, *voice_pull;
+
+void next_probe_set_voice(NextBluetoothRequest request) {
+    if (!Py_IsInitialized()) voice_request = request;
+}
+
+static PyObject *voice_call(PyObject *self, PyObject *args) {
+    const char *request;
+    if (!PyArg_ParseTuple(args, "s", &request)) return NULL;
+    if (!voice_request) return PyErr_Format(PyExc_RuntimeError, "Native Reticulum calling is unavailable");
+    char *reply;
+    Py_BEGIN_ALLOW_THREADS
+    reply = voice_request(request);
+    Py_END_ALLOW_THREADS
+    if (!reply) return PyErr_NoMemory();
+    PyObject *result = PyUnicode_FromString(reply);
+    free(reply);
+    return result;
+}
+
+static PyObject *voice_bind(PyObject *self, PyObject *args) {
+    PyObject *push, *pull;
+    if (!PyArg_ParseTuple(args, "OO", &push, &pull)) return NULL;
+    if (!PyCallable_Check(push) || !PyCallable_Check(pull))
+        return PyErr_Format(PyExc_TypeError, "PCM callbacks must be callable");
+    Py_INCREF(push); Py_INCREF(pull);
+    Py_XDECREF(voice_push); Py_XDECREF(voice_pull);
+    voice_push = push; voice_pull = pull;
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef voice_methods[] = {
+    {"request", voice_call, METH_VARARGS, NULL},
+    {"bind", voice_bind, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef voice_module = {
+    PyModuleDef_HEAD_INIT, "_next_voice", NULL, -1, voice_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_voice(void) { return PyModule_Create(&voice_module); }
+
+size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
+                                     size_t input_size, bool native_processing,
+                                     uint8_t *output, size_t capacity) {
+    if (!call_id || !output || strlen(call_id) != 32 || input_size > 11520 || input_size % 2 || (capacity != 0 && capacity < 1920) ||
+        !atomic_load_explicit(&runtime_initialized, memory_order_acquire)) return 0;
+    for (size_t index = 0; index < 32; index++) {
+        char c = call_id[index];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return 0;
+    }
+    PyGILState_STATE gil = PyGILState_Ensure();
+    if (!voice_push || !voice_pull) { PyGILState_Release(gil); return 0; }
+    PyObject *identifier = PyUnicode_FromString(call_id);
+    size_t count = 0;
+    if (identifier && input && input_size && !atomic_load_explicit(&voice_muted, memory_order_acquire)) {
+        PyObject *pcm = PyBytes_FromStringAndSize((const char *)input, (Py_ssize_t)input_size);
+        PyObject *pushed = pcm ? PyObject_CallFunctionObjArgs(voice_push, identifier, pcm,
+                                            native_processing ? Py_True : Py_False, NULL) : NULL;
+        Py_XDECREF(pushed); Py_XDECREF(pcm); PyErr_Clear();
+    }
+    PyObject *received = identifier && capacity ? PyObject_CallOneArg(voice_pull, identifier) : NULL;
+    if (received && PyBytes_Check(received)) {
+        char *pcm; Py_ssize_t size;
+        if (!PyBytes_AsStringAndSize(received, &pcm, &size) && size >= 0 && (size_t)size <= capacity) {
+            memcpy(output, pcm, (size_t)size); count = (size_t)size;
+        }
+    }
+    Py_XDECREF(received); Py_XDECREF(identifier); PyErr_Clear();
+    PyGILState_Release(gil);
+    return count;
+}
+
 
 void next_probe_set_sip(NextBluetoothRequest request) {
     if (!Py_IsInitialized()) sip_request = request;
@@ -135,6 +211,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
     if (PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return;
     if (PyImport_AppendInittab("_next_credentials", init_credentials) != 0) return;
     if (PyImport_AppendInittab("_next_sip", init_sip) != 0) return;
+    if (PyImport_AppendInittab("_next_voice", init_voice) != 0) return;
     if (PyImport_AppendInittab("_next_lifecycle", init_lifecycle) != 0) return;
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);

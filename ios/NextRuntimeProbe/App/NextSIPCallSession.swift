@@ -51,18 +51,24 @@ final class NextSIPSystemAudio: NextSIPCallAudio {
     }
 }
 
-/// Owns one exact Baresip call; CallKit/permission awaits cannot act on a later call.
+/// Owns one transport call; CallKit/permission awaits cannot act on a later call.
+/// SIP keeps its existing default policy; Reticulum supplies strict identity validation.
 @MainActor
 final class NextSIPCallSession: NextSIPCallManaging {
     private final class Call {
         let id: String; let peer: String; let incoming: Bool
+        let service: FamilySystemCallKey.Service; let name: String
         var started: Bool; var connected = false; var ending = false; var muted = false; var answering = false
-        init(id: String, peer: String, incoming: Bool) {
+        init(id: String, peer: String, incoming: Bool, service: FamilySystemCallKey.Service, name: String) {
             self.id = id; self.peer = peer; self.incoming = incoming; self.started = incoming
+            self.service = service; self.name = name
         }
-        var key: FamilySystemCallKey { FamilySystemCallKey(service: .sip, id: id) }
+        var key: FamilySystemCallKey { FamilySystemCallKey(service: service, id: id) }
     }
-    private let driver: any NextSIPDriving
+    private let driver: any NextCallDriving
+    private let service: FamilySystemCallKey.Service
+    private let normalizePeer: (String) -> String?
+    private let displayName: (String) -> String
     private let system: FamilySystemCalls
     private let audio: any NextSIPCallAudio
     private let emit: ([String: Any]) -> Void
@@ -72,11 +78,16 @@ final class NextSIPCallSession: NextSIPCallManaging {
     private var observations = Set<AnyCancellable>()
     var diagnostic: String { system.error }
     var hasActiveCall: Bool { current != nil }
+    var isClosed: Bool { closed }
 
-    init(driver: any NextSIPDriving, system: FamilySystemCalls,
+    init(driver: any NextCallDriving, system: FamilySystemCalls,
          audio: any NextSIPCallAudio, observeAudio: Bool = true,
+         service: FamilySystemCallKey.Service = .sip,
+         normalizePeer: @escaping (String) -> String? = { FamilySIPAddress($0)?.uri },
+         displayName: @escaping (String) -> String = { $0 },
          emit: @escaping ([String: Any]) -> Void) {
         self.driver = driver; self.system = system; self.audio = audio; self.emit = emit
+        self.service = service; self.normalizePeer = normalizePeer; self.displayName = displayName
         guard observeAudio else { return }
         system.$audioReady.dropFirst().sink { [weak self] _ in
             Task { @MainActor in self?.audioChanged() }
@@ -89,9 +100,9 @@ final class NextSIPCallSession: NextSIPCallManaging {
                 if type == AVAudioSession.InterruptionType.began.rawValue {
                     _ = self.command(8, call: call)
                 } else if options & AVAudioSession.InterruptionOptions.shouldResume.rawValue != 0 {
-                    if await self.audio.prepare(managed: self.system.owns(call.key)), self.current === call {
+                    if await self.prepare(call), self.current === call {
                         self.audioChanged()
-                    }
+                    } else { self.end(call) }
                 } else { self.end(call) }
             }
         }.store(in: &observations)
@@ -109,8 +120,8 @@ final class NextSIPCallSession: NextSIPCallManaging {
               id.range(of: "^[A-Za-z0-9_.-]{1,79}$", options: .regularExpression) != nil else { return false }
         if operation == "dial" {
             guard current == nil, !system.hasCall, !retired.contains(id),
-                  let raw = value["peer"] as? String, let address = FamilySIPAddress(raw) else { return false }
-            let call = Call(id: id, peer: address.uri, incoming: false)
+                  let raw = value["peer"] as? String, let address = normalizePeer(raw) else { return false }
+            let call = Call(id: id, peer: address, incoming: false, service: service, name: displayName(address))
             current = call; event("calling", call: call)
             if !track(call) { finish(call, failed: true); return false }
             return true
@@ -150,7 +161,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
     }
     private func track(_ call: Call) -> Bool {
         if system.enabled {
-            return system.track(call.key, name: call.peer, incoming: call.incoming,
+            return system.track(call.key, name: call.name, incoming: call.incoming,
                 actions: FamilySystemCallActions(
                     prepareAudio: { [weak self, weak call] in
                         guard let self, let call else { return false }; return await self.prepare(call)
@@ -198,10 +209,10 @@ final class NextSIPCallSession: NextSIPCallManaging {
             guard id.range(of: "^[A-Za-z0-9_.-]{1,79}$", options: .regularExpression) != nil,
                   !retired.contains(id) else { return }
             if current?.id == id { return }
-            guard current == nil, !system.hasCall, let address = FamilySIPAddress(peer) else {
+            guard current == nil, !system.hasCall, let address = normalizePeer(peer) else {
                 _ = driver.command(3, value: nil, callID: id); return
             }
-            let call = Call(id: id, peer: address.uri, incoming: true)
+            let call = Call(id: id, peer: address, incoming: true, service: service, name: displayName(address))
             current = call
             if track(call) { event("incoming", call: call) }
             else { end(call) }
@@ -213,6 +224,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
         case "connected":
             guard !call.ending else { return }
             call.connected = true; system.update(call.key, connected: true); event(state, call: call, code: code)
+            if service == .reticulum { audioChanged() }
         case "ended": finish(call)
         case "muted": call.muted = code != 0; event(state, call: call, code: code)
         case "audio_error", "command_failed":

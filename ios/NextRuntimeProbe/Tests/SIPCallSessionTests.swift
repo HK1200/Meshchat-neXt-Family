@@ -165,4 +165,43 @@ final class SIPCallSessionTests: XCTestCase {
         XCTAssertEqual(audio.ended, 1)
         call.close(); XCTAssertEqual(audio.ended, 1)
     }
+    @MainActor
+    func testReticulumCallsUseStrictAddressesAndStartNativeAudioAfterConnection() async {
+        let driver = SIPCallDriver(), audio = SIPCallAudio()
+        let system = FamilySystemCalls(driver: SIPCallSystemDriver(), preferences: nil, enabled: false)
+        let call = NextSIPCallSession(driver: driver, system: system, audio: audio, observeAudio: false,
+            service: .reticulum,
+            normalizePeer: { $0.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil ? $0.lowercased() : nil },
+            displayName: { _ in "Saved contact" }, emit: { _ in })
+        let id = String(repeating: "a", count: 32), peer = String(repeating: "b", count: 32)
+        XCTAssertFalse(call.perform(["op":"dial","call_id":id,"peer":"sip:9002@127.0.0.1"]))
+        XCTAssertTrue(call.perform(["op":"dial","call_id":id,"peer":peer]))
+        await settle()
+        XCTAssertEqual(driver.commands.map { $0.0 }, [1])
+        call.receive("connected", peer: peer, code: 0, id: id)
+        XCTAssertTrue(driver.commands.contains { $0.0 == 7 && $0.2 == id })
+        XCTAssertFalse(call.perform(["op":"hangup","call_id":String(repeating: "c", count: 32)]))
+        XCTAssertTrue(call.hasActiveCall)
+        call.receive("ended", peer: peer, code: 0, id: id)
+        XCTAssertFalse(call.hasActiveCall)
+        call.close()
+    }
+
+    @MainActor
+    func testReticulumCannotTakeOverAnActiveSIPSystemCall() async {
+        let system = FamilySystemCalls(driver: SIPCallSystemDriver(), preferences: nil, enabled: true)
+        let sipDriver = SIPCallDriver(), rnsDriver = SIPCallDriver()
+        let sip = NextSIPCallSession(driver: sipDriver, system: system, audio: SIPCallAudio(), observeAudio: false, emit: { _ in })
+        let rns = NextSIPCallSession(driver: rnsDriver, system: system, audio: SIPCallAudio(), observeAudio: false,
+            service: .reticulum,
+            normalizePeer: { $0.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil ? $0 : nil }, emit: { _ in })
+        XCTAssertTrue(sip.perform(["op":"dial","call_id":"sip-owner","peer":"sip:9002@127.0.0.1"]))
+        rns.receive("incoming", peer: String(repeating: "b", count: 32), code: 0, id: String(repeating: "a", count: 32))
+        XCTAssertTrue(sip.hasActiveCall)
+        XCTAssertFalse(rns.hasActiveCall)
+        XCTAssertEqual(rnsDriver.commands.map { $0.0 }, [3])
+        XCTAssertFalse(sipDriver.commands.contains { $0.0 == 3 })
+        sip.close(); rns.close()
+    }
+
 }

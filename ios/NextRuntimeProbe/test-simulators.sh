@@ -35,6 +35,7 @@ cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
+cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" App/
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
@@ -47,6 +48,7 @@ printf '%s\n' '1b1e8a9b77c64c780bc748167f22d879e739de58f861994612826612d92a950d 
     | shasum -a 256 -c -
 unzip -q frontend.zip -d staged/frontend
 python3 "$probe/sip_frontend.py" staged/frontend
+python3 "$probe/voice_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
     --output next-backend.whl
@@ -60,7 +62,8 @@ cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" 
 cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" "$probe/durable_inbox.py" "$probe/offline_mailbox.py" "$probe/loopback_listener.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
-cp "$probe/voice_codec_probe.py" staged/
+cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
+cp "$probe/voice_runtime.py" staged/voice_runtime.py
 cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py
 cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"

@@ -332,7 +332,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -604,7 +604,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             return web.json_response({"status": "ok"})
         if request.method == "PATCH" and path == "config":
             try:
-                saved = history.update_preferences(await request.json(), display_name)
+                payload = await request.json()
+                voice_keys = {"telephone_enabled", "telephone_audio_profile_id", "telephone_call_mode_id"}
+                if voice and isinstance(payload, dict) and voice_keys.intersection(payload):
+                    if len(payload) != 1: raise ValueError("Change one call setting at a time")
+                    if "telephone_enabled" in payload: await voice.configure(payload["telephone_enabled"])
+                    elif "telephone_audio_profile_id" in payload: await voice.set_profile(payload["telephone_audio_profile_id"], {})
+                    else: await voice.set_mode(payload["telephone_call_mode_id"], {})
+                    return web.json_response({"config": config})
+                saved = history.update_preferences(payload, display_name)
             except ValueError as error:
                 return web.json_response({"message": str(error)}, status=400)
             renamed = saved["display_name"] != config["display_name"]
@@ -754,6 +762,27 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
+    voice = None
+    if voice_factory:
+        def voice_interfaces():
+            import RNS
+            return tuple(RNS.Transport.interfaces)
+        voice = voice_factory(history.db, probe.source.identity, history.contacts,
+                              voice_interfaces, lambda: config["display_name"])
+        def voice_settings_changed(values):
+            config.update(values)
+            async def broadcast_voice_settings():
+                for client in tuple(clients):
+                    try: await client.send_json({"type": "config", "config": config})
+                    except (RuntimeError, ConnectionError): clients.discard(client)
+            track(broadcast_voice_settings())
+        voice.on_settings = voice_settings_changed
+        config.update(voice.settings_snapshot())
+        voice.register(app.router)
+        async def start_voice(_): await voice.start()
+        async def stop_voice(_): await voice.close()
+        app.on_startup.append(start_voice)
+        app.on_cleanup.append(stop_voice)
     if meshcore:
         meshcore.register(app.router)
         await meshcore.start()
@@ -824,8 +853,9 @@ def run_for_app(ready_file):
             overrides = json.loads(ready.with_suffix(".json").read_text(encoding="utf-8"))
         from meshcore_runtime import NextMeshCore
         from sip_runtime import NextSIPRuntime
+        from voice_runtime import ReticulumVoice
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

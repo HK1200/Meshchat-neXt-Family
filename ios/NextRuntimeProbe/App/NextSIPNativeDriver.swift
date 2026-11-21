@@ -10,10 +10,13 @@ struct NextSIPAccountValues: Sendable {
     let password: String
 }
 
-protocol NextSIPDriving: AnyObject {
-    func start(_ account: NextSIPAccountValues, events: @escaping NextSIPEventSink, closed: @escaping NextSIPExitSink) -> Bool
+protocol NextCallDriving: AnyObject {
     func command(_ operation: Int32, value: String?, callID: String) -> Bool
     func stop()
+}
+
+protocol NextSIPDriving: NextCallDriving {
+    func start(_ account: NextSIPAccountValues, events: @escaping NextSIPEventSink, closed: @escaping NextSIPExitSink) -> Bool
 }
 
 /// One Baresip instance per process. Callback closures capture their session
