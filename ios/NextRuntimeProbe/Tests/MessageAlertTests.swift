@@ -120,4 +120,50 @@ final class MessageAlertTests: XCTestCase {
         alerts.consumedRoute()
         XCTAssertNil(alerts.requestedAddress)
     }
+    @MainActor
+    func testMeshCoreAndReticulumPermissionBaselinesStayIndependent() async throws {
+        let suite = "next-alert-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = FakeNextAlerts()
+        center.status = .notDetermined
+        let alerts = NextMessageAlerts(center: center, defaults: defaults)
+        let key = "meshcore-" + String(repeating: "a", count: 64)
+        let existing = NextUnreadNotice(id: 900, hash: String(repeating: "b", count: 64),
+                                        peer: String(repeating: "c", count: 32), meshcoreKey: key)
+        try await alerts.authorize(existing: [notice(1), existing])
+        let fresh = NextUnreadNotice(id: 901, hash: String(repeating: "d", count: 64),
+                                     peer: existing.peer, meshcoreKey: key)
+        await alerts.publish([existing, fresh, notice(2)], appActive: false)
+        XCTAssertEqual(center.posted, [fresh, notice(2)])
+        await alerts.publish([fresh, notice(2)], appActive: false)
+        XCTAssertEqual(center.posted.count, 2)
+    }
+
+    @MainActor
+    func testMeshCoreNotificationKeysCannotBecomeArbitraryRoutes() throws {
+        let suite = "next-alert-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let alerts = NextMessageAlerts(center: FakeNextAlerts(), defaults: defaults)
+        alerts.routeMessage(hash: notice(1).hash, peer: notice(1).peer, meshcoreKey: "https://example.invalid")
+        XCTAssertNil(alerts.requestedMeshCoreKey)
+        let key = "meshcore-" + String(repeating: "a", count: 64)
+        alerts.routeMessage(hash: notice(1).hash, peer: notice(1).peer, meshcoreKey: key)
+        XCTAssertNil(alerts.requestedAddress)
+        XCTAssertEqual(alerts.requestedMeshCoreKey, key)
+        alerts.consumedRoute()
+        XCTAssertNil(alerts.requestedMeshCoreKey)
+    }
+
+    func testMeshCoreConversationTargetsAreStrictlyValidated() {
+        let owner = String(repeating: "a", count: 64)
+        let peer = String(repeating: "b", count: 64)
+        let target = NextMeshCoreAlertTarget(owner: owner, target: peer, kind: "direct", radio_id: "default")
+        XCTAssertEqual(target.fragment, "/messages?meshcore=" + peer + "&meshcoreRadio=default")
+        XCTAssertNil(NextMeshCoreAlertTarget(owner: owner, target: peer + "\n", kind: "direct", radio_id: nil).fragment)
+        XCTAssertNil(NextMeshCoreAlertTarget(owner: owner, target: peer, kind: "direct", radio_id: "default&other=1").fragment)
+        XCTAssertNil(NextMeshCoreAlertTarget(owner: owner, target: peer, kind: "unknown", radio_id: nil).fragment)
+    }
+
 }

@@ -20,20 +20,23 @@ private struct ProbeScreen: View {
     @ObservedObject var alerts: NextMessageAlerts
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
-    @State private var showAlerts = false
-    @State private var showRNode = false
+    private enum Panel: String, Identifiable {
+        case alerts, rnode, connections, myContact
+        var id: String { rawValue }
+    }
+    @State private var panel: Panel?
     @State private var meshcoreReturnURL: URL?
     @State private var radioWake: FamilyRadioWake?
     @AppStorage("tcpHost") private var host = "rmap.world"
     @AppStorage("tcpPort") private var port = "4343"
     @AppStorage("testAddress") private var contact = ""
     @AppStorage("tcpPeers") private var savedPeers = ""
-    @State private var showConnections = false
-    @State private var showMyContactQR = false
     @State private var exportItem: NextExportItem?
     @State private var exportFolder: URL?
     @State private var exportError = ""
     @State private var showExportError = false
+    @State private var routingMeshCoreAlert = false
+    @State private var notificationRouteError: String?
     @State private var url: URL?
     @State private var address: String?
     @State private var error: String?
@@ -68,11 +71,11 @@ private struct ProbeScreen: View {
                             .accessibilityIdentifier("next-native-brand")
                             .accessibilityValue(theme)
                         Spacer()
-                        Button { showAlerts = true } label: {
-                            Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly)
+                        Button { panel = .alerts } label: {
+                            Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-message-alerts")
-                        Button { showRNode = true } label: {
-                            Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly)
+                        Button { panel = .rnode } label: {
+                            Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-rnode-settings")
                         Button {
                             if let previous = meshcoreReturnURL {
@@ -89,16 +92,16 @@ private struct ProbeScreen: View {
                         } label: {
                             Label(meshcoreReturnURL != nil ? "Messages" : "MeshCore",
                                   systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
-                                .labelStyle(.iconOnly)
+                                .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-meshcore-settings")
-                        Button("TCP connections") { showConnections = true }
+                        Button("TCP connections") { panel = .connections }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
                     if let address {
                         HStack {
                             Text("My LXMF address")
                             Spacer()
-                            Button { showMyContactQR = true } label: {
+                            Button { panel = .myContact } label: {
                                 Label("Show my contact QR code", systemImage: "qrcode").labelStyle(.iconOnly)
                             }
                             .accessibilityIdentifier("show-my-contact-qr")
@@ -132,7 +135,7 @@ private struct ProbeScreen: View {
                 Form {
                     Section("Reticulum TCP connections") {
                         Text("\(configuredPeers.filter(\.enabled).count) enabled peers")
-                        Button("Edit TCP connections") { showConnections = true }
+                        Button("Edit TCP connections") { panel = .connections }
                             .accessibilityIdentifier("tcp-connections")
                     }
                     Section("First contact (optional)") {
@@ -158,23 +161,28 @@ private struct ProbeScreen: View {
         .onChange(of: alerts.requestedAddress) { _, peer in
             if peer != nil { openRequestedConversation() }
         }
+        .onChange(of: alerts.requestedMeshCoreKey) { _, key in
+            if key != nil { openRequestedConversation() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .familyRadioData).receive(on: DispatchQueue.main)) { _ in
             radioWake?.received()
         }
-        .sheet(isPresented: $showRNode) { if let url { NextRNodeSettings(base: url) } }
-        .sheet(isPresented: $showAlerts) {
-            NextMessageAlertSettings(alerts: alerts) {
-                guard let url else { throw URLError(.notConnectedToInternet) }
-                return try await Self.unreadMessages(at: url)
+        .sheet(item: $panel) { selected in
+            switch selected {
+            case .rnode:
+                if let url { NextRNodeSettings(base: url) }
+            case .alerts:
+                NextMessageAlertSettings(alerts: alerts) {
+                    guard let url else { throw URLError(.notConnectedToInternet) }
+                    return try await Self.unreadMessages(at: url)
+                }
+            case .connections:
+                NextTCPConnections(base: url, initial: configuredPeers) { peers in
+                    savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
+                }
+            case .myContact:
+                NextMyContactQR(address: address ?? "")
             }
-        }
-        .sheet(isPresented: $showConnections) {
-            NextTCPConnections(base: url, initial: configuredPeers) { peers in
-                savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
-            }
-        }
-        .sheet(isPresented: $showMyContactQR) {
-            NextMyContactQR(address: address ?? "")
         }
         .sheet(item: $exportItem, onDismiss: {
             if let exportFolder { try? FileManager.default.removeItem(at: exportFolder) }
@@ -183,6 +191,10 @@ private struct ProbeScreen: View {
         .alert("Attachment couldn’t be saved", isPresented: $showExportError) {
             Button("OK", role: .cancel) { }
         } message: { Text(exportError) }
+        .alert("Conversation unavailable", isPresented: Binding(
+            get: { notificationRouteError != nil },
+            set: { if !$0 { notificationRouteError = nil } }
+        )) { Button("OK", role: .cancel) { notificationRouteError = nil } } message: { Text(notificationRouteError ?? "") }
         .task {
             guard url == nil, error == nil, !starting else { return }
             if simulator {
@@ -253,6 +265,38 @@ private struct ProbeScreen: View {
     }
 
     private func openRequestedConversation() {
+        if let key = alerts.requestedMeshCoreKey, let current = url {
+            guard !routingMeshCoreAlert else { return }
+            routingMeshCoreAlert = true
+            Task {
+                defer { routingMeshCoreAlert = false }
+                do {
+                    guard var endpoint = URLComponents(url: current, resolvingAgainstBaseURL: true) else { throw URLError(.badURL) }
+                    endpoint.path = "/api/v1/meshcore/notification-target"
+                    endpoint.fragment = nil
+                    endpoint.queryItems = [URLQueryItem(name: "key", value: key)]
+                    guard let requestURL = endpoint.url else { throw URLError(.badURL) }
+                    var request = URLRequest(url: requestURL)
+                    request.timeoutInterval = 5
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                    struct Result: Decodable { let result: NextMeshCoreAlertTarget? }
+                    let target = try JSONDecoder().decode(Result.self, from: data).result
+                    guard let fragment = target?.fragment,
+                          var destination = URLComponents(url: current, resolvingAgainstBaseURL: true) else { throw URLError(.badServerResponse) }
+                    guard alerts.requestedMeshCoreKey == key else { return }
+                    destination.fragment = fragment
+                    if let routed = destination.url { url = routed }
+                    alerts.consumedRoute()
+                } catch {
+                    if alerts.requestedMeshCoreKey == key {
+                        notificationRouteError = "This MeshCore conversation is no longer available for the saved radio."
+                        alerts.consumedRoute()
+                    }
+                }
+            }
+            return
+        }
         guard let peer = alerts.requestedAddress, let current = url,
               var destination = URLComponents(url: current, resolvingAgainstBaseURL: false) else { return }
         destination.fragment = "/messages/" + peer

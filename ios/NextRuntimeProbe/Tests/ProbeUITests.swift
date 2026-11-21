@@ -137,6 +137,7 @@ final class ProbeUITests: XCTestCase {
         let limit = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "iOS may pause neXt")).firstMatch
         XCTAssertTrue(limit.exists, app.debugDescription)
         navigation.buttons["Done"].tap()
+        XCTAssertTrue(navigation.waitForNonExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
 

@@ -60,10 +60,17 @@ class NextMeshCore:
         self.device = device
         self.folder = Path(folder) / "meshcore"
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        from meshcore_notices import MeshCoreNotices
+        self.notices = MeshCoreNotices(self.folder / "native-alerts.sqlite3")
+
+        async def notify(event):
+            await asyncio.to_thread(self.notices.save, event)
+            await broadcast(event)
+
         self.fleet = MeshCoreFleet(
             self.folder,
             service_factory=lambda folder, **options: service_factory(folder, device=device, **options),
-            notification_sink=broadcast,
+            notification_sink=notify,
         )
         self.owner = SimpleNamespace(
             identity=identity, config=None, meshcore_service=self.fleet,
@@ -77,6 +84,14 @@ class NextMeshCore:
 
     async def close(self):
         await self.fleet.close()
+
+    async def notification_candidates(self):
+        owners = {row["owner"] for row in self.fleet.radio_rows() if row.get("owner")}
+        return await asyncio.to_thread(
+            self.notices.candidates,
+            lambda: self.fleet._shared_store(self.folder / "history.sqlite"),
+            owners,
+        )
 
     def register(self, router):
         from meshchatnext.src.backend.meshcore_http import register_meshcore_routes

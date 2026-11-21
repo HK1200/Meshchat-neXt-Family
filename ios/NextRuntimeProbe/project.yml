@@ -57,6 +57,7 @@ targets:
         buildPhase: resources
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift
+      - path: App/NextMeshCoreAlertTarget.swift
       - path: App/NextMeshCoreSecrets.swift
       - path: App/NextRNodeProfile.swift
       - path: App/FamilyRadioWake.swift

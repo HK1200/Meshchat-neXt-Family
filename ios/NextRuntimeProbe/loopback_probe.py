@@ -331,7 +331,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if path == "preview/rnode":
                 return web.json_response(probe.rnode.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/unread-messages":
-                return web.json_response({"messages": history.notification_candidates()}, headers={"Cache-Control": "no-store"})
+                notices = history.notification_candidates()
+                if meshcore:
+                    notices += await meshcore.notification_candidates()
+                return web.json_response({"messages": notices}, headers={"Cache-Control": "no-store"})
             if path == "announces":
                 try:
                     return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})
