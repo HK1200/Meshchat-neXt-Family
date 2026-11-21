@@ -478,3 +478,12 @@ recording remained on Apple's boot-progress overlay while accessibility exposed
 the app underneath. All 66 unit checks passed, but the two UI checks failed.
 The simulator harness now waits for OS boot completion before invoking XCTest.
 The archive is not installed or release-qualified while this retry is pending.
+
+
+The real-media fixture now also observes the actual LXST caller-policy callback:
+a signed unknown caller reaches that policy and is rejected before any native
+ring or missed-call entry. After local LXMF-contact approval, both endpoints
+operate in contacts-only mode and complete all 12 settled-audio checks, including
+authenticated remote-identity matching. The silence-only control still fails at
+the intended energy assertion. This strengthens tests only; it does not change
+the compiled app or widen incoming-call permissions.

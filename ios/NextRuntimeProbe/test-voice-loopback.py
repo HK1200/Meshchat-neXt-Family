@@ -44,18 +44,27 @@ def worker(source, folder, port, server, pipe, silent_control=False):
     RNS.Reticulum(configdir=str(config), loglevel=1)
 
     async def run():
-        events = deque()
+        events = deque(); contacts = {}; incoming_events = 0; policy_denials = 0
         def native(value):
+            nonlocal incoming_events
             if value['op'] == 'dial': events.append(dict(operation='dial', call_id=value['call_id']))
             if value['op'] == 'state' and value.get('state') == 'incoming':
+                incoming_events += 1
                 events.append(dict(operation='answer', call_id=value['call_id']))
             if value['op'] == 'poll':
                 result = list(events); events.clear(); return dict(ok=True, events=result)
             return dict(ok=True)
         db = sqlite3.connect(folder / 'voice.sqlite3')
         identity = RNS.Identity()
-        voice = ReticulumVoice(db, identity, lambda: {}, lambda: RNS.Transport.interfaces,
+        voice = ReticulumVoice(db, identity, lambda: contacts, lambda: RNS.Transport.interfaces,
                                lambda: 'Private synthetic voice', native=native)
+        original_allowed = voice.caller_allowed
+        def observed_allowed(identity_hash):
+            nonlocal policy_denials
+            allowed = original_allowed(identity_hash)
+            if not allowed: policy_denials += 1
+            return allowed
+        voice.caller_allowed = observed_allowed
         await voice.configure(True); await voice.start()
         phase = 0
         tone_until = 0.
@@ -75,7 +84,8 @@ def worker(source, folder, port, server, pipe, silent_control=False):
                         samples += len(pcm); energy += float(np.sum(pcm ** 2)); peak = max(peak, float(np.max(np.abs(pcm))))
                 await asyncio.sleep(.02)
         media_task = asyncio.create_task(media())
-        pipe.send(dict(address=voice.snapshot()['address']))
+        pipe.send(dict(address=voice.snapshot()['address'], identity=identity.hash.hex(),
+                       lxmf=RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity.hash).hex()))
         try:
             while True:
                 command = await asyncio.to_thread(pipe.recv)
@@ -86,13 +96,18 @@ def worker(source, folder, port, server, pipe, silent_control=False):
                         samples = energy = peak = 0; tone_until = time.monotonic() + command.get('seconds', 3)
                     elif op == 'reset': samples = energy = peak = 0
                     elif op == 'announce': await voice.announce_due(force=True)
+                    elif op == 'contacts-only':voice.set_call_policy({'telephone_allow_calls_from_contacts_only':True})
+                    elif op == 'approve':
+                        from voice_runtime import address
+                        contacts[address(command['address'])]={'name':'Approved private peer'}
+                        voice.refresh_call_contacts()
                     elif op == 'hangup': await voice.end()
                     elif op == 'profile':
                         await voice.set_profile(command['value'], dict(call_id=voice.call.id))
                     elif op == 'stop': pipe.send(dict(ok=True)); break
                     elif op != 'status': raise ValueError('Unknown private test command')
                     state = voice.snapshot()
-                    pipe.send(dict(ok=True, state=state, samples=samples,
+                    pipe.send(dict(ok=True, state=state, samples=samples, incoming_events=incoming_events, policy_denials=policy_denials,
                                    rms=(energy / samples) ** .5 if samples else 0, peak=peak,
                                    profiles=voice.profile_choices() if op == 'status' else None))
                 except Exception as error: pipe.send(dict(ok=False, error=str(error)))
@@ -130,7 +145,7 @@ def main():
     proof = dict(public_network=False, microphone=False, speaker=False, checks=[])
     with ExitStack() as stack:
         pipes = []
-        addresses = []
+        addresses = []; identities = []; lxmf_addresses = []
         for index in range(2):
             pipe, child = multiprocessing.get_context('spawn').Pipe()
             process = multiprocessing.get_context('spawn').Process(target=worker, args=(
@@ -144,14 +159,27 @@ def main():
                 process.close()
             stack.callback(cleanup)
             assert pipe.poll(30), 'Voice worker did not start'
-            addresses.append(pipe.recv()['address']); pipes.append(pipe)
+            ready=pipe.recv();addresses.append(ready['address']);identities.append(ready['identity']);lxmf_addresses.append(ready['lxmf']);pipes.append(pipe)
         assert addresses[0] != addresses[1]
         time.sleep(1)
         for pipe in pipes: rpc(pipe, 'announce')
+        # Verify a real signed caller is refused before ringing when absent
+        # from contacts, then admitted immediately after the local approval.
+        rpc(pipes[1], 'contacts-only')
+        rpc(pipes[0], 'dial', peer=addresses[1])
+        refused=wait(pipes, lambda rows: all(not r['state']['is_busy'] for r in rows))
+        assert refused[1]['policy_denials']>0, 'The signed caller did not reach the real incoming policy'
+        assert refused[1]['incoming_events']==0
+        assert refused[1]['state']['missed_calls_unread_count']==0
+        for index in range(2):
+            rpc(pipes[index], 'approve', address=lxmf_addresses[1-index])
+            rpc(pipes[index], 'contacts-only')
+        proof['unapproved_call_rejected_before_ringing']=True
         for caller in (0, 1):
             rpc(pipes[caller], 'dial', peer=addresses[1-caller])
             states = wait(pipes, lambda rows: all(r['state']['active_call'] and r['state']['active_call']['status'] == 6 for r in rows))
             assert all(row['state']['active_call']['remote_telephony_hash'] == addresses[1-i] for i, row in enumerate(states))
+            assert all(row['state']['active_call']['remote_identity_hash'] == identities[1-i] for i, row in enumerate(states))
             profiles = [None]
             if caller == 0:
                 available = states[0]['profiles']['audio_profiles']
