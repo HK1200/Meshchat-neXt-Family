@@ -27,7 +27,7 @@ cp "$family_ios/SIP-NOTICES.txt" "$probe/PrivacyInfo.xcprivacy" .
 cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
-cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" App/
+cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged

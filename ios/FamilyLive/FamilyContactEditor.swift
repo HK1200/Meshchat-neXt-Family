@@ -78,7 +78,7 @@ struct FamilyContactEditor: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done typing") { focusedField = nil }
+                Button("Done typing") { focusedField = nil; FamilyKeyboard.dismiss() }
                     .accessibilityIdentifier("finish-contact-editor-entry")
             }
         }

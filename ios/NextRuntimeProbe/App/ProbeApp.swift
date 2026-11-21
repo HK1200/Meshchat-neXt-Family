@@ -18,6 +18,7 @@ private struct PeerSettings: Encodable {
 
 private struct ProbeScreen: View {
     @ObservedObject var alerts: NextMessageAlerts
+    @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
@@ -131,7 +132,7 @@ private struct ProbeScreen: View {
                         exportError = problem; showExportError = true
                     }, onPreferencesError: { problem in
                         preferencesError = problem; showPreferencesError = true
-                    })
+                    }, onExternalLink: { target in openURL(target) })
                 }
             } else if let error {
                 VStack {
@@ -396,8 +397,9 @@ private struct ProbeWebView: UIViewRepresentable {
     let onExport: (URL) -> Void
     let onExportError: (String) -> Void
     let onPreferencesError: (String) -> Void
+    let onExternalLink: (URL) -> Void
 
-    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError, onPreferencesError: onPreferencesError) }
+    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError, onPreferencesError: onPreferencesError, onExternalLink: onExternalLink) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -442,11 +444,13 @@ private struct ProbeWebView: UIViewRepresentable {
     @MainActor
     final class NavigationGuard: NSObject, WKNavigationDelegate {
         let url: URL
+        let onExternalLink: (URL) -> Void
         let preferences: NextWebPreferencesBridge
         let downloads: NextAttachmentDownloads
         var requestedURL: URL
-        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void) {
+        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void, onExternalLink: @escaping (URL) -> Void) {
             self.url = url
+            self.onExternalLink = onExternalLink
             requestedURL = url
             preferences = NextWebPreferencesBridge(base: url, folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
                 onPreferencesError("Your interface settings could not be saved. Please try again before closing neXt.")
@@ -483,8 +487,15 @@ private struct ProbeWebView: UIViewRepresentable {
             let target = action.request.url
             if action.shouldPerformDownload {
                 decisionHandler(downloads.allows(target) ? .download : .cancel)
+            } else if downloads.isLocal(target) {
+                decisionHandler(action.targetFrame?.isMainFrame == true ? .allow : .cancel)
+            } else if NextExternalLinks.allows(target, userActivated: action.navigationType == .linkActivated), let target {
+                // Pass only the URL to the system browser. Never forward the
+                // app's authenticated URLRequest, cookies or session headers.
+                decisionHandler(.cancel)
+                onExternalLink(target)
             } else {
-                decisionHandler(action.targetFrame?.isMainFrame == true && downloads.isLocal(target) ? .allow : .cancel)
+                decisionHandler(.cancel)
             }
         }
     }

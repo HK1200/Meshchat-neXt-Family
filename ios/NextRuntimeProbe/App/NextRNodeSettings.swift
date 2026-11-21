@@ -83,7 +83,7 @@ struct NextRNodeSettings: View {
                         .disabled(!loaded || saving || !profile.canSave)
                         .accessibilityIdentifier("next-rnode-save")
                 }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done typing") { editing = false } }
+                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done typing") { editing = false; FamilyKeyboard.dismiss() } }
             }
             .task {
                 while !Task.isCancelled {

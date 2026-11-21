@@ -164,7 +164,7 @@ struct NextTCPConnections: View {
                     }
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
-                        Button("Done typing") { focusedField = nil }
+                        Button("Done typing") { focusedField = nil; FamilyKeyboard.dismiss() }
                     }
                 }
                 .task {

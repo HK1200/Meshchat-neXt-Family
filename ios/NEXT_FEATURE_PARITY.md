@@ -37,7 +37,7 @@ The separate neXt preview upgraded from 236.1 to 264.1. Its permanent identity a
 message database were byte-identical immediately after installation, and saved
 preferences matched. All eight original messages and both contacts remained.
 Subsequent private test exchanges added two signed file messages and two signed
-photo messages without creating or changing approved phonebook contacts.
+photo messages without creating or changing saved phonebook contacts.
 
 The file exchange survived an actual app restart. Attachment downloads matched
 exactly. The new process rejected its predecessor's session token, foreign

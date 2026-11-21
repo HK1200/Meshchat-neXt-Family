@@ -98,7 +98,7 @@ struct FamilyContactApproval: View {
             ToolbarItem(placement: .topBarTrailing) { Button("Back to settings") { dismiss() } }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done typing") { focusedField = nil }
+                Button("Done typing") { focusedField = nil; FamilyKeyboard.dismiss() }
                     .accessibilityIdentifier("finish-contact-entry")
             }
         }
