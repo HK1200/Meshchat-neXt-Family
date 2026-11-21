@@ -15,6 +15,7 @@ peer_pid=
 sip_pid=
 sip_incoming_pid=
 sip_outgoing_pid=
+owned_ui_simulators=("")
 cleanup() {
     for call_pid in "$sip_incoming_pid" "$sip_outgoing_pid"; do
         if [[ -n "$call_pid" ]]; then
@@ -23,6 +24,11 @@ cleanup() {
     done
     if [[ -n "$peer_pid" ]]; then kill "$peer_pid" 2>/dev/null || true; wait "$peer_pid" 2>/dev/null || true; fi
     if [[ -n "$sip_pid" ]]; then kill "$sip_pid" 2>/dev/null || true; wait "$sip_pid" 2>/dev/null || true; fi
+    for simulator in "${owned_ui_simulators[@]}"; do
+        [[ -n "$simulator" ]] || continue
+        xcrun simctl shutdown "$simulator" 2>/dev/null || true
+        xcrun simctl delete "$simulator" 2>/dev/null || true
+    done
     rm -rf -- "$scratch"
 }
 trap cleanup EXIT
@@ -185,7 +191,8 @@ case "${NEXT_PROBE_UNIT_ONLY:-false}" in
 esac
 # Hosted native tests initialize CPython, WebKit and audio. XCTest must not
 # reuse that host during its UI launch handoff. Keep independent real results
-# and require both phases; a reboot changes no source assertion or app data.
+# and require both phases. Native and UI hosts use distinct disposable
+# containers; UI restart/data-preservation assertions still run unchanged.
 run_device_tests() {
     local unit_result="$result_set/$device-native.xcresult"
     local ui_result="$result_set/$device-ui.xcresult"
@@ -204,8 +211,14 @@ run_device_tests() {
         cp "$result_set/$device-native-tests.json" "$result_set/$device-tests.json" || return $?
         return 0
     fi
-    # This is the disposable simulator selected above, never a USB device.
+    # A reboot alone still left Xcode attaching to a terminated unit-test
+    # host on iPad. Use a clean simulator of the same runtime and device type.
+    # This never clones/erases app data and never targets a USB device.
+    local ui_destination
+    ui_destination="$(python3 "$probe/fresh-simulator.py" "$destination" "$device")" || return $?
+    owned_ui_simulators+=("$ui_destination")
     xcrun simctl shutdown "$destination" || return $?
+    destination="$ui_destination"
     xcrun simctl bootstatus "$destination" -b || return $?
     failed_result_bundle="$ui_result"
     if xcodebuild test-without-building "${test_arguments[@]}" \
