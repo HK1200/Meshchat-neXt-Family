@@ -10,3 +10,6 @@ void next_probe_set_sip(NextBluetoothRequest request);
 
 void next_probe_request_listener_recovery(void);
 unsigned long next_probe_listener_generation(void);
+
+/* Caller frees the returned synthetic test report; NULL means not ready. */
+char *next_probe_check_voice_codecs(void);

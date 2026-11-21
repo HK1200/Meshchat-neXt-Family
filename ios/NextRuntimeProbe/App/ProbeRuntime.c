@@ -4,9 +4,11 @@
 #include "ProbeSignals.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdatomic.h>
 
 static _Atomic unsigned long listener_generation;
+static _Atomic int runtime_initialized;
 void next_probe_request_listener_recovery(void) {
     atomic_fetch_add_explicit(&listener_generation, 1, memory_order_relaxed);
 }
@@ -151,6 +153,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
         return;
     }
     PyConfig_Clear(&config);
+    atomic_store_explicit(&runtime_initialized, 1, memory_order_release);
     PyObject *module = PyImport_ImportModule("loopback_probe");
     PyObject *entry = module ? PyObject_GetAttrString(module, "run_for_app") : NULL;
     PyObject *path = entry ? PyUnicode_DecodeFSDefault(ready_file) : NULL;
@@ -160,4 +163,22 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
     Py_XDECREF(path);
     Py_XDECREF(entry);
     Py_XDECREF(module);
+}
+
+/* Called only by the native synthetic codec test, away from the main thread.
+ * Keep it within this interpreter; never initialize a second Python runtime. */
+char *next_probe_check_voice_codecs(void) {
+    if (!atomic_load_explicit(&runtime_initialized, memory_order_acquire)) return NULL;
+    PyGILState_STATE gil = PyGILState_Ensure();
+    PyObject *module = PyImport_ImportModule("voice_codec_probe");
+    PyObject *entry = module ? PyObject_GetAttrString(module, "run_json") : NULL;
+    PyObject *result = entry ? PyObject_CallNoArgs(entry) : NULL;
+    const char *json = result ? PyUnicode_AsUTF8(result) : NULL;
+    char *reply = json ? strdup(json) : strdup("{\"ok\":false,\"error\":\"Bundled LXST codec check failed\"}");
+    if (PyErr_Occurred()) PyErr_Print();
+    Py_XDECREF(result);
+    Py_XDECREF(entry);
+    Py_XDECREF(module);
+    PyGILState_Release(gil);
+    return reply;
 }

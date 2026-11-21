@@ -55,6 +55,9 @@ targets:
         script: |
           set -e
           export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
+          python3 "$PROJECT_DIR/VoiceBuild/install-room-wheels.py" "$PLATFORM_NAME" "$ARCHS" "$CODESIGNING_FOLDER_PATH/staged"
+          bash "$PROJECT_DIR/VoiceBuild/build-voice-codecs.sh" --slice "$PLATFORM_NAME" "$ARCHS"
+          python3 "$PROJECT_DIR/VoiceBuild/install-voice-runtime.py" "$PLATFORM_NAME" "$ARCHS" "$CODESIGNING_FOLDER_PATH" "$EXPANDED_CODE_SIGN_IDENTITY"
           source "$PROJECT_DIR/Python.xcframework/build/utils.sh"
           install_python Python.xcframework staged
   NextRuntimeProbeUnitTests:

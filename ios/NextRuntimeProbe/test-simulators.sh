@@ -38,6 +38,7 @@ cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/Family
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
+ln -s "$family_ios" VoiceBuild
 mkdir staged
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchatnext-frontend.zip \
@@ -59,6 +60,7 @@ cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" 
 cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" "$probe/durable_inbox.py" "$probe/offline_mailbox.py" "$probe/loopback_listener.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
+cp "$probe/voice_codec_probe.py" staged/
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-runtime.py"
 if [[ "$mode" == device ]]; then
@@ -81,6 +83,12 @@ YAML
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
     test -s "$app/SIP-NOTICES.txt"
+    lipo "$app/Frameworks/FamilyVoiceCodecs.framework/FamilyVoiceCodecs" -verify_arch arm64
+    test -s "$app/staged/LXST/Codecs/Opus.py"
+    test -s "$app/staged/LXST/Codecs/Codec2.py"
+    for notice in Opus-COPYING Codec2-COPYING audioop-LICENSE; do
+        test -s "$app/staged/voice-notices/$notice"
+    done
     test -s "$app/PrivacyInfo.xcprivacy"
     plutil -lint "$app/PrivacyInfo.xcprivacy"
     test ! -e "$app/staged/peer.json"

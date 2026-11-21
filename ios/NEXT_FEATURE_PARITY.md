@@ -393,3 +393,16 @@ pump running; the explicit end/disconnect path remains unchanged. All 239 backen
 checks, 12 staged account/HTTP/lifecycle checks and 13 native-adapter Python checks
 passed locally. The new app-hosted native ownership check still requires Xcode.
 This addresses a resume race; it does not establish suspended call availability.
+
+
+## Reticulum voice codec foundation
+
+The neXt preview now packages the same pinned LXST, NumPy, Opus and Codec2
+runtime used by Family. Packaging retains the upstream notices and verifies
+native device architecture. A new native test runs actual synthetic
+encode/decode round trips through the embedded interpreter for three Opus
+voice profiles and three Codec2 modes; it uses no microphone or network.
+The equivalent local checks passed with the exact iOS Codec2 adapter, including
+failure checks for silence and invalid PCM. Xcode verification is pending.
+This is a prerequisite for neXt Reticulum calls; call setup, native PCM exchange
+and system call controls are not connected by this packaging change.
