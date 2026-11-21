@@ -228,6 +228,13 @@ int family_sip_run(const char *user, const char *host, int port,
         "dns_getaddrinfo yes\n";
     err = conf_configure_buf((const uint8_t *)config, strlen(config));
     if (err) goto close;
+#ifdef FAMILY_SIP_TEST_LOOPBACK
+    /* Baresip normally excludes loopback interfaces. Private simulator tests
+     * explicitly select only their own loopback address, including IPv6. */
+    if (strcmp(host, "127.0.0.1") && strcmp(host, "[::1]")) { err = EINVAL; goto close; }
+    snprintf(conf_config()->net.ifname, sizeof(conf_config()->net.ifname), "%s",
+             !strcmp(host, "[::1]") ? "::1" : "127.0.0.1");
+#endif
     err = baresip_init(conf_config());
     if (err) goto close;
     err = ua_init("neXt Family iOS", true, false, false);
