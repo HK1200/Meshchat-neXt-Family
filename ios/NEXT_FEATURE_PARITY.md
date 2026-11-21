@@ -321,3 +321,10 @@ changing access credentials; renderer termination also reloads the local view.
 Real socket-loss/rebind tests cover access preservation, transient bind failure
 and 25 recovery cycles without descriptor growth. Physical lock/unlock recovery
 and locked calls still require retesting after Xcode qualification.
+
+Run 44931472088 passed all 61 checks on iPad. Its iPhone native checks passed,
+but the UI runner timed out querying keyboard absence. The recording shows the
+keyboard already hidden and an Apple Intelligence system banner remaining over
+the TCP form. The follow-up test dismisses only that positively identified
+simulator notice and retains the keyboard-absence, saved-peer, profile and signed
+reply assertions. A passing rerun is still required.

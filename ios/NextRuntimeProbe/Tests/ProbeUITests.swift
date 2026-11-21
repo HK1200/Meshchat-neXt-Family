@@ -365,7 +365,17 @@ final class ProbeUITests: XCTestCase {
         let done = app.buttons["Done typing"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
         done.tap()
+        dismissSimulatorSystemNotice()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
+    }
+
+    private func dismissSimulatorSystemNotice() {
+        // The failure recording shows the keyboard already closed while this
+        // simulator-only system banner remains over the app. Dismiss only the
+        // positively identified notice; retain the actual keyboard assertion.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notice = springboard.staticTexts["Ready for Apple Intelligence"].firstMatch
+        if notice.waitForExistence(timeout: 1) { notice.swipeUp() }
     }
 
     private func saveConnections(_ app: XCUIApplication, form: XCUIElement) {
