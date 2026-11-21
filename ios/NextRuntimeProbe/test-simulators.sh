@@ -13,7 +13,11 @@ probe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/next-runtime-probe.XXXXXXXX")"
 peer_pid=
 sip_pid=
+sip_call_pids=()
 cleanup() {
+    for call_pid in "${sip_call_pids[@]}"; do
+        kill "$call_pid" 2>/dev/null || true; wait "$call_pid" 2>/dev/null || true
+    done
     if [[ -n "$peer_pid" ]]; then kill "$peer_pid" 2>/dev/null || true; wait "$peer_pid" 2>/dev/null || true; fi
     if [[ -n "$sip_pid" ]]; then kill "$sip_pid" 2>/dev/null || true; wait "$sip_pid" 2>/dev/null || true; fi
     rm -rf -- "$scratch"
@@ -113,6 +117,19 @@ for ((i=0; i<100; i++)); do
 done
 [[ -f "$scratch/sip/account.json" ]] || { cat "$scratch/sip.log"; exit 1; }
 cp "$scratch/sip/account.json" Tests/sip-account.json
+for direction in incoming outgoing; do
+    python3 "$probe/sip_call_fixture.py" "$scratch/sip-$direction" "$direction" > "$scratch/sip-$direction.log" 2>&1 &
+    call_pid=$!
+    sip_call_pids+=("$call_pid")
+    for ((i=0; i<100; i++)); do
+        [[ ! -f "$scratch/sip-$direction/account.json" ]] || break
+        kill -0 "$call_pid" 2>/dev/null || { cat "$scratch/sip-$direction.log"; exit 1; }
+        sleep 0.1
+    done
+    [[ -f "$scratch/sip-$direction/account.json" ]] || { cat "$scratch/sip-$direction.log"; exit 1; }
+    cp "$scratch/sip-$direction/account.json" "Tests/sip-$direction.json"
+done
+
 
 xcodegen generate
 mkdir -p "$family_ios/RuntimeBuild/next-results"
@@ -174,6 +191,17 @@ assert value.get("authenticated") is True and value.get("unregistered") is True 
 assert value.get("registrations",0)>=int(sys.argv[3]) and value.get("unregistrations",0)>=int(sys.argv[3]), "A simulator reused a previous account proof"
 Path(sys.argv[2]).write_text(json.dumps(value,sort_keys=True)+"\n")
 PYTHON
+        for direction in incoming outgoing; do
+            python3 - "$scratch/sip-$direction/observed.json" "$result_set/$device-sip-$direction-proof.json" "$sip_expected" <<'PYTHON'
+import json,sys
+from pathlib import Path
+value=json.loads(Path(sys.argv[1]).read_text())
+assert value.get("host")=="127.0.0.1" and value.get("authenticated") is True
+for field in ("registrations","unregistrations","completed_calls"):
+    assert value.get(field,0)>=int(sys.argv[3]), "Native SIP direction lacks fresh wire proof: "+field
+Path(sys.argv[2]).write_text(json.dumps(value,sort_keys=True)+"\n")
+PYTHON
+        done
         # Release the previous simulator before testing the other device family.
         xcrun simctl shutdown "$destination" || true
     else

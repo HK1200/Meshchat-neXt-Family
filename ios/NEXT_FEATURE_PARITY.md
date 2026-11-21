@@ -152,3 +152,12 @@ call-controller cases and a linked-session case await native Xcode execution.
 Live calls, speaker/headset routing, interruptions and locked answering still
 need verification on this neXt build. These implementations do not establish
 fully suspended internet delivery or APNs, and Apple enrollment remains on hold.
+
+
+The SIP account build at `989d326` passed all 50 executed native/UI cases on
+each simulator (run 44917304591). Its device build passed as well. The native
+calling build compiled for arm64; its expanded tests are running. Two additional
+app-hosted wire tests now use private loopback peers to verify an outgoing
+INVITE/rejection and incoming decline without microphone capture. The fixture
+requires a fresh authenticated registration, completed call and logout for each
+simulator, including when both run sequentially. Its four local wire checks pass.
