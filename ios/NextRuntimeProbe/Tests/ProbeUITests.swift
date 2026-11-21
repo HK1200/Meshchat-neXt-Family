@@ -22,6 +22,7 @@ final class ProbeUITests: XCTestCase {
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.webViews.textViews.firstMatch.exists, "The inactive page must not be accessible behind the native form")
         waitUntilLoaded(app)
         let primary = app.textFields["tcp-peer-port-peer-0"]
         reveal(primary, in: form, up: false)
@@ -265,7 +266,7 @@ final class ProbeUITests: XCTestCase {
         // and wait for WebKit's settled accessibility value before comparing.
         name.typeText("Simulator profile")
         let completeName = web.textFields.matching(NSPredicate(
-            format: "label == %@ AND value == %@", "Display Name", "Simulator profile"
+            format: "placeholderValue == %@ AND value == %@", "Display Name", "Simulator profile"
         )).firstMatch
         XCTAssertTrue(completeName.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(name.value as? String, "Simulator profile", app.debugDescription)
@@ -355,9 +356,11 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         if !previous.isEmpty {
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
-            let cleared = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "value == nil OR value == '' OR value == %@", placeholder), object: field)
-            XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 10), .completed, app.debugDescription)
+            let cleared = app.textFields.matching(NSPredicate(
+                format: "identifier == %@ AND (value == nil OR value == '' OR value == %@)",
+                field.identifier, placeholder
+            )).firstMatch
+            XCTAssertTrue(cleared.waitForExistence(timeout: 20), app.debugDescription)
         }
         // A new blank row has nothing to delete. Do not poll its placeholder
         // through a block predicate that repeatedly requests full AX snapshots.
@@ -365,9 +368,12 @@ final class ProbeUITests: XCTestCase {
         app.typeText(value)
         // The video shows the complete hostname before accessibility finishes
         // publishing it. Wait for the exact value, never accept a prefix.
-        let updated = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", value), object: field)
-        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 10), .completed, app.debugDescription)
+        // Match on the remote accessibility server rather than polling a
+        // KVC property that repeatedly snapshots the entire embedded page.
+        let updated = app.textFields.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", field.identifier, value
+        )).firstMatch
+        XCTAssertTrue(updated.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(field.value as? String, value, app.debugDescription)
         let done = app.buttons["Done typing"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)

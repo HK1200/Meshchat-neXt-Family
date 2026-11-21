@@ -361,3 +361,20 @@ name. A separate iPhone retry failed before entering any text because its softwa
 keyboard never appeared after focusing a valid visible native field. Simulator
 jobs now explicitly disable the runner's hardware-keyboard attachment and verify
 that preference before boot/testing; all real keyboard assertions remain.
+
+The following UI repair corrects two test-query problems without dropping checks:
+the web profile's stable name is its placeholder, not its label once filled, and
+native text replacement now matches identifier/value on the accessibility server
+instead of repeatedly polling KVC through a complete WebKit hierarchy. Native
+forms also explicitly hide their inactive web page from accessibility while
+presented, so VoiceOver and UI automation do not traverse controls behind a modal.
+A new UI assertion requires that inactive composer to be hidden and the existing
+post-dismissal composer and messaging checks remain mandatory.
+
+On physical build 291.1, the owner confirmed no SIP alert while locked; the private
+peer likewise received no ringing response, including on the retransmitting
+retry. With neXt open, the subsequent incoming SIP control authenticated, rang,
+declined and logged out successfully. Temporary accounts were removed. The
+locked-call/background wake path remains incomplete; a VoIP background declaration
+alone is not proof that suspended calls are available. Real PushKit/APNs
+qualification is still held with Apple enrollment.

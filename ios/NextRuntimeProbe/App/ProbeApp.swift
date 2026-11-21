@@ -133,7 +133,7 @@ private struct ProbeScreen: View {
                             .padding(.vertical, 4)
                             .task(id: url) { await watchConnection(at: url) }
                     }
-                    ProbeWebView(url: url, onExport: { file in
+                    ProbeWebView(url: url, modalPresented: panel != nil, onExport: { file in
                         exportFolder = file.deletingLastPathComponent()
                         exportItem = NextExportItem(file: file)
                     }, onExportError: { problem in
@@ -414,6 +414,7 @@ private struct ProbeScreen: View {
 @MainActor
 private struct ProbeWebView: UIViewRepresentable {
     let url: URL
+    let modalPresented: Bool
     let onExport: (URL) -> Void
     let onExportError: (String) -> Void
     let onPreferencesError: (String) -> Void
@@ -442,12 +443,16 @@ private struct ProbeWebView: UIViewRepresentable {
             )
         }
         let view = WKWebView(frame: .zero, configuration: configuration)
+        view.accessibilityElementsHidden = modalPresented
         view.navigationDelegate = context.coordinator
         if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
         return view
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
+        // A presented native form owns interaction; keep its inactive WebKit
+        // page out of VoiceOver and accessibility snapshots until dismissal.
+        view.accessibilityElementsHidden = modalPresented
         // React only to an explicit native route request. Comparing view.url
         // itself would overwrite ordinary in-page navigation on every redraw.
         if context.coordinator.requestedURL != url {
