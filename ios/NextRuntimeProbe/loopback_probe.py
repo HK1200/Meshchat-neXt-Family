@@ -332,11 +332,12 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
     voice = None
+    maps = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -486,6 +487,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         path = request.match_info["path"]
         responses["status"]["inbox_error"] = inbox.error
         if request.method == "GET":
+            if maps and path == "config": config.update(maps.settings())
             if path == "preview/mailbox":
                 return web.json_response(mailbox.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/rnode":
@@ -610,6 +612,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method == "PATCH" and path == "config":
             try:
                 payload = await request.json()
+                if maps and isinstance(payload, dict) and maps.map_keys.intersection(payload):
+                    config.update(maps.update_settings(payload))
+                    return web.json_response({"config": config})
                 voice_keys = {"telephone_enabled", "telephone_audio_profile_id", "telephone_call_mode_id", *voice.call_policy} if voice else set()
                 if voice and isinstance(payload, dict) and voice_keys.intersection(payload):
                     if len(payload) != 1: raise ValueError("Change one call setting at a time")
@@ -789,6 +794,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         async def stop_voice(_): await voice.close()
         app.on_startup.append(start_voice)
         app.on_cleanup.append(stop_voice)
+    if map_factory:
+        maps = map_factory(ready_file.parent, probe.source.identity, probe.reticulum,
+                           lambda event: track(meshcore_broadcast(event)))
+        config.update(maps.settings())
+        maps.register(app.router)
+        async def start_maps(_): await maps.start()
+        async def stop_maps(_): await maps.close()
+        app.on_startup.append(start_maps)
+        app.on_cleanup.append(stop_maps)
     if meshcore:
         meshcore.register(app.router)
         await meshcore.start()
@@ -860,8 +874,9 @@ def run_for_app(ready_file):
         from meshcore_runtime import NextMeshCore
         from sip_runtime import NextSIPRuntime
         from voice_runtime import ReticulumVoice
+        from map_runtime import MapRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

@@ -2,17 +2,23 @@ import SwiftUI
 import AVFoundation
 import CoreBluetooth
 import UserNotifications
+import CoreLocation
 
 @MainActor
-private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentralManagerDelegate {
+private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentralManagerDelegate, @preconcurrency CLLocationManagerDelegate {
     @Published private(set) var bluetooth = CBManager.authorization
     @Published private(set) var microphone = AVAudioApplication.shared.recordPermission
     @Published private(set) var camera = AVCaptureDevice.authorizationStatus(for: .video)
+    @Published private(set) var location = CLAuthorizationStatus.notDetermined
+    private lazy var locationManager: CLLocationManager = {
+        let manager = CLLocationManager(); manager.delegate = self; return manager
+    }()
     private var manager: CBCentralManager?
     func refresh() {
         microphone = AVAudioApplication.shared.recordPermission
         bluetooth = CBManager.authorization
         camera = AVCaptureDevice.authorizationStatus(for: .video)
+        location = locationManager.authorizationStatus
     }
     func requestBluetooth() {
         guard bluetooth == .notDetermined, manager == nil else { return }
@@ -32,6 +38,11 @@ private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentr
         _ = await AVCaptureDevice.requestAccess(for: .video)
         refresh()
     }
+    func requestMapLocation() {
+        guard locationManager.authorizationStatus == .notDetermined else { return }
+        locationManager.requestWhenInUseAuthorization()
+    }
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { refresh() }
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor [weak self] in self?.refresh() }
     }
@@ -47,7 +58,7 @@ struct NextPermissionCheckup: View {
     @State private var step = 0
     @State private var busy = false
     @State private var error = ""
-    private let titles = ["Message notifications", "Bluetooth radios", "Microphone for calls", "Camera", "Files and photos", "Local network", "Screen locked and background delivery"]
+    private let titles = ["Message notifications", "Bluetooth radios", "Microphone for calls", "Camera", "Files and photos", "Local network", "Map location", "Screen locked and background delivery"]
 
     var body: some View {
         NavigationStack {
@@ -124,6 +135,12 @@ struct NextPermissionCheckup: View {
             Text("iOS may ask for Local Network access when you connect to a Reticulum peer, radio or SIP provider on your home network. Public internet services do not require that permission.")
             Text("Make the local connection from TCP connections, RNode or SIP accounts first, then tap Allow when iOS asks. If local access was blocked, enable Local Network for neXt in device settings. The switch may be absent until the first local connection attempt.").foregroundStyle(.secondary)
             settingsButton
+        case 6:
+            Text("Location is optional. Allow it to center the map on your current position. Reviewing this guide does not request a position or send your location to a contact.")
+            LabeledContent("Location", value: optional.location == .authorizedWhenInUse || optional.location == .authorizedAlways ? "Allowed" : "Not allowed yet")
+            if optional.location == .notDetermined {
+                Button("Allow location for maps") { optional.requestMapLocation() }.buttonStyle(.bordered)
+            } else if optional.location != .authorizedWhenInUse && optional.location != .authorizedAlways { settingsButton }
         default:
             Text("iOS can suspend neXt after you leave it or lock the screen. A connected Bluetooth radio can wake it briefly when iOS permits. There is no always-running iOS service.")
             Text("Internet-only message alerts while fully suspended, and incoming calls in that state, are not available in this preview. Notification permission cannot remove that iOS limit.").foregroundStyle(.secondary)

@@ -221,11 +221,11 @@ final class ProbeUITests: XCTestCase {
     private func verifyPermissionSteps(_ app: XCUIApplication) {
         let guide = app.navigationBars["Permission checkup"]
         XCTAssertTrue(guide.waitForExistence(timeout: 10), app.debugDescription)
-        for index in 1...7 {
-            XCTAssertEqual(app.staticTexts["next-permission-step"].label, "Step \(index) of 7")
+        for index in 1...8 {
+            XCTAssertEqual(app.staticTexts["next-permission-step"].label, "Step \(index) of 8")
             // Reviewing explanations must not request access, scan or connect.
             XCTAssertFalse(app.alerts.firstMatch.exists, app.debugDescription)
-            if index < 7 { app.buttons["Next"].tap() }
+            if index < 8 { app.buttons["Next"].tap() }
         }
         app.buttons["Finish checkup"].tap()
         XCTAssertTrue(guide.waitForNonExistence(timeout: 10), app.debugDescription)

@@ -58,6 +58,10 @@ jobs:
             --output temp-tests/voice-source/backend.whl
           python ios/NextRuntimeProbe/stage-backend.py \
             temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only
+      - name: Verify private offline maps, imports and restart preservation
+        run: |
+          python ios/NextRuntimeProbe/test-maps-runtime.py \
+            --backend-source temp-tests/voice-source/staged --work-dir temp-tests/maps-network
       - name: Confirm silence cannot pass the media proof
         run: |
           if python ios/NextRuntimeProbe/test-voice-loopback.py \
@@ -76,6 +80,8 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: next-ios-encrypted-voice-proof
-          path: temp-tests/voice-network/proof.json
+          path: |
+            temp-tests/voice-network/proof.json
+            temp-tests/maps-network/proof.json
           if-no-files-found: error
           retention-days: 14

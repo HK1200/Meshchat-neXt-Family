@@ -29,7 +29,11 @@ def stage(wheel, destination, family_ios, *, voice_only=False):
             if path.parts[0] != "meshchatnext" and ".dist-info" not in path.parts[0]:
                 continue
             # Code plus upstream notices; the frontend is already staged separately.
-            if path.parts[0] == "meshchatnext" and path.suffix not in (".py", ".json", ".txt", ".md"):
+            map_resource = entry.filename in (
+                "meshchatnext/src/backend/data/map/starter_world.mbtiles",
+                "meshchatnext/src/backend/data/map/ne_110m_land.geojson",
+            )
+            if path.parts[0] == "meshchatnext" and path.suffix not in (".py", ".json", ".txt", ".md") and not map_resource:
                 continue
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)

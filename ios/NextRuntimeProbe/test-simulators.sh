@@ -64,6 +64,8 @@ cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
+cp "$probe/map_runtime.py" staged/map_runtime.py
+cp "$family_ios/../app/src/main/python/family_maps.py" staged/family_maps.py
 cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py
 cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"

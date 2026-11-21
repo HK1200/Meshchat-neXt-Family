@@ -28,6 +28,7 @@ targets:
         NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
         NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
+        NSLocationWhenInUseUsageDescription: Use your location when you choose to center the map.
         NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
         UIBackgroundModes: [bluetooth-central, audio, voip]
         NSBluetoothAlwaysUsageDescription: Connect to the RNode or MeshCore companion you choose for mesh messaging.

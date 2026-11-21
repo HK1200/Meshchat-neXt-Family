@@ -27,7 +27,8 @@ into the app; physical verification is stated separately.
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
 | SIP | Native Keychain accounts, registration, CallKit and audio controls are integrated. Both native simulator suites passed; physical iPad foreground calls, answering, test-tone output, bidirectional RTP and clean ending/logout passed | Locked incoming alert failed on the iPad. Complete VoIP push/wake integration and physical phone, speech, route and interruption tests |
 | Reticulum voice | Native CallKit controls, AVAudioEngine PCM, existing neXt telephone actions, contact identities, profiles and duplex/PTT are integrated; codec round trips pass on both simulators | Both simulators and strict encrypted-media CI pass; physical speech, interruptions, echo and locked incoming calls remain unqualified |
-| Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
+| Maps | The released map backend is integrated: offline tiles, validated imports, selection/removal, drawings, overlays and map-data catalogs. Private HTTP tests prove signed discovery/catalog transfer, exact file hashes, imports above the message-size limit and preservation across invalid uploads and restarts | Native map rendering, download/share pickers and regional downloads need Xcode/device verification |
+| Location and telemetry | Optional map-centering permission is explained; reviewing the guide requests no position | Wire the native location/telemetry backend, sharing sessions and pin updates; verify expiry, stopping and background behavior |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
@@ -78,8 +79,9 @@ those require device tests.
   including headset changes, interruptions, quality switching and locked alerts.
 * neXt radio tests must cover both Bluetooth radios, approved incoming messages,
   power cycles and network transitions. Existing Family results remain separate.
-* Maps, location, Relay Chat and other Reticulum tools need their real backend
-  integrations; bundled frontend menus are not proof of a working service.
+* The map backend is wired and privately tested; its native UI/download checks
+  remain pending. Location sharing, Relay Chat and other Reticulum tools still
+  need real backend integration. Bundled menus do not qualify those services.
 * Outbound propagation, suspended mailbox scheduling, push enrollment and complete
   identity/settings recovery need integration and device verification.
 * A physical iPhone is still needed for the final phone-specific reliability

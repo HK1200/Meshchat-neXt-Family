@@ -21,4 +21,17 @@ final class AttachmentPolicyTests: XCTestCase {
             XCTAssertFalse(policy.allows(URL(string: path)), path)
         }
     }
+
+    @MainActor
+    func testMapExportsUseTheirOwnBoundWithoutIncreasingMessageAttachmentLimit() throws {
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:55444/"))
+        let policy = NextAttachmentDownloads(base: base, onComplete: { _ in XCTFail() }, onError: { _ in XCTFail() })
+        let map = "http://127.0.0.1:55444/api/v1/map/export/0123456789abcdef/download"
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: map)), 2 * 1024 * 1024 * 1024)
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: "http://127.0.0.1:55444/api/v1/lxmf-messages/attachment/" + String(repeating: "a", count: 64) + "/file")), 10_000_000)
+        for invalid in [map.replacingOccurrences(of: "55444", with: "55445"), map + "/other", map.replacingOccurrences(of: "0123456789abcdef", with: "wrong"), map.replacingOccurrences(of: "127.0.0.1", with: "example.invalid")] {
+            XCTAssertNil(policy.downloadLimit(for: URL(string: invalid)))
+        }
+    }
+
 }
