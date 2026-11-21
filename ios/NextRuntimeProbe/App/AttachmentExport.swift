@@ -60,7 +60,7 @@ final class NextAttachmentDownloads: NSObject, WKDownloadDelegate {
 
     func start(_ download: WKDownload) {
         guard active == nil else { download.cancel { _ in }; return }
-        guard let allowed = downloadLimit(for: download.originalRequest.url) else { download.cancel { _ in }; return }
+        guard let allowed = downloadLimit(for: download.originalRequest?.url) else { download.cancel { _ in }; return }
         limit = allowed
         active = download
         download.delegate = self
