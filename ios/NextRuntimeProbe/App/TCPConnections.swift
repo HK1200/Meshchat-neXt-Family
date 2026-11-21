@@ -111,6 +111,8 @@ struct NextTCPConnections: View {
     @State private var busy = false
     @State private var loaded = false
     @State private var scrollTarget: String?
+    private enum Field: Hashable { case host(String), port(String) }
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         NavigationStack {
@@ -125,8 +127,10 @@ struct NextTCPConnections: View {
                                 .accessibilityIdentifier("tcp-peer-enabled-\(draft.id)")
                             TextField("Hostname or IP address", text: $draft.host)
                                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                                .focused($focusedField, equals: .host(draft.id))
                                 .accessibilityIdentifier("tcp-peer-host-\(draft.id)")
                             TextField("Port", text: $draft.port).keyboardType(.numberPad)
+                                .focused($focusedField, equals: .port(draft.id))
                                 .accessibilityIdentifier("tcp-peer-port-\(draft.id)")
                             Text(status(for: draft)).foregroundStyle(.secondary)
                                 .accessibilityIdentifier("tcp-peer-status-\(draft.id)")
@@ -160,7 +164,7 @@ struct NextTCPConnections: View {
                     }
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
-                        Button("Done typing") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                        Button("Done typing") { focusedField = nil }
                     }
                 }
                 .task {
@@ -203,6 +207,7 @@ struct NextTCPConnections: View {
     }
 
     private func save() async {
+        focusedField = nil
         busy = true
         defer { busy = false }
         do {

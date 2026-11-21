@@ -255,10 +255,18 @@ final class ProbeUITests: XCTestCase {
     private func replace(_ field: XCUIElement, with value: String, in app: XCUIApplication) {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         let previous = field.value as? String ?? ""
+        XCTAssertTrue(field.isEnabled, app.debugDescription)
         field.tap()
+        // The first touch after scrolling may stop deceleration rather than
+        // focus the field. Require the real keyboard before sending any text.
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count) + value)
+        XCTAssertEqual(field.value as? String, value, app.debugDescription)
         let done = app.buttons["Done typing"]
-        if done.exists { done.tap() }
+        XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
     }
 
     private func saveConnections(_ app: XCUIApplication, form: XCUIElement) {
@@ -267,6 +275,7 @@ final class ProbeUITests: XCTestCase {
         save.tap()
         let saved = app.staticTexts["tcp-peers-saved"]
         reveal(saved, in: form)
+        waitUntilLoaded(app)
     }
 
 }
