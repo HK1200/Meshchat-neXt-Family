@@ -21,6 +21,13 @@ private final class WireSystemDriver: FamilySystemCallDriver {
 }
 
 final class SIPNativeWireTests: XCTestCase {
+    func testActualHostDeclaresTheCallKitBackgroundModes() {
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        XCTAssertTrue(Set(["audio", "voip"]).isSubset(of: Set(modes)))
+        let microphone = Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String ?? ""
+        XCTAssertFalse(microphone.isEmpty)
+    }
+
     @MainActor
     func testActualNativeOutgoingRequestReceivesBusyAndCloses() async throws {
         try await exercise("outgoing")

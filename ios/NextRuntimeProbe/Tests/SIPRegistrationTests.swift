@@ -92,6 +92,7 @@ final class SIPRegistrationTests: XCTestCase {
 
 @MainActor
 private final class LinkedSIPCalls: NextSIPCallManaging {
+    var diagnostic = ""
     var controls: [[String: Any]] = []
     var received: [(String, String, String)] = []
     var closes = 0
@@ -127,6 +128,10 @@ extension SIPRegistrationTests {
         driver.events?("registered","",0,"")
         XCTAssertEqual(service.perform(dial)["ok"] as? Bool,true)
         XCTAssertEqual(calls?.controls.count,1)
+        calls?.diagnostic = "Synthetic system-call failure"
+        XCTAssertEqual(service.perform(["op":"capabilities"])["system_call_error"] as? String,"Synthetic system-call failure")
+        calls?.diagnostic = ""
+        XCTAssertEqual(service.perform(["op":"capabilities"])["system_call_error"] as? String,"")
         driver.events?("incoming","sip:9002@127.0.0.1",0,"native-incoming")
         XCTAssertEqual(calls?.received.first?.1,"sip:9002@127.0.0.1")
         let events = service.perform(["op":"poll","session":id])["events"] as? [[String: Any]]

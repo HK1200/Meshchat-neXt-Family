@@ -223,6 +223,21 @@ def test_reading_microphone_status_never_connects_or_requests_access(tmp_path):
     assert not Engine.instances and not (tmp_path/'sip/accounts.json').exists()
 
 
+def test_system_call_failures_are_visible_and_clear_without_connecting(tmp_path):
+    Engine.instances.clear()
+    capability = {'calling_available': True, 'microphone_permission': 'granted',
+                  'system_call_error': 'iOS could not show this call. Please try again.'}
+    runtime = NextSIPRuntime(tmp_path, device=True, vault=Vault(), engine_factory=Engine,
+                            capability_provider=lambda: capability)
+    assert runtime.status()['error'] == capability['system_call_error']
+    capability['system_call_error'] = ''
+    assert not runtime.status().get('error')
+    for invalid in ('private\ninternal', 'x' * 241, {'unsafe': True}):
+        capability['system_call_error'] = invalid
+        assert runtime.status()['system_call_error'] == ''
+    assert not Engine.instances and not (tmp_path/'sip/accounts.json').exists()
+
+
 if __name__ == "__main__":
     import tempfile
     checks = [test_actual_service_constructs_without_connecting_or_disclosing_password,
@@ -232,7 +247,8 @@ if __name__ == "__main__":
               test_native_route_change_retires_old_engine_and_obeys_allowed_networks,
               test_actual_private_server_protects_sip_routes,
               test_linked_call_routes_require_the_displayed_call_identity,
-              test_reading_microphone_status_never_connects_or_requests_access]
+              test_reading_microphone_status_never_connects_or_requests_access,
+              test_system_call_failures_are_visible_and_clear_without_connecting]
     for check in checks:
         with tempfile.TemporaryDirectory(prefix="next-private-sip-runtime-") as folder:
             check(Path(folder))

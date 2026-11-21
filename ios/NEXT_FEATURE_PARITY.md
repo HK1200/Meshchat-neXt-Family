@@ -277,3 +277,28 @@ structurally. All 235 iOS backend checks pass, including a regression using the
 real Null mixer before and after the backport. Native packing is being rerun.
 This does not claim that neXt's Reticulum call screen or native PCM bridge is
 already integrated.
+
+## Physical SIP registration and incoming-call repair
+
+The separate physical preview 285.1 completed signed exchanges in both directions
+against private Mint test peers attached individually to RMAP 4343, RMAP 4242,
+WashMesh 7242 and Chicago 4242. The iPad retained its four enabled peers; this does
+not prove that each iPad connection was forced independently. Synthetic messages
+were removed afterward, preserving the original twelve messages and two contacts.
+
+Actual SIP testing identified two independent restrictions: the iPad's Local
+Network permission and Mint's inbound firewall. With owner-approved temporary
+access limited to the iPad and private SIP port, authenticated registration worked.
+The incoming call was immediately declined until the neXt package included the
+VoIP background declaration already present in Family. A controlled 285.2 personal
+test changed only that package declaration and the build number, retaining the
+qualified 285.1 compiled code. It then passed authenticated registration, incoming
+call state, explicit decline and clean logout. Its temporary account and Keychain
+secret were removed. This verifies signaling, not speech, locked-screen alerts or
+fully suspended internet availability. Regular Family remains unchanged.
+
+The source now verifies the packaged audio/VoIP declarations in native tests and
+reports native system-call failures through SIP status. The iPad profile test also
+uses the displayed Select All menu's current frame after recordings showed the
+menu present while XCTest stalled resolving its tap. All text replacement,
+profile persistence, restart and signed-message assertions remain required.

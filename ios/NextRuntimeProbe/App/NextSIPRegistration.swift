@@ -51,7 +51,8 @@ final class NextSIPRegistration {
             }
             return ["ok": true, "calling_available": makeCalls != nil,
                     "default_speaker": UIDevice.current.userInterfaceIdiom == .pad,
-                    "microphone_permission": microphone]
+                    "microphone_permission": microphone,
+                    "system_call_error": session?.calls?.diagnostic ?? ""]
         }
         if operation == "networks" { return ["ok": true, "networks": network.snapshot()] }
         guard let id = value["session"] as? String,

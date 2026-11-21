@@ -81,9 +81,15 @@ class NextSIPRuntime:
 
     def status(self):
         microphone = "unknown"
+        system_error = ""
         if self.capability_provider:
             try:
-                candidate = self.capability_provider().get("microphone_permission")
+                capabilities = self.capability_provider()
+                candidate = capabilities.get("microphone_permission")
+                diagnostic = capabilities.get("system_call_error", "")
+                if (isinstance(diagnostic, str) and len(diagnostic) <= 240
+                        and not any(ord(character) < 32 or ord(character) == 127 for character in diagnostic)):
+                    system_error = diagnostic
                 if candidate in ("granted", "denied", "not_determined"):
                     microphone = candidate
             except (ConnectionError, RuntimeError):
@@ -96,7 +102,9 @@ class NextSIPRuntime:
                      available=self.service is not None and self.calling_available,
                      calling_available=self.calling_available, microphone_permission=microphone,
                      speaker=getattr(self.service, "speaker", self.default_speaker),
-                     native_telecom_available=self.calling_available)
+                     native_telecom_available=self.calling_available, system_call_error=system_error)
+        if system_error and not value.get("error"):
+            value["error"] = system_error
         if self.error:
             value["error"] = self.error
         return value

@@ -6,9 +6,14 @@ import UIKit
 
 @MainActor
 protocol NextSIPCallManaging: AnyObject {
+    var diagnostic: String { get }
     func perform(_ value: [String: Any]) -> Bool
     func receive(_ state: String, peer: String, code: Int32, id: String)
     func close()
+}
+
+extension NextSIPCallManaging {
+    var diagnostic: String { "" }
 }
 
 @MainActor
@@ -63,6 +68,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
     private var retired: [String] = []
     private var closed = false
     private var observations = Set<AnyCancellable>()
+    var diagnostic: String { system.error }
 
     init(driver: any NextSIPDriving, system: FamilySystemCalls,
          audio: any NextSIPCallAudio, observeAudio: Bool = true,

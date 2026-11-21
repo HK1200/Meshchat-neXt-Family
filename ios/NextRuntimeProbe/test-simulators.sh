@@ -87,6 +87,12 @@ YAML
     test ! -e "$app/sip-account.json"
     /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
     /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null
+    python3 - "$app/Info.plist" <<'PYTHON'
+import plistlib, sys
+with open(sys.argv[1], 'rb') as stream:
+    value = plistlib.load(stream)
+assert {'audio', 'voip'}.issubset(value.get('UIBackgroundModes', [])), 'CallKit requires the VoIP mode in the actual device app'
+PYTHON
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
     mkdir Payload
     ditto "$app" Payload/NextRuntimeProbe.app

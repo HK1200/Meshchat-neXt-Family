@@ -232,14 +232,24 @@ final class ProbeUITests: XCTestCase {
         // The iPad recording shows hardware Command-A leaving the caret at
         // the start of a WebKit field. Use the visible iOS edit menu instead.
         name.press(forDuration: 1.2)
-        let selectAllButton = app.buttons["Select All"].firstMatch
-        let selectAllItem = app.menuItems["Select All"].firstMatch
-        if selectAllButton.waitForExistence(timeout: 5) {
-            selectAllButton.tap()
-        } else {
-            XCTAssertTrue(selectAllItem.waitForExistence(timeout: 5), app.debugDescription)
-            selectAllItem.tap()
-        }
+        let selectAll = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label == %@ AND (elementType == %d OR elementType == %d)",
+            "Select All", Int(XCUIElement.ElementType.button.rawValue),
+            Int(XCUIElement.ElementType.menuItem.rawValue)
+        )).firstMatch
+        XCTAssertTrue(selectAll.waitForExistence(timeout: 10), app.debugDescription)
+        // The failure recording shows this menu remaining visible while
+        // XCTest repeatedly stalls resolving MenuItem.tap(). Use the visible
+        // element's current frame, without a second accessibility resolution.
+        let menuFrame = selectAll.frame
+        let appFrame = app.frame
+        XCTAssertGreaterThan(menuFrame.width, 0)
+        XCTAssertGreaterThan(menuFrame.height, 0)
+        XCTAssertTrue(appFrame.contains(menuFrame), app.debugDescription)
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: menuFrame.midX - appFrame.minX,
+            dy: menuFrame.midY - appFrame.minY
+        )).tap()
         // Type into the current keyboard focus, without retargeting the field
         // after the menu has selected its contents.
         app.typeText(XCUIKeyboardKey.delete.rawValue)
