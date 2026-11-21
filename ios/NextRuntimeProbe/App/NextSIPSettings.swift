@@ -80,7 +80,7 @@ struct NextSIPSettings: View {
                 while !Task.isCancelled {
                     if !busy {
                         do { state = try await fetch() }
-                        catch { error = "SIP settings are unavailable. Check that neXt is running." }
+                        catch { self.error = "SIP settings are unavailable. Check that neXt is running." }
                     }
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                 }
