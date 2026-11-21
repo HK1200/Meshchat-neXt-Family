@@ -131,7 +131,7 @@ def stage(wheel, destination, cbor_wheel=None, meshcore_wheels=None):
     shutil.copytree(FAMILY_SOURCE / "pycparser", destination / "pycparser", ignore=shutil.ignore_patterns("__pycache__"))
     if cbor_wheel is not None:
         with cbor_wheel.open("rb") as stream:
-            if file_digest(stream, "sha256").hexdigest() != "3038523b8fc7de312bb9cdcbbbd599987e64307c4db357cd2030c472a6c7d468":
+            if file_digest(stream, "sha256").hexdigest() != json.loads(Path(__file__).with_name("cbor-runtime.json").read_text())["sha256"]:
                 raise ValueError("Expected the pinned pure-Python cbor2 wheel")
         with ZipFile(cbor_wheel) as archive:
             archive.extractall(destination)

@@ -103,6 +103,9 @@ HELLO_CLIENT_VERSION = "1"
 
 
 _STREAM_DECODER = cbor.CBORDecoder() if hasattr(cbor.CBORDecoder, "decode_item") else None
+# Standard envelopes are shallow. Explicitly bound the portable decoder,
+# without passing its keyword arguments to the Android/desktop CBORx engine.
+_CBOR_DECODE_OPTIONS = {"max_depth": 64} if getattr(cbor, "__name__", "") == "cbor2" else {}
 
 
 def encode(obj):
@@ -112,7 +115,7 @@ def encode(obj):
 
 def decode(data):
     """Decode CBOR bytes into a Python object."""
-    return cbor.loads(data)
+    return cbor.loads(data, **_CBOR_DECODE_OPTIONS)
 
 
 def decode_item(data, pos=0):
@@ -123,7 +126,7 @@ def decode_item(data, pos=0):
 
     stream = BytesIO(data)
     stream.seek(pos)
-    return cbor.CBORDecoder(stream).decode(), stream.tell()
+    return cbor.CBORDecoder(stream, **_CBOR_DECODE_OPTIONS).decode(), stream.tell()
 
 
 def now_ms():

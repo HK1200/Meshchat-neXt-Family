@@ -56,12 +56,23 @@ jobs:
           curl --fail --silent --show-error --location --retry 3 --max-time 120 \
             https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
             --output temp-tests/voice-source/backend.whl
+          python -c 'import json, subprocess; s=json.load(open("ios/cbor-runtime.json")); subprocess.run(["curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3", "--max-time", "120", "--max-filesize", "2097152", s["url"], "--output", "temp-tests/voice-source/cbor2.whl"], check=True)'
           python ios/NextRuntimeProbe/stage-backend.py \
-            temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only
+            temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only \
+            --cbor-wheel temp-tests/voice-source/cbor2.whl
+      - name: Verify mobile decoder depth and independent-message isolation
+        run: |
+          python ios/test-cbor-security.py --staged temp-tests/voice-source/staged \
+            --report temp-tests/cbor-security-proof.json
       - name: Verify private offline maps, imports and restart preservation
         run: |
           python ios/NextRuntimeProbe/test-maps-runtime.py \
             --backend-source temp-tests/voice-source/staged --work-dir temp-tests/maps-network
+      - name: Verify Relay Chat against the unmodified desktop hub
+        run: |
+          python ios/NextRuntimeProbe/test-relay-runtime.py \
+            --backend-source temp-tests/voice-source/staged --reference-wheel temp-tests/voice-source/backend.whl \
+            --work-dir temp-tests/relay-network
       - name: Confirm silence cannot pass the media proof
         run: |
           if python ios/NextRuntimeProbe/test-voice-loopback.py \
@@ -83,5 +94,7 @@ jobs:
           path: |
             temp-tests/voice-network/proof.json
             temp-tests/maps-network/proof.json
+            temp-tests/relay-network/proof.json
+            temp-tests/cbor-security-proof.json
           if-no-files-found: error
           retention-days: 14

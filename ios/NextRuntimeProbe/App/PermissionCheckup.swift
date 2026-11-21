@@ -42,7 +42,7 @@ private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentr
         guard locationManager.authorizationStatus == .notDetermined else { return }
         locationManager.requestWhenInUseAuthorization()
     }
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { refresh() }
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { location = manager.authorizationStatus }
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor [weak self] in self?.refresh() }
     }

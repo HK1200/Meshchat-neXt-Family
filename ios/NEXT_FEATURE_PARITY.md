@@ -29,7 +29,8 @@ into the app; physical verification is stated separately.
 | Reticulum voice | Native CallKit controls, AVAudioEngine PCM, existing neXt telephone actions, contact identities, profiles and duplex/PTT are integrated; codec round trips pass on both simulators | Both simulators and strict encrypted-media CI pass; physical speech, interruptions, echo and locked incoming calls remain unqualified |
 | Maps | The released map backend is integrated: offline tiles, validated imports, selection/removal, drawings, overlays and map-data catalogs. Private HTTP tests prove signed discovery/catalog transfer, exact file hashes, imports above the message-size limit and preservation across invalid uploads and restarts | Native map rendering, download/share pickers and regional downloads need Xcode/device verification |
 | Location and telemetry | Optional map-centering permission is explained; reviewing the guide requests no position | Wire the native location/telemetry backend, sharing sessions and pin updates; verify expiry, stopping and background behavior |
-| Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
+| Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Native room UI, mentions, reconnect and physical device checks |
+| Other Reticulum tools | Their frontend menus are bundled | Register the remaining real services and test their actions; a visible menu does not establish working functionality |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
@@ -80,8 +81,8 @@ those require device tests.
 * neXt radio tests must cover both Bluetooth radios, approved incoming messages,
   power cycles and network transitions. Existing Family results remain separate.
 * The map backend is wired and privately tested; its native UI/download checks
-  remain pending. Location sharing, Relay Chat and other Reticulum tools still
-  need real backend integration. Bundled menus do not qualify those services.
+  remain pending. Location sharing and other Reticulum tools still
+  need real backend integration; Relay Chat needs native/device qualification. Bundled menus do not qualify those services.
 * Outbound propagation, suspended mailbox scheduling, push enrollment and complete
   identity/settings recovery need integration and device verification.
 * A physical iPhone is still needed for the final phone-specific reliability
@@ -92,3 +93,10 @@ those require device tests.
 Use the [iOS setup and recovery guide](../docs/IOS_SETUP_AND_RECOVERY.md) for
 current setup and troubleshooting. The Family-specific audit is
 [FEATURE-PARITY.md](FEATURE-PARITY.md).
+
+The mobile runtimes use checksum-pinned pure-Python CBOR2 5.9.0. RRC decoding
+has an explicit nesting bound and independent-message state; required tests
+reject pathological nesting and cross-message shared references while preserving
+canonical desktop interoperability. This replaces the older iOS-only dependency
+affected by GHSA-3c37-wwvx-h642 and GHSA-wcj4-jw5j-44wh. Android retains its
+existing pinned CBORx implementation.

@@ -332,12 +332,13 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
     voice = None
     maps = None
+    relay = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -479,7 +480,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             raise web.HTTPForbidden()
         if (request.path.startswith("/api/") or request.path == "/ws") and not access.allowed(request):
             raise web.HTTPForbidden(text="This local session is unavailable")
-        if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
+        if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
         return await handler(request)
 
@@ -488,6 +489,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         responses["status"]["inbox_error"] = inbox.error
         if request.method == "GET":
             if maps and path == "config": config.update(maps.settings())
+            if relay and path == "config": config.update(relay.settings())
             if path == "preview/mailbox":
                 return web.json_response(mailbox.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/rnode":
@@ -499,6 +501,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 return web.json_response({"messages": notices}, headers={"Cache-Control": "no-store"})
             if path == "announces":
                 try:
+                    if relay and request.query.get("aspect") == "rrc.hub":
+                        return web.json_response({"announces": relay.discovered(request.query)}, headers={"Cache-Control": "no-store"})
                     return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})
                 except ValueError:
                     raise web.HTTPBadRequest(text="Invalid discovery search or pagination") from None
@@ -566,7 +570,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     return web.json_response({"lxmf_messages": [attachment_fields.slim(row) for row in history.page(address, request.query)]})
                 except (ValueError, OverflowError):
                     raise web.HTTPBadRequest(text="Invalid history pagination")
-        if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
+        if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
         if request.method == "POST" and path in ("preview/mailbox", "preview/mailbox/sync"):
             try:
@@ -612,6 +616,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method == "PATCH" and path == "config":
             try:
                 payload = await request.json()
+                if relay and isinstance(payload, dict) and set(relay.settings()).intersection(payload):
+                    config.update(await relay.configure(payload))
+                    return web.json_response({"config": config})
                 if maps and isinstance(payload, dict) and maps.map_keys.intersection(payload):
                     config.update(maps.update_settings(payload))
                     return web.json_response({"config": config})
@@ -680,6 +687,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 history.ensure_contact(address.lower(), name.strip())
                 contacts.update(history.contacts())
                 if voice: voice.refresh_call_contacts()
+                if relay: relay.refresh_contacts()
                 return web.json_response({"message": "Contact added"})
             if path == "lxmf/conversations/bulk-mark-as-read":
                 body = await request.json()
@@ -803,6 +811,15 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         async def stop_maps(_): await maps.close()
         app.on_startup.append(start_maps)
         app.on_cleanup.append(stop_maps)
+    if relay_factory:
+        relay = relay_factory(ready_file.parent, probe.source.identity, probe.reticulum, history.contacts,
+                              lambda: config["display_name"], lambda event: track(meshcore_broadcast(event)))
+        config.update(relay.settings())
+        relay.register(app.router)
+        async def start_relay(_): await relay.start()
+        async def stop_relay(_): await relay.close()
+        app.on_startup.append(start_relay)
+        app.on_cleanup.append(stop_relay)
     if meshcore:
         meshcore.register(app.router)
         await meshcore.start()
@@ -843,6 +860,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 # A failed foreground bind must not tear down messaging.
                 pass
             await announce_routes()
+            if relay: relay.refresh_contacts()
             mailbox.tick()
             await asyncio.sleep(1)
     finally:
@@ -875,8 +893,9 @@ def run_for_app(ready_file):
         from sip_runtime import NextSIPRuntime
         from voice_runtime import ReticulumVoice
         from map_runtime import MapRuntime
+        from relay_runtime import RelayRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

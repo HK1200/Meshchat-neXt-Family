@@ -8,6 +8,10 @@ final class ProbeUITests: XCTestCase {
     }
 
     func testConversationSendsAndReceivesSignedLXMF() throws {
+        // The iPad run reached its final profile/restart checks at 600s.
+        // This full feature walk remains bounded by the harness maximum;
+        // retain every actual message, persistence and permission assertion.
+        executionTimeAllowance = 900
         continueAfterFailure = false
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
         let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: url))
