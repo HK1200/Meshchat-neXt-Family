@@ -162,7 +162,8 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
             discovered = wait(lambda: api(base, "announces?aspect=lxmf.delivery&search=Private")[1].get("announces"))
             assert discovered[0]["destination_hash"] == address
             assert discovered[0]["display_name"] == "Private neXt echo"
-            assert api(base, "announces?limit=100000")[0] == 400
+            status, error = api(base, "announces?limit=100000")
+            assert status == 400 and error == "Invalid discovery search or pagination"
             # Native AppStorage passes the saved peer list back on the next launch.
             settings.write_text(json.dumps(dict(peers=result["peers"])))
         observed.unlink(missing_ok=True)

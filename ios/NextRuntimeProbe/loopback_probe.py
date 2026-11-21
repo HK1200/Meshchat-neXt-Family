@@ -264,8 +264,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if path == "announces":
                 try:
                     return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})
-                except ValueError as error:
-                    raise web.HTTPBadRequest(text=str(error))
+                except ValueError:
+                    raise web.HTTPBadRequest(text="Invalid discovery search or pagination") from None
             if path == "preview/reticulum-connections":
                 return web.json_response({"peers": probe.connections.snapshot()}, headers={"Cache-Control": "no-store"})
             if path == "preview/reticulum-connection":
