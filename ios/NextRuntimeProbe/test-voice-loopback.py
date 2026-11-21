@@ -142,7 +142,7 @@ def main():
     args.work_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
     with socket.socket() as socket_:
         socket_.bind(('127.0.0.1', 0)); port = socket_.getsockname()[1]
-    proof = dict(public_network=False, microphone=False, speaker=False, checks=[])
+    proof = dict(public_network=False, microphone=False, speaker=False, checks=[], negotiated_profiles=[])
     with ExitStack() as stack:
         pipes = []
         addresses = []; identities = []; lxmf_addresses = []
@@ -187,7 +187,10 @@ def main():
                 profiles += [16, 32, 48, 64]
             for profile in profiles:
                 if profile is not None:
-                    rpc(pipes[caller], 'profile', value=profile); time.sleep(2)
+                    rpc(pipes[caller], 'profile', value=profile)
+                    negotiated=wait(pipes, lambda rows: all(r['state']['active_call'] and r['state']['active_call']['audio_profile_id']==profile for r in rows), timeout=12)
+                    proof['negotiated_profiles'].append({'requested':profile,'actual':[row['state']['active_call']['audio_profile_id'] for row in negotiated]})
+                    time.sleep(2)
                 for sender in range(2):
                     receiver = 1 - sender
                     # Codec2 can emit low-level comfort noise while the

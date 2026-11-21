@@ -23,6 +23,7 @@ struct NextReticulumSettings: View {
         let do_not_disturb_enabled: Bool; let telephone_allow_calls_from_contacts_only: Bool
         let enabled: Bool; let ready: Bool; let calling_available: Bool; let is_busy: Bool
         let preferred_audio_profile_id: Int?
+        let speaker: Bool?; let external_audio: Bool?; let capture_status: String?
         let address: String; let error: String; let active_call: Call?
         let call_targets: [Target]; let initiation_status: String?
     }
@@ -80,8 +81,17 @@ struct NextReticulumSettings: View {
                             Button(call.is_mic_muted ? "Unmute" : "Mute") {
                                 control(call.is_mic_muted ? "unmute-microphone" : "mute-microphone", call: call)
                             }.accessibilityIdentifier("next-voice-mute")
+                            if let capture = snapshot?.capture_status, !capture.isEmpty {
+                                Text(capture).font(.caption).accessibilityIdentifier("next-voice-capture-status")
+                            }
                             if UIDevice.current.userInterfaceIdiom == .pad {
                                 Text("Audio uses the iPad speaker or your connected headset.").font(.caption)
+                            } else if snapshot?.external_audio == true {
+                                Text("Audio uses your connected headset.").font(.caption)
+                            } else {
+                                Button(snapshot?.speaker == true ? "Turn speaker off" : "Turn speaker on") {
+                                    command("telephone/native-speaker", ["call_id": call.call_id, "value": snapshot?.speaker != true])
+                                }.accessibilityIdentifier("next-voice-speaker")
                             }
                         }
                         Button("End call", role: .destructive) { control("hangup", call: call) }

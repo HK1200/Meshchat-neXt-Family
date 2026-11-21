@@ -35,9 +35,9 @@ def native_codec2(monkeypatch):
 def test_real_opus_and_ios_codec2_round_trips(native_codec2):
     result = check_voice_codecs()
     assert result["ok"] and not result["network_used"] and not result["microphone_used"]
-    assert len(result["checks"]) == 6
+    assert len(result["checks"]) == 10
     assert {row["setting"] for row in result["checks"] if row["codec"] == "opus"} == {0, 1, 2}
-    assert {row["setting"] for row in result["checks"] if row["codec"] == "codec2"} == {700, 1200, 2400}
+    assert {row["setting"] for row in result["checks"] if row["codec"] == "codec2"} == {700, 1200, 1300, 1400, 1600, 2400, 3200}
     assert all(row["rms"] > 0.00001 for row in result["checks"])
 
 

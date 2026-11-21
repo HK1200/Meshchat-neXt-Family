@@ -435,7 +435,29 @@ def test_incoming_caller_name_uses_link_identity_without_requiring_an_announce()
             await voice.configure(True)
             voice.transport_event(voice.engine,"ringing",caller)
             assert voice.call.name=="Known LXMF contact"
+            assert voice.snapshot()["active_call"]["remote_destination_hash"]==lxmf
             incoming=[row for row in native.requests if row.get("state")=="incoming"]
             assert incoming[0]["name"]=="Known LXMF contact"
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_native_speaker_requires_a_connected_exact_call_and_real_boolean():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            caller,peer=connect(voice);await voice.dial(peer)
+            identifier=voice.call.id
+            with pytest.raises(ValueError,match="Connect"):voice.control("speaker",{"call_id":identifier,"value":True})
+            voice.transport_event(voice.engine,"established",caller)
+            for payload in ({"call_id":"f"*32,"value":True},{"call_id":identifier,"value":1},{"call_id":identifier,"value":"true"}):
+                before=len(native.requests)
+                with pytest.raises(ValueError):voice.control("speaker",payload)
+                assert len(native.requests)==before
+            voice.control("speaker",{"call_id":identifier,"value":True})
+            assert native.requests[-1]["op"]=="speaker" and native.requests[-1]["value"] is True
+            voice.control("speaker",{"call_id":identifier,"value":False})
+            assert native.requests[-1]["value"] is False
         finally:await voice.close();db.close()
     asyncio.run(run())

@@ -36,11 +36,11 @@ final class VoiceCodecTests: XCTestCase {
         XCTAssertTrue(report.ok)
         XCTAssertFalse(report.microphone_used)
         XCTAssertFalse(report.network_used)
-        XCTAssertEqual(report.checks.count, 6)
+        XCTAssertEqual(report.checks.count, 10)
         let opus = report.checks.filter { $0.codec == "opus" }
         let codec2 = report.checks.filter { $0.codec == "codec2" }
         XCTAssertEqual(Set(opus.map(\.setting)), Set([0, 1, 2]))
-        XCTAssertEqual(Set(codec2.map(\.setting)), Set([700, 1200, 2400]))
+        XCTAssertEqual(Set(codec2.map(\.setting)), Set([700, 1200, 1300, 1400, 1600, 2400, 3200]))
         for check in report.checks {
             XCTAssertTrue(check.rms.isFinite)
             XCTAssertGreaterThan(check.rms, 0.00001)

@@ -10,7 +10,8 @@ def check_voice_codecs():
 
     results = []
     profiles = (Opus.PROFILE_VOICE_LOW, Opus.PROFILE_VOICE_MEDIUM, Opus.PROFILE_VOICE_HIGH)
-    modes = (Codec2.CODEC2_700C, Codec2.CODEC2_1200, Codec2.CODEC2_2400)
+    modes = (Codec2.CODEC2_700C, Codec2.CODEC2_1200, Codec2.CODEC2_1300, Codec2.CODEC2_1400,
+             Codec2.CODEC2_1600, Codec2.CODEC2_2400, Codec2.CODEC2_3200)
     for kind, settings, factory, rate, samples in (
         ("opus", profiles, lambda setting: Opus(profile=setting), 48000, 960),
         ("codec2", modes, lambda setting: Codec2(mode=setting), 8000, 320),

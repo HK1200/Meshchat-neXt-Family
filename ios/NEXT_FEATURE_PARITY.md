@@ -498,3 +498,18 @@ It preserves both actual result bundles and validates each phase independently
 before producing the full source-derived proof. Missing, failed or skipped
 native/UI cases cannot be hidden in the aggregate. Original UI assertions are
 unchanged; candidates remain uninstalled until both device-family jobs pass.
+
+
+The next calling polish adds the missing iPhone loudspeaker action through the
+existing native audio controller, with exact-call and connected-state checks.
+iPad routing remains speaker/headset only; a connected headset is respected.
+The native call form also displays capture progress. The active call's message
+shortcut now uses the LXMF address derived from the authenticated link identity,
+never its different telephony destination hash.
+
+The codec diagnostic now covers all seven supported Codec2 modes, including
+700/1600/3200 selected by neXt's actual mobile profiles, plus the three Opus
+profiles. The real-media fixture additionally requires both peers to report each
+negotiated profile (16/32/48/64) before measuring its tone. The local proof passed
+all four remote-profile matches and all 12 settled-audio checks. Updated native
+speaker assertions and the expanded iOS-framework checks still require Xcode.

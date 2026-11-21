@@ -142,7 +142,7 @@ final class NextReticulumBridge {
         if operation == "capabilities" {
             return ["ok": true, "microphone_permission": AVAudioApplication.shared.recordPermission == .granted ? "granted" : "not_granted",
                     "capture_status": driver.audio.captureStatus, "system_call_error": calls.diagnostic,
-                    "speaker": driver.audio.usingBuiltInSpeaker]
+                    "speaker": driver.audio.usingBuiltInSpeaker, "external_audio": FamilyCallAudioSession.hasExternalOutput]
         }
         if operation == "poll" {
             guard !calls.isClosed else { return ["ok": false] }

@@ -518,11 +518,16 @@ class ReticulumVoice:
 
     def snapshot(self):
         call = self.call
+        capabilities = {}
+        if call is not None and call.phase == "connected":
+            with contextlib.suppress(RuntimeError): capabilities = self.request("capabilities")
         phone = self.engine.manager.telephone if self.engine else None
         active = None
         if call is not None and call.phase != "ending":
+            import RNS
+            lxmf = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", bytes.fromhex(call.identity)).hex() if call.identity else None
             active = dict(hash=call.id, call_id=call.id, remote_identity_hash=call.identity or call.peer,
-                          remote_telephony_hash=call.peer, remote_destination_hash=call.peer,
+                          remote_telephony_hash=call.peer, remote_destination_hash=lxmf,
                           remote_identity_name=call.name, is_incoming=call.incoming,
                           status={"preparing":2,"finding":2,"calling":2,"ringing":4,"incoming":4,"connected":6,"ending":3}[call.phase],
                           is_mic_muted=call.muted, is_speaker_muted=call.receive_muted, is_recording=False, is_voicemail=False,
@@ -530,7 +535,9 @@ class ReticulumVoice:
                           call_mode_id=self.engine.manager.get_active_mode_id() if self.engine else self.config.telephone_call_mode_id.get(),
                           is_half_duplex=self.engine.manager.is_half_duplex() if self.engine else False,
                           is_ptt_active=bool(self.engine.manager.ptt_active) if self.engine else False)
-        return dict(**self.call_policy, platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
+        return dict(**self.call_policy, speaker=capabilities.get("speaker"),
+                    external_audio=capabilities.get("external_audio"), capture_status=capabilities.get("capture_status"),
+                    microphone_permission=capabilities.get("microphone_permission"), platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
                     calling_available=self.available, address=phone.destination.hash.hex() if phone and phone.destination else "",
                     active_call=active, call_status=active["status"] if active else 3, is_busy=call is not None or self.ending is not None,
                     initiation_status=self.engine.manager.initiation_status if self.engine else None,
@@ -598,6 +605,7 @@ class ReticulumVoice:
             raise ValueError("The call has changed")
         if operation not in ("answer", "hangup", "mute", "speaker"):
             raise ValueError("Unsupported call control")
+        if operation == "speaker" and call.phase != "connected": raise ValueError("Connect the call before changing its audio output")
         value = payload.get("value")
         if operation in ("mute", "speaker") and type(value) is not bool:
             raise ValueError("Choose a call control value")
@@ -703,6 +711,7 @@ class ReticulumVoice:
             if operation in ("mute-microphone", "unmute-microphone", "mute-transmit", "unmute-transmit"):
                 payload = dict(payload, value=operation.startswith("mute-"))
             return self.control(mapping[operation], payload)
+        async def speaker(request): return self.control("speaker", await request.json())
         async def profiles(request): return await asyncio.to_thread(self.profile_choices)
         async def profile(request): return await self.set_profile(int(request.match_info["profile"]), await request.json())
         async def modes(request): return await asyncio.to_thread(self.mode_choices)
@@ -720,6 +729,7 @@ class ReticulumVoice:
         add("GET", "telephone/history", history)
         add("DELETE", "telephone/history", history)
         add("POST", "telephone/missed-calls/mark-viewed", missed_viewed)
+        add("POST", "telephone/native-speaker", speaker)
         add("GET", "telephone/audio-profiles", profiles)
         add("POST", "telephone/call/{peer}", dial)
         add("POST", "telephone/switch-audio-profile/{profile}", profile)
