@@ -1,3 +1,14 @@
+# neXt Family v0.6.29
+
+- Connect enabled Reticulum TCP peers independently so an unavailable peer cannot hold up a working connection or consume the whole iOS background-check window.
+- Remove retired LXMF links when replacing a connection, allowing messages to establish a fresh link after reconnecting.
+- Preserve the existing app ID, guardian settings, contacts, messages and Reticulum identity. Install over your current production app.
+- Use Android version code 43. GitHub builds retain approved rooms and Relay Chat; store builds continue to omit them.
+
+The iOS port carries the shared connection repairs and remains in development; this is not an App Store release.
+
+---
+
 # neXt Family v0.6.28
 
 - Correct Android SIP Opus audio using the native mono speech profile verified with live calls in both directions.

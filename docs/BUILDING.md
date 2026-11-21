@@ -40,3 +40,21 @@ The source archive checksums for the SIP dependencies matched the neXt build scr
 The Android package bundles their notices under `assets/notices`. See [third-party notices](NOTICES.md).
 
 Before signing, run `python3 scripts/android/verify-apk-expat.py --provenance .expat-runtime-maven/PROVENANCE.json --abis arm64-v8a app/build/outputs/apk/release/app-release-unsigned.apk` to verify the parser actually packaged in the APK.
+
+## Release-feed checks
+
+Keep the two package histories separate. Every release marked Latest must carry
+`family-update.json` copied unchanged from the approved v0.6.21 transfer release
+for `org.meshchat.family.preview`. Its `family-production-update.json` describes
+the new regular APK. The `family-stable` release's `family-update.json` is a copy
+of that production manifest for `org.meshchat.family`. Never replace the Latest
+legacy manifest with the production manifest: older installed apps reject it.
+
+Before publishing a draft, run
+`python3 scripts/ci/family_release_feeds.py --tag v0.6.29 --preflight`.
+Publish the versioned assets without marking the release Latest, update the
+production `family-stable` manifest, then mark the new version Latest. Finally,
+run `python3 scripts/ci/family_release_feeds.py` or dispatch **Published Family
+updater verification**. The check validates both package IDs, frozen transfer
+metadata, APK sizes and GitHub's available SHA-256 digests. It does not replace
+APK certificate verification or an in-place installation test.

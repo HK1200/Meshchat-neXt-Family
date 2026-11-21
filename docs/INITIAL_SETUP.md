@@ -13,10 +13,11 @@
 ## Transfer from Family v0.6.19 or earlier
 
 1. Keep the old app installed. Install the **Transfer APK** from the v0.6.21 release over that app. It appears as **neXt Family (Transfer)**. The old app's updater can also install this APK.
-2. Install the regular **Family v0.6.21 Android APK**. If the new app is already installed, update it to v0.6.21. Leave its welcome screen at first setup. Transfer requires a fresh destination and will refuse to overwrite a configured profile.
+2. Install the regular **Family v0.6.21 Android APK** from the same release and leave its welcome screen at first setup. Transfer requires a fresh destination and refuses to overwrite a configured profile. If a newer regular Family version is already installed but has never been set up, remove only that empty new install before installing regular v0.6.21; Android does not allow downgrading it in place. Keep the old/Transfer app installed. Do not remove a configured new app or attempt to merge its data with the old profile.
 3. In **neXt Family (Transfer)**, unlock **Guardian settings**, open **Security**, and tap **Transfer Family profile**. Review the prompt in the new app and tap **Transfer**.
 4. Verify your settings, contacts, messages, and Reticulum identity in the new app. Re-enter your SIP account password if you use SIP and grant Android permissions as needed. If desired, restart location sharing from the new app.
 5. The old app closes after a successful transfer and retains its data. You can uninstall it once you've verified the new app. This transfer is available in v0.6.21 only.
+6. After verifying the transferred profile, update the regular Family app to the current release using its updater. Later versions preserve the transferred profile but do not include the one-time transfer controls.
 
 ## 2. Enable the connections you want
 
