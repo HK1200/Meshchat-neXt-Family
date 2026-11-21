@@ -75,7 +75,7 @@ def main(folder):
         # than the runtime's ordinary 14 MB JSON request ceiling.
         db.execute('CREATE TABLE padding(data BLOB)')
         db.execute('INSERT INTO padding VALUES(zeroblob(15000000))')
-    data=fixture.read_bytes();saved_map=None;original_identity=None
+    data=fixture.read_bytes();saved_map=None;original_identity=None;descriptor_growth=None
     with ExitStack() as stack:
         import socket
         with socket.socket() as listener:
@@ -85,7 +85,7 @@ def main(folder):
         published=hub.recv()
         settings.write_text(json.dumps({'peers':[dict(id='private-map',host='127.0.0.1',port=port,enabled=True)]}))
         with ExitStack() as first:
-            ready=app/'first.url';start(first,server,app,ready,settings);wait(ready.exists);base=backend(ready)
+            ready=app/'first.url';worker,_=start(first,server,app,ready,settings);wait(ready.exists);base=backend(ready)
             original_identity=(app/'reticulum/identity').read_bytes()
             token=api(base,'auth/csrf')[1]['csrf_token']
             wait(lambda:any(row['online'] for row in api(base,'preview/reticulum-connections')[1]['peers']))
@@ -116,6 +116,15 @@ def main(folder):
             # TMS row 510 corresponds to XYZ y=1 at z9.
             with urlopen(private_request(base,'/api/v1/map/tiles/9/1/1.png')) as response:
                 assert response.read()==pixel and response.headers['Content-Type']=='image/png'
+            # The reported map descriptor leak must not return in this port.
+            descriptors=Path('/proc')/str(worker.pid)/'fd'
+            if descriptors.is_dir():
+                before=len(list(descriptors.iterdir()))
+                for _ in range(300):
+                    with urlopen(private_request(base,'/api/v1/map/tiles/9/1/1.png')) as response:
+                        assert response.read()==pixel
+                descriptor_growth=len(list(descriptors.iterdir()))-before
+                assert descriptor_growth<=8,descriptor_growth
             for tile in ('99/0/0','9/-1/1','9/512/1'):
                 assert api(base,'map/tiles/'+tile)[0]==400
             digest=hashlib.sha256(saved_map.read_bytes()).hexdigest()
@@ -144,7 +153,7 @@ def main(folder):
     proof={'ok':True,'public_network':False,'automatic_downloads':False,'private_http':True,'signed_map_discovery_and_reticulum_catalog_transfer':True,
            'native_identity_unchanged':True,'valid_import_and_tiles':True,'map_upload_exceeded_message_body_limit':len(data)>14_000_000,'invalid_import_preserved_active_map':True,
            'duplicate_import_preserved_existing_maps':True,'settings_and_drawings_survived_restart':True,
-           'deleting_one_map_preserved_other_maps':True,'csrf_required':True}
+           'deleting_one_map_preserved_other_maps':True,'csrf_required':True,'tile_read_descriptor_growth_after_300_reads':descriptor_growth}
     (folder/'proof.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
 
 if __name__=='__main__':
