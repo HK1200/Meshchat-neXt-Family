@@ -26,7 +26,7 @@ into the app; physical verification is stated separately.
 | Message notifications | Generic private notifications and native permission controls are integrated | Physical neXt notification delivery/navigation; fully suspended internet delivery needs the mailbox/push integration |
 | Permission checkup | Setup and Settings paths are implemented; iPhone full flow and iPad setup flow pass without requesting optional access | Continue coverage as calling/location are wired; physical OS permission prompts |
 | SIP | Native Keychain accounts, registration, CallKit and audio controls are integrated. Both native simulator suites passed; physical iPad foreground calls, answering, test-tone output, bidirectional RTP and clean ending/logout passed | Locked incoming alert failed on the iPad. Complete VoIP push/wake integration and physical phone, speech, route and interruption tests |
-| Reticulum voice | Family's shared native engine is available in the repository | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
+| Reticulum voice | Shared native engine and pinned LXST/Opus/Codec2 runtime are available; actual embedded codec round trips pass on both simulators | Wire neXt call setup, caller identities, quality negotiation, audio and system controls; live tests both ways |
 | Maps and location | The released frontend is bundled | Wire neXt's location/telemetry backend, native permission/session handling, offline maps and pin details; verify sharing expiry and stopping |
 | Relay Chat and other Reticulum tools | Their frontend menus are bundled | Register the real services and test their actions; a visible menu does not establish working functionality |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
@@ -403,6 +403,10 @@ native device architecture. A new native test runs actual synthetic
 encode/decode round trips through the embedded interpreter for three Opus
 voice profiles and three Codec2 modes; it uses no microphone or network.
 The equivalent local checks passed with the exact iOS Codec2 adapter, including
-failure checks for silence and invalid PCM. Xcode verification is pending.
+failure checks for silence and invalid PCM. [Xcode run 44941736008](https://github.com/HK1200/Meshchat-neXt-Family/actions/runs/44941736008)
+passed the device archive and all 66 source-verified native/UI cases on each
+simulator. That includes actual bundled codec execution, DOM modal isolation
+and restoration without losing a draft, radio lifecycle bounds, and signed
+message replies after settings edits and restart.
 This is a prerequisite for neXt Reticulum calls; call setup, native PCM exchange
 and system call controls are not connected by this packaging change.
