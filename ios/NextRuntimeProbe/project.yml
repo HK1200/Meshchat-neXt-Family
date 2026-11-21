@@ -58,6 +58,8 @@ targets:
       - path: App/MessageAlerts.swift
       - path: App/NextMeshCoreAlertTarget.swift
       - path: App/NextMeshCoreSecrets.swift
+      - path: App/NextSIPPasswords.swift
+      - path: App/NextCredentials.swift
       - path: App/NextRNodeProfile.swift
       - path: App/FamilyRadioWake.swift
     dependencies:

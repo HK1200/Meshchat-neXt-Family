@@ -334,7 +334,7 @@ private struct ProbeScreen: View {
         let readyPath = ready.path
         next_probe_set_credentials { request in
             guard let request else { return nil }
-            return strdup(NextMeshCoreSecrets.shared.request(String(cString: request)))
+            return strdup(NextCredentials.shared.request(String(cString: request)))
         }
         next_probe_set_bluetooth { request in
             guard let request else { return nil }
