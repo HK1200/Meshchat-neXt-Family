@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 #include "mobile_sip_audio.h"
 #ifdef LEGACY_STEREO_PROFILE
 #undef MOBILE_SIP_OPUS_CONFIG
@@ -14,6 +15,7 @@
 #define MOBILE_SIP_AUDIO_CODECS "opus/48000/2,PCMU/8000/1,PCMA/8000/1"
 #endif
 int main(void) {
+ fprintf(stderr,"Private SIP codec fixture entered\n");fflush(stderr);alarm(20);
  int err=libre_init();struct account *account=NULL;struct auenc_state *enc=NULL;struct audec_state *dec=NULL;
  if(err)return 1;
  const char *config=MOBILE_SIP_OPUS_CONFIG;

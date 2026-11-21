@@ -119,6 +119,29 @@ def verify_registration(simulator, executable, host=None):
             registrar.close()
 
 
+
+def verify_codec(simulator, executable):
+    marker = "Private SIP codec fixture entered"
+    for attempt in range(2):
+        try:
+            result = subprocess.run(["xcrun", "simctl", "spawn", simulator, str(executable)],
+                                    check=False, capture_output=True, text=True, timeout=70)
+        except subprocess.TimeoutExpired as error:
+            diagnostic = error.stderr or b""
+            if isinstance(diagnostic, bytes): diagnostic = diagnostic.decode("utf-8", "replace")
+            if attempt == 0 and marker not in diagnostic:
+                print("Retrying one simulator launch before the native codec fixture entered")
+                subprocess.run(["xcrun", "simctl", "spawn", simulator, "launchctl", "print", "system"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True, timeout=30)
+                continue
+            raise RuntimeError("Native SIP codec fixture timed out; " + diagnostic) from None
+        if (result.returncode or marker not in result.stderr
+                or "Mono Opus account selection and 48 kHz speech round-trip passed" not in result.stdout):
+            raise RuntimeError("Native SIP codec regression failed: " + result.stdout + result.stderr)
+        print(result.stdout.strip())
+        return
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("simulator")
@@ -148,7 +171,7 @@ def main():
                          else str(codec_executable) if item == str(executable) else item for item in command]
         subprocess.run(codec_command, check=True)
         subprocess.run(["codesign", "--force", "--sign", "-", str(codec_executable)], check=True)
-        subprocess.run(["xcrun", "simctl", "spawn", args.simulator, str(codec_executable)], check=True, timeout=30)
+        verify_codec(args.simulator, codec_executable)
         verify_registration(args.simulator, executable)
         verify_registration(args.simulator, executable, "::1")
         subprocess.run([sys.executable, str(ROOT / "test-sip-signaling.py"), args.simulator], check=True, timeout=160)

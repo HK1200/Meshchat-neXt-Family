@@ -50,3 +50,36 @@ def test_entered_or_authenticated_fixture_cannot_retry(monkeypatch, diagnostic, 
         fixture.verify_registration('simulator', 'fixture')
     assert len(peers) == 1 and peers[0].closed
     assert all('launchctl' not in c for c in calls)
+
+
+def test_codec_can_retry_only_before_its_actual_entry(monkeypatch):
+    calls=[]
+    def run(command, **kwargs):
+        calls.append(command)
+        if 'launchctl' in command: return subprocess.CompletedProcess(command,0)
+        if len(calls)==1: raise subprocess.TimeoutExpired(command,70,stderr=b'')
+        return subprocess.CompletedProcess(command,0,
+            'Mono Opus account selection and 48 kHz speech round-trip passed',
+            'Private SIP codec fixture entered')
+    monkeypatch.setattr(fixture.subprocess,'run',run)
+    fixture.verify_codec('simulator','fixture')
+    assert len(calls)==3 and 'launchctl' in calls[1]
+
+
+def test_entered_codec_timeout_is_not_retried(monkeypatch):
+    calls=[]
+    def run(command, **kwargs):
+        calls.append(command)
+        raise subprocess.TimeoutExpired(command,70,stderr=b'Private SIP codec fixture entered')
+    monkeypatch.setattr(fixture.subprocess,'run',run)
+    with pytest.raises(RuntimeError,match='timed out'): fixture.verify_codec('simulator','fixture')
+    assert len(calls)==1
+
+
+@pytest.mark.parametrize('code,out,err',[(1,'','Private SIP codec fixture entered'),(0,'',''),(0,'failed','Private SIP codec fixture entered')])
+def test_codec_failure_or_missing_proof_cannot_retry(monkeypatch,code,out,err):
+    calls=[]
+    def run(command, **kwargs): calls.append(command);return subprocess.CompletedProcess(command,code,out,err)
+    monkeypatch.setattr(fixture.subprocess,'run',run)
+    with pytest.raises(RuntimeError,match='regression failed'): fixture.verify_codec('simulator','fixture')
+    assert len(calls)==1
