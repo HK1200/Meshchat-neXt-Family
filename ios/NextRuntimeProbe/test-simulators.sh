@@ -20,9 +20,9 @@ cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/Family
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged
 curl --fail --silent --show-error --location --retry 3 \
-    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.20/meshchatnext-frontend.zip \
+    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchatnext-frontend.zip \
     --output frontend.zip
-printf '%s\n' '14814af6c6fb5a50236e8ad8420917bcdf51e5142818baa0419a6ca4522a6749  frontend.zip' \
+printf '%s\n' '1b1e8a9b77c64c780bc748167f22d879e739de58f861994612826612d92a950d  frontend.zip' \
     | shasum -a 256 -c -
 unzip -q frontend.zip -d staged/frontend
 python3 -m venv wheels-env
@@ -53,6 +53,7 @@ YAML
     test -f "$app/staged/frontend/index.html"
     test ! -e "$app/staged/peer.json"
     /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
+    /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
     mkdir Payload
     ditto "$app" Payload/NextRuntimeProbe.app

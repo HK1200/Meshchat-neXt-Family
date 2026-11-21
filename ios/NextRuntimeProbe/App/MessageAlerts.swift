@@ -161,7 +161,7 @@ struct NextMessageAlertSettings: View {
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
                 }
                 Section("When iOS pauses the app") {
-                    Text("iOS may pause neXt after you switch apps or lock the screen. Notifications cannot arrive while it is paused. This preview does not yet provide suspended-delivery alerts.")
+                    Text("iOS may pause neXt after you switch apps or lock the screen. A connected Bluetooth radio can wake it when iOS permits. Internet-only alerts while fully suspended are not yet supported.")
                         .foregroundStyle(.secondary)
                 }
             }

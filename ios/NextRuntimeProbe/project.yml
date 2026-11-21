@@ -15,12 +15,13 @@ targets:
       path: ProbeInfo.plist
       properties:
         CFBundleDisplayName: Meshchat neXt
-        CFBundleShortVersionString: "0.1.20"
+        CFBundleShortVersionString: "0.1.21"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
         NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
+        NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
         UIBackgroundModes: [bluetooth-central]
         NSBluetoothAlwaysUsageDescription: Connect to your chosen RNode radio for Reticulum messaging.
         NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
