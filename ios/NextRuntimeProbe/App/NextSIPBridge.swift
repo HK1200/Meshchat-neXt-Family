@@ -6,7 +6,9 @@ final class NextSIPBridge {
     private let registration: NextSIPRegistration
     private init() {
         let network = NextSIPNetwork.shared
-        let registration = NextSIPRegistration(network: network, driver: { NextSIPNativeDriver() })
+        let registration = NextSIPRegistration(network: network, driver: { NextSIPNativeDriver() }, calls: { driver, emit in
+            NextSIPCallSession(driver: driver, system: FamilySystemCalls.shared, audio: NextSIPSystemAudio(), emit: emit)
+        })
         self.registration = registration
         network.setHandler { [weak registration] in
             Task { @MainActor in registration?.networkChanged() }

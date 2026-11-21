@@ -89,3 +89,49 @@ final class SIPRegistrationTests: XCTestCase {
         XCTAssertEqual(service.perform(["op": "poll", "session": id])["closed"] as? Bool, true)
     }
 }
+
+@MainActor
+private final class LinkedSIPCalls: NextSIPCallManaging {
+    var controls: [[String: Any]] = []
+    var received: [(String, String, String)] = []
+    var closes = 0
+    let emit: ([String: Any]) -> Void
+    init(emit: @escaping ([String: Any]) -> Void) { self.emit = emit }
+    func perform(_ value: [String: Any]) -> Bool { controls.append(value); return true }
+    func receive(_ state: String, peer: String, code: Int32, id: String) {
+        received.append((state, peer, id))
+        emit(["state":state,"peer":peer,"native_id":id,"code":code])
+    }
+    func close() { closes += 1 }
+}
+
+extension SIPRegistrationTests {
+    @MainActor
+    func testLinkedCallingRequiresRegistrationAndClosesOnRouteRetirement() throws {
+        let network = NextSIPNetwork(start:false); network.update(.wifi)
+        let context = try XCTUnwrap(network.snapshot().first?["interface"])
+        let driver = FakeNextSIPDriver(), id = String(repeating:"c",count:32)
+        var calls: LinkedSIPCalls?
+        let service = NextSIPRegistration(network:network,driver:{ driver },calls:{ _, emit in
+            let value = LinkedSIPCalls(emit:emit); calls = value; return value
+        })
+        XCTAssertEqual(service.perform(["op":"capabilities"])["calling_available"] as? Bool,true)
+        XCTAssertNil(calls)
+        XCTAssertEqual(service.perform(["op":"open","session":id,"interface":context])["calling_available"] as? Bool,true)
+        let dial: [String: Any] = ["op":"dial","session":id,"call_id":"native-call","peer":"sip:9002@127.0.0.1"]
+        XCTAssertEqual(service.perform(dial)["ok"] as? Bool,false)
+        XCTAssertEqual(service.perform(["op":"start","session":id,"user":"9001","host":"127.0.0.1","port":55162,"password":"synthetic"])["ok"] as? Bool,true)
+        XCTAssertEqual(service.perform(dial)["ok"] as? Bool,false)
+        driver.events?("registered","",0,"")
+        XCTAssertEqual(service.perform(dial)["ok"] as? Bool,true)
+        XCTAssertEqual(calls?.controls.count,1)
+        driver.events?("incoming","sip:9002@127.0.0.1",0,"native-incoming")
+        XCTAssertEqual(calls?.received.first?.1,"sip:9002@127.0.0.1")
+        let events = service.perform(["op":"poll","session":id])["events"] as? [[String: Any]]
+        XCTAssertEqual(events?.last?["native_id"] as? String,"native-incoming")
+        network.update(.mobile); service.networkChanged()
+        XCTAssertEqual(calls?.closes,1)
+        XCTAssertEqual(driver.stops,1)
+        XCTAssertEqual(service.perform(dial)["ok"] as? Bool,false)
+    }
+}

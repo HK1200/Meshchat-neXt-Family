@@ -6,9 +6,11 @@ import UserNotifications
 @MainActor
 private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentralManagerDelegate {
     @Published private(set) var bluetooth = CBManager.authorization
+    @Published private(set) var microphone = AVAudioApplication.shared.recordPermission
     @Published private(set) var camera = AVCaptureDevice.authorizationStatus(for: .video)
     private var manager: CBCentralManager?
     func refresh() {
+        microphone = AVAudioApplication.shared.recordPermission
         bluetooth = CBManager.authorization
         camera = AVCaptureDevice.authorizationStatus(for: .video)
     }
@@ -17,6 +19,13 @@ private final class NextOptionalPermissions: NSObject, ObservableObject, CBCentr
         // Authorization only: this manager never scans, advertises or connects.
         manager = CBCentralManager(delegate: self, queue: .main,
             options: [CBCentralManagerOptionShowPowerAlertKey: false])
+    }
+    func requestMicrophone() async {
+        guard microphone == .undetermined else { return }
+        _ = await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+        }
+        refresh()
     }
     func requestCamera() async {
         guard camera == .notDetermined else { return }
@@ -38,7 +47,7 @@ struct NextPermissionCheckup: View {
     @State private var step = 0
     @State private var busy = false
     @State private var error = ""
-    private let titles = ["Message notifications", "Bluetooth radios", "Camera", "Files and photos", "Local network", "Screen locked and background delivery"]
+    private let titles = ["Message notifications", "Bluetooth radios", "Microphone for calls", "Camera", "Files and photos", "Local network", "Screen locked and background delivery"]
 
     var body: some View {
         NavigationStack {
@@ -91,6 +100,15 @@ struct NextPermissionCheckup: View {
                 Button("Allow Bluetooth radios") { optional.requestBluetooth() }.buttonStyle(.bordered)
             } else if optional.bluetooth != .allowedAlways { settingsButton }
         case 2:
+            Text("Microphone access lets the other person hear you during a call. It is requested only when you allow it here or place or answer a call; reviewing this guide does not start recording.")
+            LabeledContent("Microphone", value: optional.microphone == .granted ? "Allowed" : "Not allowed yet")
+            if optional.microphone == .undetermined {
+                Button("Allow microphone for calls") {
+                    busy = true
+                    Task { defer { busy = false }; await optional.requestMicrophone() }
+                }.disabled(busy).buttonStyle(.bordered)
+            } else if optional.microphone != .granted { settingsButton }
+        case 3:
             Text("Camera access lets you take a photo to attach when you choose the camera. neXt does not turn the camera on in the background.")
             LabeledContent("Camera", value: optional.camera == .authorized ? "Allowed" : "Not allowed yet")
             if optional.camera == .notDetermined {
@@ -99,10 +117,10 @@ struct NextPermissionCheckup: View {
                     Task { defer { busy = false }; await optional.requestCamera() }
                 }.disabled(busy).buttonStyle(.bordered)
             } else if optional.camera != .authorized { settingsButton }
-        case 3:
+        case 4:
             Text("Choose the individual files or photos you want to attach using the system picker. You do not need to grant access to your entire photo library to choose an attachment.")
             Text("When saving a received file or photo, choose its destination in the system share sheet. No permission is requested just by reading this guide.").foregroundStyle(.secondary)
-        case 4:
+        case 5:
             Text("iOS may ask for Local Network access when you connect to a TCP peer on your home network. Public internet peers do not require that permission.")
             Text("Make that connection from TCP connections first. If iOS has blocked local access, enable Local Network for neXt in device settings. The switch may be absent until the app has made a local connection attempt.").foregroundStyle(.secondary)
             settingsButton

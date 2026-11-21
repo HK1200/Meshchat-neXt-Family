@@ -1,10 +1,12 @@
 import SwiftUI
+import UIKit
 
 struct NextSIPSettings: View {
     let base: URL
     @Environment(\.dismiss) private var dismiss
     @State private var state: Snapshot?
     @State private var draft = NextSIPAccountDraft()
+    @State private var target = ""
     @State private var showPassword = false
     @State private var busy = false
     @State private var error = ""
@@ -18,6 +20,8 @@ struct NextSIPSettings: View {
     private struct Snapshot: Decodable {
         let account_management_available: Bool; let registered: Bool; let state: String
         let selected: String?; let accounts: [Account]; let error: String?
+        let calling_available: Bool; let call_state: String; let call_id: String?
+        let peer: String?; let muted: Bool?; let speaker: Bool?
     }
 
     var body: some View {
@@ -26,10 +30,38 @@ struct NextSIPSettings: View {
                 Section("SIP account") {
                     Text(state?.registered == true ? "SIP registered" : state?.state.replacingOccurrences(of: "_", with: " ").capitalized ?? "Loading…")
                         .accessibilityIdentifier("next-sip-status")
-                    Text("Calling is not available in this preview.").foregroundStyle(.secondary)
+                    if state?.calling_available == false {
+                        Text("Calling is not available in this build.").foregroundStyle(.secondary)
+                    }
                     if let problem = state?.error, !problem.isEmpty { Text(problem).foregroundStyle(.red) }
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
                     if !message.isEmpty { Text(message) }
+                }
+                if let state, state.calling_available {
+                    Section("SIP call") {
+                        if state.call_state == "idle" {
+                            TextField("Extension or sip:user@provider", text: $target)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled().focused($typing)
+                                .accessibilityIdentifier("next-sip-target")
+                            Button("Call via SIP") { command(["op": "call", "target": target]) }
+                                .disabled(busy || !state.registered || target.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .accessibilityIdentifier("next-sip-call")
+                        } else {
+                            LabeledContent("Call", value: state.call_state.capitalized)
+                            Text(state.peer ?? "SIP call").textSelection(.enabled)
+                            if state.call_state == "incoming" {
+                                Button("Answer") { command(["op": "answer"]) }.accessibilityIdentifier("next-sip-answer")
+                            }
+                            Button("End call", role: .destructive) { command(["op": "hangup"]) }
+                                .accessibilityIdentifier("next-sip-hangup")
+                            Button(state.muted == true ? "Unmute" : "Mute") { command(["op": "mute", "value": state.muted != true]) }
+                            if UIDevice.current.userInterfaceIdiom != .pad {
+                                Button(state.speaker == true ? "Turn speaker off" : "Turn speaker on") {
+                                    command(["op": "speaker", "value": state.speaker != true])
+                                }
+                            } else { Text("iPad uses the speaker or your connected headset.").font(.caption) }
+                        }
+                    }.disabled(busy)
                 }
                 if state?.account_management_available == true {
                     ForEach(state?.accounts ?? []) { account in
@@ -99,10 +131,17 @@ struct NextSIPSettings: View {
         guard !busy else { return }
         typing = false; FamilyKeyboard.dismiss(); busy = true; error = ""; message = ""
         let submitted = draft
+        var request = payload
+        if let operation = payload["op"] as? String,
+           ["answer", "hangup", "mute", "speaker", "hold", "dtmf"].contains(operation) {
+            guard let id = state?.call_id, !id.isEmpty else { busy = false; error = "This call has ended."; return }
+            request["call_id"] = id
+        }
+        let submittedRequest = request
         Task {
             defer { busy = false }
             do {
-                state = try await fetch(payload)
+                state = try await fetch(submittedRequest)
                 if saved {
                     if draft == submitted { draft = NextSIPAccountDraft() }
                     message = "SIP account saved"

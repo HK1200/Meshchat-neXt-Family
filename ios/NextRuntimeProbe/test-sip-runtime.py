@@ -169,6 +169,47 @@ def test_actual_private_server_protects_sip_routes(tmp_path):
     asyncio.run(run())
 
 
+def test_linked_call_routes_require_the_displayed_call_identity(tmp_path):
+    async def run():
+        Engine.instances.clear()
+        runtime = NextSIPRuntime(tmp_path, device=True, vault=Vault(), engine_factory=Engine,
+            network_provider=lambda: [dict(interface='ios-private',address='default',kind='wifi')],
+            capability_provider=lambda: dict(calling_available=True, default_speaker=True))
+        app = web.Application(); runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            async def command(op, **fields):
+                response = await client.post('/api/v1/sip/command',json=dict(op=op,**fields))
+                return response.status, await response.json()
+            status, saved = await command('save', account=dict(extension='9001',host='127.0.0.1',port=55162),password='synthetic')
+            assert status == 200 and saved['available'] and saved['calling_available'] and saved['speaker']
+            assert (await command('connect'))[0] == 200
+            engine = runtime.service.engine
+            runtime.service._event(engine,dict(state='incoming',peer='sip:9002@127.0.0.1:55162'))
+            first = runtime.status()['call_id']; assert first
+            count = len(engine.commands)
+            for identifier in ['', 'old-call', None]:
+                assert (await command('answer',call_id=identifier))[0] == 400
+            assert len(engine.commands) == count
+            assert (await command('answer',call_id=first))[0] == 200
+            runtime.service._event(engine,dict(state='connected',peer='sip:9002@127.0.0.1:55162'))
+            assert (await command('mute',call_id=first,value=1))[0] == 400
+            assert (await command('mute',call_id=first,value=True))[0] == 200
+            runtime.service._event(engine,dict(state='muted',code=0))
+            assert not runtime.status()['muted']
+            assert (await command('dtmf',call_id=first,digit='12'))[0] == 400
+            assert (await command('dtmf',call_id=first,digit='5'))[0] == 200
+            assert engine.commands[-1] == ('digit',{'digit':'5'})
+            runtime.service._event(engine,dict(state='ended'))
+            runtime.service._event(engine,dict(state='incoming',peer='sip:9003@127.0.0.1:55162'))
+            second = runtime.status()['call_id']; assert second and second != first
+            count = len(engine.commands)
+            assert (await command('hangup',call_id=first))[0] == 400
+            assert len(engine.commands) == count
+            assert (await command('hangup',call_id=second))[0] == 200
+        await runtime.close()
+    asyncio.run(run())
+
+
 if __name__ == "__main__":
     import tempfile
     checks = [test_actual_service_constructs_without_connecting_or_disclosing_password,
@@ -176,7 +217,8 @@ if __name__ == "__main__":
               test_simulator_accounts_cannot_start_even_when_a_native_bridge_exists,
               test_corrupt_accounts_are_preserved_without_disabling_other_services,
               test_native_route_change_retires_old_engine_and_obeys_allowed_networks,
-              test_actual_private_server_protects_sip_routes]
+              test_actual_private_server_protects_sip_routes,
+              test_linked_call_routes_require_the_displayed_call_identity]
     for check in checks:
         with tempfile.TemporaryDirectory(prefix="next-private-sip-runtime-") as folder:
             check(Path(folder))

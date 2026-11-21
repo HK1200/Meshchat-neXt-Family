@@ -130,3 +130,25 @@ The 193 backend checks pass; the new native account form cases await Xcode.
 The read-only physical UI runner still fails before executing its test. The
 normal neXt preview and original saved-window state were restored afterward.
 It has not established physical UI automation.
+
+
+## Native SIP calling integration
+
+The next preview links the CallKit/audio controller to exact native SIP call
+IDs. The native account screen and released web telephone can call, answer,
+end, mute and route audio through the shared engine. The iPad defaults to its
+speaker and keeps external headset routing. Microphone permission is explained
+in the seven-step checkup and requested only through an explicit action.
+
+The backport recognizes iOS without pretending it is Linux or Android. Its
+input chunk checksum and four policy expressions are verified before changing
+the pinned frontend. Both native and web call controls carry the displayed
+call ID; a late request cannot target the next call. The matching source change
+is on neXt main. Future frontend updates must review/remove this pinned backport
+when their source includes it.
+
+All seven staged-runtime checks and 198 backend tests pass locally. Six new
+call-controller cases and a linked-session case await native Xcode execution.
+Live calls, speaker/headset routing, interruptions and locked answering still
+need verification on this neXt build. These implementations do not establish
+fully suspended internet delivery or APNs, and Apple enrollment remains on hold.
