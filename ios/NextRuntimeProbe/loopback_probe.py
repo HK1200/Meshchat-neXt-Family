@@ -24,6 +24,7 @@ import attachment_fields
 from runtime_access import RuntimeAccess, COOKIE, CSP
 from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
+from loopback_listener import ResumableListener
 
 
 def record(message, state):
@@ -773,9 +774,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     runner = web.AppRunner(app, access_log=None, handle_signals=False)
     await runner.setup()
     try:
-        site = web.TCPSite(runner, "127.0.0.1", 0)
-        await site.start()
-        host, port = runner.addresses[0]
+        listener = ResumableListener(runner)
+        host, port = await listener.start()
         authority = f"{host}:{port}"
         access.write_info(f"http://{authority}")
         staging = ready_file.with_suffix(".tmp")
@@ -786,6 +786,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Each connected route announces at startup/reconnect and hourly.
         # Simulator profiles are separately restricted to loopback only.
         while True:
+            try:
+                await listener.recover()
+            except OSError:
+                # A failed foreground bind must not tear down messaging.
+                pass
             await announce_routes()
             mailbox.tick()
             await asyncio.sleep(1)

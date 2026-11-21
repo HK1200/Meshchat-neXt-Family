@@ -67,6 +67,11 @@ final class ProbeUITests: XCTestCase {
         XCTAssertEqual(restoredPrimary.value as? String, String(fixture.port))
         app.navigationBars["TCP connections"].buttons["Done"].tap()
         verifySavedRNodeEditor(app)
+        // Exercise a real background/foreground transition before sending.
+        // The same saved conversation must remain usable after listener resume.
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertTrue(app.buttons["tcp-connections"].waitForExistence(timeout: 30), app.debugDescription)
         let web = app.webViews.firstMatch
         let composer = web.textViews.firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)

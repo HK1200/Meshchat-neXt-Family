@@ -7,3 +7,6 @@ void next_probe_set_credentials(NextBluetoothRequest request);
 
 #include "FamilySIP.h"
 void next_probe_set_sip(NextBluetoothRequest request);
+
+void next_probe_request_listener_recovery(void);
+unsigned long next_probe_listener_generation(void);

@@ -302,3 +302,22 @@ reports native system-call failures through SIP status. The iPad profile test al
 uses the displayed Select All menu's current frame after recordings showed the
 menu present while XCTest stalled resolving its tap. All text replacement,
 profile persistence, restart and signed-message assertions remain required.
+
+The controlled 285.2 preview also completed actual private incoming and outgoing
+SIP media sessions. Mint sent 1,250 PCMU RTP packets in each direction test and
+received 1,319 and 1,751 packets from the iPad respectively. The owner heard both
+quiet test tones and spoke during the outgoing test; aggregate microphone levels
+changed. No speech recordings were retained. These tests establish bidirectional
+media transport and iPad speaker output, not a full Android/iPad conversation or
+Opus quality qualification.
+
+The subsequent locked-screen check did not pass. After suspension the local HTTP
+listener stopped accepting requests while the app process remained alive, and
+the owner reported a black/disconnected interface. The interrupted temporary SIP
+account was subsequently removed, and all twelve messages, two contacts, saved
+identity and four peer rows remained intact. The follow-up now reopens the local
+listener on resume on the same port, without recreating messaging services or
+changing access credentials; renderer termination also reloads the local view.
+Real socket-loss/rebind tests cover access preservation, transient bind failure
+and 25 recovery cycles without descriptor growth. Physical lock/unlock recovery
+and locked calls still require retesting after Xcode qualification.

@@ -179,7 +179,10 @@ private struct ProbeScreen: View {
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .onChange(of: scenePhase) { _, phase in
             appActive = phase == .active
-            if appActive { Task { await alerts.refreshAuthorization() } }
+            if appActive {
+                next_probe_request_listener_recovery()
+                Task { await alerts.refreshAuthorization() }
+            }
         }
         .onChange(of: alerts.requestedAddress) { _, peer in
             if peer != nil { openRequestedConversation() }
@@ -252,6 +255,7 @@ private struct ProbeScreen: View {
             let enabledCount: Int?
             let theme: String?
         }
+        var lastRecovery = ContinuousClock.now - .seconds(15)
         while !Task.isCancelled {
             do {
                 var request = URLRequest(url: endpoint)
@@ -263,6 +267,10 @@ private struct ProbeScreen: View {
                 theme = status.theme ?? "system"
             } catch {
                 tcpConnected = nil
+                if appActive, !Task.isCancelled, lastRecovery.duration(to: ContinuousClock.now) >= .seconds(15) {
+                    next_probe_request_listener_recovery()
+                    lastRecovery = ContinuousClock.now
+                }
             }
             if let notices = try? await Self.unreadMessages(at: url) {
                 await alerts.publish(notices, appActive: appActive)
@@ -469,6 +477,14 @@ private struct ProbeWebView: UIViewRepresentable {
             }
             downloads = NextAttachmentDownloads(base: url, onComplete: onExport, onError: onError)
             super.init()
+        }
+
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            // Recreate WebKit's renderer without restarting Python or losing
+            // saved conversations. Restore only our authenticated local URL.
+            let current = webView.url
+            let target = current?.scheme == url.scheme && current?.host == url.host && current?.port == url.port ? current! : requestedURL
+            if let request = try? NextHTTP.shared.webRequest(for: target) { webView.load(request) }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

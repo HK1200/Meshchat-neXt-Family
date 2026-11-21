@@ -4,6 +4,27 @@
 #include "ProbeSignals.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
+
+static _Atomic unsigned long listener_generation;
+void next_probe_request_listener_recovery(void) {
+    atomic_fetch_add_explicit(&listener_generation, 1, memory_order_relaxed);
+}
+unsigned long next_probe_listener_generation(void) {
+    return atomic_load_explicit(&listener_generation, memory_order_relaxed);
+}
+static PyObject *lifecycle_generation(PyObject *self, PyObject *args) {
+    return PyLong_FromUnsignedLong(next_probe_listener_generation());
+}
+static PyMethodDef lifecycle_methods[] = {
+    {"generation", lifecycle_generation, METH_NOARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef lifecycle_module = {
+    PyModuleDef_HEAD_INIT, "_next_lifecycle", NULL, -1, lifecycle_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_lifecycle(void) { return PyModule_Create(&lifecycle_module); }
 
 static NextBluetoothRequest bluetooth_request;
 static NextBluetoothRequest credentials_request;
@@ -112,6 +133,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
     if (PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return;
     if (PyImport_AppendInittab("_next_credentials", init_credentials) != 0) return;
     if (PyImport_AppendInittab("_next_sip", init_sip) != 0) return;
+    if (PyImport_AppendInittab("_next_lifecycle", init_lifecycle) != 0) return;
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.install_signal_handlers = 0;
