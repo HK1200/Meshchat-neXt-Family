@@ -487,3 +487,14 @@ operate in contacts-only mode and complete all 12 settled-audio checks, includin
 authenticated remote-identity matching. The silence-only control still fails at
 the intended energy assertion. This strengthens tests only; it does not change
 the compiled app or widen incoming-call permissions.
+
+
+The boot-readiness run then passed its native cases but hit an iPad UI launch
+handoff timeout (`Failed to send signal 19 ... process does not exist`). No app
+crash report was exported. This does not establish an application cause or a
+successful fix. The next harness runs hosted native tests and UI tests in
+separate XCTest invocations with a disposable simulator reboot between them.
+It preserves both actual result bundles and validates each phase independently
+before producing the full source-derived proof. Missing, failed or skipped
+native/UI cases cannot be hidden in the aggregate. Original UI assertions are
+unchanged; candidates remain uninstalled until both device-family jobs pass.

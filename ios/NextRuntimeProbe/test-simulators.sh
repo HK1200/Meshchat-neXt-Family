@@ -177,10 +177,50 @@ test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
 test_arguments=(-xctestrun "${test_runs[0]}")
 case "${NEXT_PROBE_UNIT_ONLY:-false}" in
-    true) test_arguments+=(-only-testing:NextRuntimeProbeUnitTests) ;;
+    true) ;;
     false) ;;
     *) echo "NEXT_PROBE_UNIT_ONLY must be true or false" >&2; exit 2 ;;
 esac
+# Hosted native tests initialize CPython, WebKit and audio. XCTest must not
+# reuse that host during its UI launch handoff. Keep independent real results
+# and require both phases; a reboot changes no source assertion or app data.
+run_device_tests() {
+    local unit_result="$result_set/$device-native.xcresult"
+    local ui_result="$result_set/$device-ui.xcresult"
+    failed_result_bundle="$unit_result"
+    if xcodebuild test-without-building "${test_arguments[@]}" \
+        -only-testing:NextRuntimeProbeUnitTests \
+        -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
+        -resultBundlePath "$unit_result" -parallel-testing-enabled NO \
+        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+        -maximum-test-execution-time-allowance 900; then
+        xcrun xcresulttool get test-results summary --path "$unit_result" > "$result_set/$device-native-summary.json" || return $?
+        xcrun xcresulttool get test-results tests --path "$unit_result" > "$result_set/$device-native-tests.json" || return $?
+    else return $?; fi
+    if [[ "${NEXT_PROBE_UNIT_ONLY:-false}" == true ]]; then
+        cp "$result_set/$device-native-summary.json" "$result_set/$device-summary.json" || return $?
+        cp "$result_set/$device-native-tests.json" "$result_set/$device-tests.json" || return $?
+        return 0
+    fi
+    # This is the disposable simulator selected above, never a USB device.
+    xcrun simctl shutdown "$destination" || return $?
+    xcrun simctl bootstatus "$destination" -b || return $?
+    failed_result_bundle="$ui_result"
+    if xcodebuild test-without-building "${test_arguments[@]}" \
+        -only-testing:NextRuntimeProbeUITests \
+        -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
+        -resultBundlePath "$ui_result" -parallel-testing-enabled NO \
+        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+        -maximum-test-execution-time-allowance 900; then
+        xcrun xcresulttool get test-results summary --path "$ui_result" > "$result_set/$device-ui-summary.json" || return $?
+        xcrun xcresulttool get test-results tests --path "$ui_result" > "$result_set/$device-ui-tests.json" || return $?
+    else return $?; fi
+    python3 "$probe/verify-test-results.py" \
+        "$result_set/$device-native-summary.json" "$result_set/$device-native-tests.json" "$scratch/Tests" \
+        --ui-summary "$result_set/$device-ui-summary.json" --ui-tree "$result_set/$device-ui-tests.json" \
+        --write-prefix "$result_set/$device" > "$result_set/$device-phase-proof.json" || return $?
+}
+
 sip_expected=0
 for device in "${simulator_families[@]}"; do
     sip_expected=$((sip_expected + 1))
@@ -201,16 +241,8 @@ else:
     # overlay still intercepts touches. Complete OS boot before XCTest starts;
     # the failed recording and all original assertions remain retained.
     xcrun simctl bootstatus "$destination" -b
-    if xcodebuild test-without-building "${test_arguments[@]}" \
-        -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
-        -resultBundlePath "$result_set/$device.xcresult" \
-        -parallel-testing-enabled NO \
-        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
-        -maximum-test-execution-time-allowance 900; then
+    if run_device_tests; then
         if [[ -f "$scratch/sip/observed.json" ]]; then cp "$scratch/sip/observed.json" "$result_set/$device-sip-observed.json"; fi
-        test -d "$result_set/$device.xcresult"
-        xcrun xcresulttool get test-results summary --path "$result_set/$device.xcresult" > "$result_set/$device-summary.json"
-        xcrun xcresulttool get test-results tests --path "$result_set/$device.xcresult" > "$result_set/$device-tests.json"
         proof_arguments=("$result_set/$device-summary.json" "$result_set/$device-tests.json" "$scratch/Tests")
         if [[ "${NEXT_PROBE_UNIT_ONLY:-false}" == true ]]; then proof_arguments+=(--unit-only); fi
         python3 "$probe/verify-test-results.py" "${proof_arguments[@]}" > "$result_set/$device-proof.json"
@@ -246,12 +278,15 @@ PYTHON
         # These bundles use only fresh synthetic simulator profiles. Export
         # this failed test's recording as well as its issue text, preserving
         # the actual test exit code even if diagnostic extraction fails.
-        if [[ -d "$result_set/$device.xcresult" ]]; then
-            xcrun xcresulttool export attachments --path "$result_set/$device.xcresult" \
+        if [[ -d "$failed_result_bundle" ]]; then
+            xcrun xcresulttool export attachments --path "$failed_result_bundle" \
                 --output-path "$result_set/activity-$device" \
                 --test-id 'ProbeUITests/testConversationSendsAndReceivesSignedLXMF()' \
                 || echo "Synthetic activity export unavailable; the original test failure is retained"
         fi
+        xcrun simctl spawn "$destination" log show --style compact --last 5m \
+            --predicate 'process == "NextRuntimeProbe" OR process == "SpringBoard" OR process == "runningboardd"' \
+            > "$result_set/$device-launch-system.log" 2>&1 || true
         mkdir -p "$result_set/crashes-$device"
         for report in "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.ips \
                       "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.crash; do
