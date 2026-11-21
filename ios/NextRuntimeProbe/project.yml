@@ -36,6 +36,7 @@ targets:
     settings:
       CURRENT_PROJECT_VERSION: "1"
       PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe
+      "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": AppSimulator.entitlements
       SWIFT_OBJC_BRIDGING_HEADER: App/ProbeRuntime.h
       HEADER_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR)/Python.framework/Headers"
       TARGETED_DEVICE_FAMILY: "1,2"
@@ -65,6 +66,7 @@ targets:
       - target: NextRuntimeProbe
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe.uitests
+      "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": TestsSimulator.entitlements
       GENERATE_INFOPLIST_FILE: YES
       TEST_TARGET_NAME: NextRuntimeProbe
 schemes:

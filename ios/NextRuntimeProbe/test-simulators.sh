@@ -16,6 +16,7 @@ trap cleanup EXIT
 bash "$family_ios/prepare-live.sh"
 cd -- "$scratch"
 cp -R "$probe/App" "$probe/project.yml" .
+cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged
@@ -113,6 +114,12 @@ else:
         for report in "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.ips \
                       "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.crash; do
             if [[ -f "$report" ]]; then cp "$report" "$result_set/crashes-$device/"; fi
+        done
+        for app_name in NextRuntimeProbe NextRuntimeProbeUITests-Runner; do
+            bundle="DerivedData/Build/Products/Debug-iphonesimulator/$app_name.app"
+            if [[ -d "$bundle" ]]; then
+                codesign -d --entitlements :- "$bundle" > "$result_set/$app_name-entitlements.plist" 2> "$result_set/$app_name-codesign.log" || true
+            fi
         done
         cp "$scratch/echo.log" "$result_set/echo.log"
         cat "$scratch/echo.log"

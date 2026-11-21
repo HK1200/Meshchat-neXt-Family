@@ -9,7 +9,9 @@ final class MeshCoreSecretTests: XCTestCase {
         var value: [String: Any] = ["operation": operation, "owner": owner ?? self.owner, "peer": peer, "role": role]
         if let password { value["password"] = password }
         let data = try JSONSerialization.data(withJSONObject: value)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(store.request(String(decoding: data, as: UTF8.self)).utf8)) as? [String: Any])
+        let reply = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(store.request(String(decoding: data, as: UTF8.self)).utf8)) as? [String: Any])
+        if let status = reply["code"] as? Int { print("Keychain diagnostic OSStatus: \(status)") }
+        return reply
     }
 
     func testActualKeychainSaveUpdateReadAndForget() throws {

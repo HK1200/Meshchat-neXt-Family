@@ -13,6 +13,9 @@ final class NextMeshCoreSecrets {
     func request(_ text: String) -> String {
         let reply: [String: Any]
         do { reply = try perform(text) }
+        catch Failure.keychain(let status) {
+            reply = ["error": "Secure node password operation could not be completed.", "code": Int(status)]
+        }
         catch { reply = ["error": "Secure node password operation could not be completed."] }
         guard let data = try? JSONSerialization.data(withJSONObject: reply),
               let result = String(data: data, encoding: .utf8) else { return "{}" }
@@ -36,15 +39,16 @@ final class NextMeshCoreSecrets {
         switch operation {
         case "has":
             let status = SecItemCopyMatching(query as CFDictionary, nil)
-            guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.keychain }
+            guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.keychain(status) }
             return ["value": status == errSecSuccess]
         case "load":
             var read = query
             read[kSecReturnData as String] = true
             read[kSecMatchLimit as String] = kSecMatchLimitOne
             var item: CFTypeRef?
-            guard SecItemCopyMatching(read as CFDictionary, &item) == errSecSuccess,
-                  let bytes = item as? Data, let password = String(data: bytes, encoding: .utf8) else { throw Failure.keychain }
+            let status = SecItemCopyMatching(read as CFDictionary, &item)
+            guard status == errSecSuccess else { throw Failure.keychain(status) }
+            guard let bytes = item as? Data, let password = String(data: bytes, encoding: .utf8) else { throw Failure.invalid }
             return ["value": password]
         case "save":
             guard let password = value["password"] as? String,
@@ -55,16 +59,17 @@ final class NextMeshCoreSecrets {
                 var add = query
                 add[kSecValueData as String] = Data(password.utf8)
                 add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-                guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw Failure.keychain }
-            } else if changed != errSecSuccess { throw Failure.keychain }
+                let status = SecItemAdd(add as CFDictionary, nil)
+                guard status == errSecSuccess else { throw Failure.keychain(status) }
+            } else if changed != errSecSuccess { throw Failure.keychain(changed) }
             return ["value": true]
         case "forget":
             let status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.keychain }
+            guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure.keychain(status) }
             return ["value": true]
         default: throw Failure.invalid
         }
     }
 
-    private enum Failure: Error { case invalid, keychain }
+    private enum Failure: Error { case invalid, keychain(OSStatus) }
 }

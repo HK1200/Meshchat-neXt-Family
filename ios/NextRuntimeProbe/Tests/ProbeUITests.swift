@@ -71,8 +71,9 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)
         composer.tap()
         composer.typeText(fixture.message)
-        let send = web.buttons.containing(NSPredicate(format: "label BEGINSWITH[c] %@", "Send")).firstMatch
+        let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
         XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(send.isEnabled, app.debugDescription)
         send.tap()
         XCTAssertTrue(web.staticTexts["Echo: " + fixture.message].waitForExistence(timeout: 105), app.debugDescription)
         verifyOwnContactQR(app)
