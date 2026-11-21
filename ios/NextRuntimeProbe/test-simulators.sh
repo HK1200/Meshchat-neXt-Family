@@ -121,7 +121,9 @@ case "$simulator_arch" in arm64|x86_64) ;; *) echo "Unsupported simulator host a
 python3 "$family_ios/build-sip.py" iphonesimulator "$simulator_arch"
 xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
-    -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- "ARCHS=$simulator_arch" ONLY_ACTIVE_ARCH=YES
+    -parallel-testing-enabled NO \
+        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+        -maximum-test-execution-time-allowance 900 CODE_SIGN_IDENTITY=- "ARCHS=$simulator_arch" ONLY_ACTIVE_ARCH=YES
 python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
@@ -150,7 +152,9 @@ else:
     if xcodebuild test-without-building "${test_arguments[@]}" \
         -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
         -resultBundlePath "$result_set/$device.xcresult" \
-        -parallel-testing-enabled NO; then
+        -parallel-testing-enabled NO \
+        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
+        -maximum-test-execution-time-allowance 900; then
         if [[ -f "$scratch/sip/observed.json" ]]; then cp "$scratch/sip/observed.json" "$result_set/$device-sip-observed.json"; fi
         test -d "$result_set/$device.xcresult"
         xcrun xcresulttool get test-results summary --path "$result_set/$device.xcresult" > "$result_set/$device-summary.json"

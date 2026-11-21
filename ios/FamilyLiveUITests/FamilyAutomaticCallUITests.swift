@@ -13,8 +13,14 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         let password = "private-call-ui-test"
-        fill(app.secureTextFields["setup-password"], password)
-        fill(app.secureTextFields["setup-confirmation"], password)
+        // These are synthetic fixture credentials, not a user's password.
+        // Verify the real text fields before hiding them and submitting setup.
+        let visibility = app.buttons["setup-password-visibility"]
+        XCTAssertTrue(visibility.waitForExistence(timeout: 20))
+        visibility.tap()
+        fill(app.textFields["setup-password"], password)
+        fill(app.textFields["setup-confirmation"], password)
+        visibility.tap()
         let internet = app.switches["setup-internet-peers"]
         XCTAssertTrue(internet.waitForExistence(timeout: 10))
         for _ in 0..<3 where !internet.isHittable { app.swipeUp() }
@@ -22,7 +28,7 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         XCTAssertEqual(internet.value as? String, "0", "The private UI test must disable all internet peers before setup")
         app.buttons["Create guardian access"].tap()
         let guardian = app.buttons["guardian-settings"]
-        XCTAssertTrue(guardian.waitForExistence(timeout: 20))
+        XCTAssertTrue(guardian.waitForExistence(timeout: 20), app.debugDescription)
         guardian.tap()
         fill(app.secureTextFields["unlock-password"], password)
         app.buttons["Unlock"].tap()
@@ -76,6 +82,12 @@ final class FamilyAutomaticCallUITests: XCTestCase {
     private func fill(_ field: XCUIElement, _ value: String) {
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
-        field.typeText(value)
+        let app = XCUIApplication()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        app.typeText(value)
+        if field.elementType != .secureTextField {
+            let entered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: field)
+            XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 10), .completed, app.debugDescription)
+        }
     }
 }
