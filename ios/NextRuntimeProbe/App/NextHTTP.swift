@@ -74,6 +74,13 @@ final class NextHTTP {
         access.configure(origin: origin, capability: info.capability)
     }
     func authorized(_ request: URLRequest) throws -> URLRequest { try access.authorize(request) }
+    func webRequest(for url: URL) throws -> URLRequest {
+        var request = try access.authorize(URLRequest(url: url))
+        // WKWebView must accept the authenticated root response's HttpOnly
+        // cookie before its own fetches and WebSocket can use the session.
+        request.httpShouldHandleCookies = true
+        return request
+    }
     func data(from url: URL) async throws -> (Data, URLResponse) { try await data(for: URLRequest(url: url)) }
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
         try await session.data(for: access.authorize(request))

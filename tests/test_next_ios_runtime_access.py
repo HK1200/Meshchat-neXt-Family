@@ -45,3 +45,4 @@ def test_renderer_policy_allows_own_attachments_but_no_other_http_ports():
         assert "'self'" in directives[kind]
         assert 'http:' not in directives[kind] and '*' not in directives[kind]
     assert 'blob:' in directives['worker-src']
+    assert 'blob:' in directives['script-src']

@@ -392,7 +392,7 @@ private struct ProbeWebView: UIViewRepresentable {
         }
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
-        if let request = try? NextHTTP.shared.authorized(URLRequest(url: url)) { view.load(request) }
+        if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
         return view
     }
 
@@ -401,7 +401,7 @@ private struct ProbeWebView: UIViewRepresentable {
         // itself would overwrite ordinary in-page navigation on every redraw.
         if context.coordinator.requestedURL != url {
             context.coordinator.requestedURL = url
-            if let request = try? NextHTTP.shared.authorized(URLRequest(url: url)) { view.load(request) }
+            if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
         }
     }
 
@@ -417,6 +417,21 @@ private struct ProbeWebView: UIViewRepresentable {
             requestedURL = url
             downloads = NextAttachmentDownloads(base: url, onComplete: onExport, onError: onError)
             super.init()
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Log only the local access result, never credentials or message data.
+            webView.callAsyncJavaScript("return (await fetch('/api/v1/status', {cache:'no-store'})).status",
+                                        arguments: [:], in: nil, in: .page) { result in
+                switch result {
+                case .success(let value):
+                    if let status = value as? Int, status != 200 {
+                        print("neXt local WebView access status: \(status)")
+                    }
+                case .failure:
+                    print("neXt local WebView access check unavailable")
+                }
+            }
         }
 
         func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {

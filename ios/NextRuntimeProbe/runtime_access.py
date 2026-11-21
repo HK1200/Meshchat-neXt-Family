@@ -11,7 +11,7 @@ HEADER = 'X-neXt-Session'
 COOKIE = 'next_preview_session'
 INFO_FILE = 'next-runtime-info.json'
 # Other HTTP loopback ports must not receive this WebView's host-only cookie.
-CSP = ("default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; "
+CSP = ("default-src 'self'; script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval'; "
        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; "
        "media-src 'self' data: blob: https:; font-src 'self' data: https:; "
        "connect-src 'self' https: wss:; worker-src 'self' blob:; "

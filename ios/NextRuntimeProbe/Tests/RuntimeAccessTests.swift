@@ -19,8 +19,13 @@ final class RuntimeAccessTests: XCTestCase {
         XCTAssertEqual(result.value(forHTTPHeaderField: "X-CSRF-Token"), "private-csrf-fixture")
         XCTAssertEqual(result.httpBody, request.httpBody)
         XCTAssertFalse(result.httpShouldHandleCookies)
+        let web = try client.webRequest(for: base)
+        XCTAssertTrue(web.httpShouldHandleCookies)
+        XCTAssertEqual(web.value(forHTTPHeaderField: "X-neXt-Session"), capability)
         for value in ["http://127.0.0.1:12346/", "https://example.invalid/", "http://localhost:12345/", "http://user@127.0.0.1:12345/"] {
-            XCTAssertThrowsError(try client.authorized(URLRequest(url: XCTUnwrap(URL(string: value)))))
+            let foreign = try XCTUnwrap(URL(string: value))
+            XCTAssertThrowsError(try client.authorized(URLRequest(url: foreign)))
+            XCTAssertThrowsError(try client.webRequest(for: foreign))
         }
     }
     func testStaleOrForeignProcessMetadataCannotAuthorizeRequests() throws {

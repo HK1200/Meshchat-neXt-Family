@@ -87,7 +87,7 @@ jobs:
           subprocess.run(["python3", "ios/test-sip-registration.py", max(candidates)[1]], check=True)
           PYTHON
   simulator:
-    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_device }}
+    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 35
