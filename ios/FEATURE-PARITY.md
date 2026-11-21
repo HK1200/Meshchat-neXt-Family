@@ -169,3 +169,30 @@ This is local notification wiring, not APNs or a keep-alive service. It does not
 wake a fully suspended process. Production push delivery and physical lock-screen
 notification checks remain release gates; no background entitlement or Apple
 enrollment is added by this change.
+
+
+## Completion verification update — 2026-11-20
+
+The combined neXt preview changes passed the iPhone and iPad native messaging
+suites in run `44865544249`, including TCP peer edits and restart, signed replies,
+contact QR decoding, native attachment export and profile/theme persistence.
+Family's unsigned device and App Store archive jobs passed in that run too.
+
+Native neXt message-alert wiring was added in `427f45d`; `cc93547` corrects a
+Swift error-state name collision found by Xcode. The corrected device archive
+passed and installed as the separate neXt preview build 230.1 on the real iPad.
+Before launch, its identity, message database and preferences were byte-identical
+to the backup. After the new notification-table migration, both contact records
+and all seven saved messages were unchanged. The preview opened with its saved
+conversation, visible composer and connected TCP status. Regular Family 47.6
+and Family Mailbox Test 218.1 were not modified.
+
+The local suite passed 240 tests with seven optional skips and three subtests.
+The new message-alert simulator run `44868343163` is still in progress at this
+checkpoint. These local alerts do not wake a fully suspended app. Physical
+notification permission/delivery and production APNs remain separate verification
+gates, and Apple enrollment remains on hold.
+
+Family Android 0.6.29 is published with signed upgrades and both updater-feed
+checks passing. Its Play code 43 was submitted to closed testing; Google quick
+checks precede review. This does not make either iOS app an App Store release.
