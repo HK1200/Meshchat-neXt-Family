@@ -208,13 +208,23 @@ final class ProbeUITests: XCTestCase {
         let name = web.textFields["Display Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15), app.debugDescription)
         name.tap()
-        // Use Apple's native Select All keyboard action. Coordinate taps can
-        // leave WebKit's caret at the start, where backspace changes nothing.
-        name.typeKey("a", modifierFlags: .command)
-        name.typeText(XCUIKeyboardKey.delete.rawValue)
+        // The iPad recording shows hardware Command-A leaving the caret at
+        // the start of a WebKit field. Use the visible iOS edit menu instead.
+        name.press(forDuration: 1.2)
+        let selectAllButton = app.buttons["Select All"].firstMatch
+        let selectAllItem = app.menuItems["Select All"].firstMatch
+        if selectAllButton.waitForExistence(timeout: 5) {
+            selectAllButton.tap()
+        } else {
+            XCTAssertTrue(selectAllItem.waitForExistence(timeout: 5), app.debugDescription)
+            selectAllItem.tap()
+        }
+        // Type into the current keyboard focus, without retargeting the field
+        // after the menu has selected its contents.
+        app.typeText(XCUIKeyboardKey.delete.rawValue)
         let cleared = name.value as? String ?? ""
         XCTAssertTrue(cleared.isEmpty || cleared == "Display Name", app.debugDescription)
-        name.typeText("Simulator profile")
+        app.typeText("Simulator profile")
         XCTAssertEqual(name.value as? String, "Simulator profile", app.debugDescription)
         settings.tap()
         // Allow the released UI's 600 ms debounce to finish. The saved name

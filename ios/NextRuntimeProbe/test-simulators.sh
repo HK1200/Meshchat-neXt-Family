@@ -171,6 +171,15 @@ PYTHON
         xcrun simctl shutdown "$destination" || true
     else
         next_probe_exit=$?
+        # These bundles use only fresh synthetic simulator profiles. Export
+        # this failed test's recording as well as its issue text, preserving
+        # the actual test exit code even if diagnostic extraction fails.
+        if [[ -d "$result_set/$device.xcresult" ]]; then
+            xcrun xcresulttool export attachments --path "$result_set/$device.xcresult" \
+                --output-path "$result_set/activity-$device" \
+                --test-id 'ProbeUITests/testConversationSendsAndReceivesSignedLXMF()' \
+                || echo "Synthetic activity export unavailable; the original test failure is retained"
+        fi
         mkdir -p "$result_set/crashes-$device"
         for report in "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.ips \
                       "$HOME/Library/Logs/DiagnosticReports/"NextRuntimeProbe*.crash; do
