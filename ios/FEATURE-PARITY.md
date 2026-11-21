@@ -305,3 +305,36 @@ actual app restart, all original message/contact rows remained, and the private
 runtime capability rotated. The physical test used Chicago and a temporary
 private counterpart; it does not prove physical RMAP availability or observed OS
 notifications.
+
+
+## Native permission and WebKit checkpoint — 2026-11-21
+
+Source `4a24b00` compiled its unsigned device package and passed the complete
+iPhone run in `44903565571`: 40 native cases plus two UI cases. The iPad passed
+all 40 native cases, including the actual WebKit/native-file round trip on a new
+loopback port and rejection of a child-frame write. Its setup permission-checkup
+UI case also passed. The complete iPad Messages UI flow still fails at the test's
+profile-name replacement; the exact replacement and restart checks remain
+required before that candidate replaces the working physical preview.
+
+The permission checkup is available from the setup form and native Message
+alerts. It shows one explanation at a time, separates authorization from the
+actual lock-screen notification setting, and makes optional requests explicit.
+The Bluetooth permission request never scans or connects. The guide does not
+request entire-photo-library access and does not promise an always-running iOS
+service. Native SIP calling and fully suspended internet delivery remain separate
+unfinished work, regardless of permission status.
+
+The initial WebKit integration test incorrectly selected the Void overload of
+`callAsyncJavaScript`; `717164c` explicitly waits for its completion result. The
+corrected native round trip and child-frame isolation passed on both simulators.
+The iPad's profile-test caret/selection failure is distinct from that repaired
+harness issue. Its existing synthetic result is being inspected using a workflow
+restricted to run `44902819390` and immutable source `d970a40`; no physical-device
+recording or regular Family data is part of that diagnostic upload.
+
+A fresh Play Console check showed Family **0.6.29 / code 43 serving** on the
+closed track, and neXt **0.1.21 / code 26 in review**. Each app had ten opted-in
+testers, below the twelve required continuously for fourteen days before
+production access. These are point-in-time observations, not an approved
+production release. Apple enrollment remains on hold.
