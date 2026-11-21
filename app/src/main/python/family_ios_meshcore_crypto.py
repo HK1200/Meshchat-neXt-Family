@@ -1,4 +1,4 @@
-"""MeshCore decoder primitives using the bundled Reticulum and Python providers."""
+"""MeshCore packet primitives using the bundled Reticulum and Python providers."""
 import hashlib
 import hmac
 
@@ -41,3 +41,12 @@ class _ECB:
         if self.bits == 128:
             return b"".join(self.cipher.decrypt(block, bytes(16)) for block in blocks)
         return b"".join(self.cipher.decrypt_block(block) for block in blocks)
+
+    def encrypt(self, data):
+        if len(data) % 16:
+            raise ValueError("AES plaintext must contain complete blocks")
+        # CBC of each independent block with a zero IV is ECB, without padding.
+        blocks = [data[offset:offset + 16] for offset in range(0, len(data), 16)]
+        if self.bits == 128:
+            return b"".join(self.cipher.encrypt(block, bytes(16)) for block in blocks)
+        return b"".join(self.cipher.encrypt_block(block) for block in blocks)

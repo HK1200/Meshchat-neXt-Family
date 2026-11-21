@@ -37,6 +37,21 @@ def stage(wheel, destination, family_ios):
                 if payload.count(before) != 1:
                     raise ValueError("The pinned credential-provider source changed")
                 payload = payload.replace(before, after)
+            if entry.filename == "meshchatnext/src/backend/meshcore_repeats.py":
+                replacements = (
+                    (b"    from Crypto.Cipher import AES", b"    from family_ios_meshcore_crypto import AES"),
+                    (b"    from Crypto.Protocol.DH import key_agreement\n    from Crypto.PublicKey import ECC",
+                     b"    from meshcore_repeat_crypto import shared_secret"),
+                    (b"""    secret = key_agreement(
+        static_priv=ECC.construct(curve="Curve25519", seed=private[:32]),
+        static_pub=ECC.construct(curve="Curve25519", point_x=u),
+        kdf=lambda value: value,
+    )""", b"    secret = shared_secret(private[:32], u)"),
+                )
+                for before, after in replacements:
+                    if payload.count(before) != 1:
+                        raise ValueError("The pinned repeat-fingerprint source changed")
+                    payload = payload.replace(before, after)
             target.write_bytes(payload)
     import shutil
     shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",
