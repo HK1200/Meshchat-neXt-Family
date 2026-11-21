@@ -21,7 +21,7 @@ import time
 from types import SimpleNamespace
 
 
-def worker(source, folder, port, server, pipe):
+def worker(source, folder, port, server, pipe, silent_control=False):
     folder = Path(folder)
     folder.mkdir(parents=True)
     # Isolate backend code from the staged iOS-only NumPy binaries.
@@ -65,7 +65,7 @@ def worker(source, folder, port, server, pipe):
             while True:
                 call = voice.call
                 if call and call.phase == 'connected':
-                    if time.monotonic() < tone_until:
+                    if time.monotonic() < tone_until and not silent_control:
                         frame = (.07 * np.sin(2 * np.pi * 440 * (np.arange(960) + phase) / 48000) * 32767).astype('<i2')
                         phase += 960; voice.push(call.id, frame.tobytes(), True)
                     else: voice.push(call.id, bytes(1920), True)
@@ -121,6 +121,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend-source', required=True, type=Path)
     parser.add_argument('--work-dir', required=True, type=Path)
+    parser.add_argument("--silent-negative-control", action="store_true", help="Inject silence; this command must fail its settled-tone assertion")
     args = parser.parse_args()
     assert (args.backend_source / 'meshchatnext/src/backend/telephone_manager.py').is_file()
     args.work_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -133,7 +134,7 @@ def main():
         for index in range(2):
             pipe, child = multiprocessing.get_context('spawn').Pipe()
             process = multiprocessing.get_context('spawn').Process(target=worker, args=(
-                str(args.backend_source.resolve()), str(args.work_dir / str(index)), port, index == 0, child))
+                str(args.backend_source.resolve()), str(args.work_dir / str(index)), port, index == 0, child, args.silent_negative_control))
             process.start(); child.close()
             def cleanup(process=process, pipe=pipe):
                 pipe.close()
@@ -161,10 +162,20 @@ def main():
                     rpc(pipes[caller], 'profile', value=profile); time.sleep(2)
                 for sender in range(2):
                     receiver = 1 - sender
-                    rpc(pipes[receiver], 'reset'); rpc(pipes[sender], 'tone', seconds=3)
-                    measured = wait([pipes[receiver]], lambda rows: rows[0]['samples'] >= 9600 and rows[0]['rms'] > .0001, timeout=12)[0]
+                    # Codec2 can emit low-level comfort noise while the
+                    # sender is silent. Settled tone energy must exceed that
+                    # baseline; nonempty decoded frames alone are not proof.
+                    rpc(pipes[receiver], 'reset'); time.sleep(1)
+                    baseline = rpc(pipes[receiver], 'status')['rms']
+                    rpc(pipes[sender], 'tone', seconds=5)
+                    time.sleep(1); rpc(pipes[receiver], 'reset'); time.sleep(2)
+                    measured = rpc(pipes[receiver], 'status')
+                    assert measured['samples'] >= 24000, measured
+                    assert measured['rms'] > max(.001, baseline * 3), ('Silent/comfort-only audio cannot pass settled-tone proof', dict(baseline=baseline, measured=measured))
+                    assert measured['peak'] < .99, measured
                     proof['checks'].append(dict(caller=caller, sender=sender, profile=profile,
-                                                 samples=measured['samples'], rms=measured['rms'], peak=measured['peak']))
+                                                 samples=measured['samples'], rms=measured['rms'], peak=measured['peak'],
+                                                 silent_baseline_rms=baseline, settled_tone_verified=True))
                     time.sleep(3)
             rpc(pipes[caller], 'hangup')
             wait(pipes, lambda rows: all(not r['state']['is_busy'] for r in rows))

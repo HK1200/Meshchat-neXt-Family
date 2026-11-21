@@ -58,6 +58,16 @@ jobs:
             --output temp-tests/voice-source/backend.whl
           python ios/NextRuntimeProbe/stage-backend.py \
             temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only
+      - name: Confirm silence cannot pass the media proof
+        run: |
+          if python ios/NextRuntimeProbe/test-voice-loopback.py \
+            --backend-source temp-tests/voice-source/staged --work-dir temp-tests/voice-silence \
+            --silent-negative-control > temp-tests/voice-silence.log 2>&1; then
+            cat temp-tests/voice-silence.log
+            echo "Silent media unexpectedly passed"
+            exit 1
+          fi
+          python -c "from pathlib import Path; assert 'Silent/comfort-only audio cannot pass settled-tone proof' in Path('temp-tests/voice-silence.log').read_text()"
       - name: Verify private calls, both audio directions and live quality switching
         run: |
           python ios/NextRuntimeProbe/test-voice-loopback.py \

@@ -197,6 +197,10 @@ for runtime in sorted(devices, key=lambda k: tuple(int(v) for v in k.split("iOS-
 else:
     raise SystemExit(f"No {family.strip()} simulator available")
 ' "$device")"
+    # A simulator can expose the app's accessibility tree while its boot
+    # overlay still intercepts touches. Complete OS boot before XCTest starts;
+    # the failed recording and all original assertions remain retained.
+    xcrun simctl bootstatus "$destination" -b
     if xcodebuild test-without-building "${test_arguments[@]}" \
         -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
         -resultBundlePath "$result_set/$device.xcresult" \

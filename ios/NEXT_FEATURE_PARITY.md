@@ -464,3 +464,17 @@ leaving a call or microphone active. The full preceding suite passed 274 tests;
 additional focused storage-failure and no-announce caller-name regressions pass.
 The 12-check encrypted-media test also passes through the new hangup/history
 path. These do not establish SIP history or locked-screen VoIP wake support.
+
+
+The audio proof now compares two seconds of settled tone against a measured
+silent baseline, requires at least 0.5 seconds of decoded samples and rejects
+clipping. All 12 stronger checks passed. A silence-only negative run failed at
+the intended energy assertion, proving comfort noise cannot pass the oracle;
+CI runs that negative control before the positive proof.
+
+Build 303.1's archive contains the exact reviewed runtime and no test peer or SIP
+credential fixtures. Its first iPhone UI run failed to open native panels; the
+recording remained on Apple's boot-progress overlay while accessibility exposed
+the app underneath. All 66 unit checks passed, but the two UI checks failed.
+The simulator harness now waits for OS boot completion before invoking XCTest.
+The archive is not installed or release-qualified while this retry is pending.
