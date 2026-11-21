@@ -13,10 +13,13 @@ probe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/next-runtime-probe.XXXXXXXX")"
 peer_pid=
 sip_pid=
-sip_call_pids=()
+sip_incoming_pid=
+sip_outgoing_pid=
 cleanup() {
-    for call_pid in "${sip_call_pids[@]}"; do
-        kill "$call_pid" 2>/dev/null || true; wait "$call_pid" 2>/dev/null || true
+    for call_pid in "$sip_incoming_pid" "$sip_outgoing_pid"; do
+        if [[ -n "$call_pid" ]]; then
+            kill "$call_pid" 2>/dev/null || true; wait "$call_pid" 2>/dev/null || true
+        fi
     done
     if [[ -n "$peer_pid" ]]; then kill "$peer_pid" 2>/dev/null || true; wait "$peer_pid" 2>/dev/null || true; fi
     if [[ -n "$sip_pid" ]]; then kill "$sip_pid" 2>/dev/null || true; wait "$sip_pid" 2>/dev/null || true; fi
@@ -120,7 +123,7 @@ cp "$scratch/sip/account.json" Tests/sip-account.json
 for direction in incoming outgoing; do
     python3 "$probe/sip_call_fixture.py" "$scratch/sip-$direction" "$direction" > "$scratch/sip-$direction.log" 2>&1 &
     call_pid=$!
-    sip_call_pids+=("$call_pid")
+    if [[ "$direction" == incoming ]]; then sip_incoming_pid=$call_pid; else sip_outgoing_pid=$call_pid; fi
     for ((i=0; i<100; i++)); do
         [[ ! -f "$scratch/sip-$direction/account.json" ]] || break
         kill -0 "$call_pid" 2>/dev/null || { cat "$scratch/sip-$direction.log"; exit 1; }
@@ -192,11 +195,16 @@ assert value.get("registrations",0)>=int(sys.argv[3]) and value.get("unregistrat
 Path(sys.argv[2]).write_text(json.dumps(value,sort_keys=True)+"\n")
 PYTHON
         for direction in incoming outgoing; do
-            python3 - "$scratch/sip-$direction/observed.json" "$result_set/$device-sip-$direction-proof.json" "$sip_expected" <<'PYTHON'
+            cp "$scratch/sip-$direction/observed.json" "$result_set/$device-sip-$direction-observed.json"
+            python3 - "$result_set/$device-sip-$direction-observed.json" "$result_set/$device-sip-$direction-proof.json" "$sip_expected" <<'PYTHON'
 import json,sys
 from pathlib import Path
 value=json.loads(Path(sys.argv[1]).read_text())
-assert value.get("host")=="127.0.0.1" and value.get("authenticated") is True
+assert value.get("authenticated") is True and value.get("bound_local_interface") is True
+if value.get("mode")=="incoming":
+    assert value.get("host")=="127.0.0.1" and value.get("scope")=="loopback"
+else:
+    assert value.get("scope")=="local-interface" and value.get("host")!="127.0.0.1"
 for field in ("registrations","unregistrations","completed_calls"):
     assert value.get(field,0)>=int(sys.argv[3]), "Native SIP direction lacks fresh wire proof: "+field
 Path(sys.argv[2]).write_text(json.dumps(value,sort_keys=True)+"\n")

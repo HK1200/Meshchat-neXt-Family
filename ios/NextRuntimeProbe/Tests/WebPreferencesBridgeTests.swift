@@ -1,6 +1,7 @@
 import XCTest
 import WebKit
 import Network
+import UIKit
 
 /// A private loopback page exercises the actual WebKit/native bridge, rather
 /// than treating the separately passing JavaScript and file tests as proof.
@@ -8,16 +9,22 @@ import Network
 final class WebPreferencesBridgeTests: XCTestCase {
     private final class Navigation: NSObject, WKNavigationDelegate {
         let finished: XCTestExpectation
+        private(set) var completed = false
         var error: Error?
         init(_ finished: XCTestExpectation) { self.finished = finished }
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finished.fulfill() }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            self.error = error; finished.fulfill()
+        private func complete(_ error: Error? = nil) {
+            guard !completed else { return }
+            self.error = error; completed = true; finished.fulfill()
         }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            self.error = error; finished.fulfill()
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { complete() }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { complete(error) }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { complete(error) }
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            complete(NSError(domain: "NextPrivateWebKitTest", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Web content process terminated before the private page loaded"]))
         }
     }
+    private var pages: [(view: WKWebView, window: UIWindow, navigation: Navigation)] = []
     private func loopbackPage() async throws -> (NWListener, URL) {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
@@ -46,8 +53,16 @@ final class WebPreferencesBridgeTests: XCTestCase {
         let loaded = expectation(description: "Private page loaded")
         let navigation = Navigation(loaded)
         view.navigationDelegate = navigation
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive }))
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController(); controller.view = view
+        window.rootViewController = controller
+        pages.append((view, window, navigation))
+        window.makeKeyAndVisible()
         view.load(URLRequest(url: url))
-        await fulfillment(of: [loaded], timeout: 15)
+        await fulfillment(of: [loaded], timeout: 30)
+        guard navigation.completed else { throw URLError(.timedOut) }
         if let error = navigation.error { throw error }
         return view
     }
@@ -61,6 +76,17 @@ final class WebPreferencesBridgeTests: XCTestCase {
         }
     }
     func testRealWebKitBridgePersistsRestoresAndRejectsChildFrames() async throws {
+        let previousWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first(where: \.isKeyWindow)
+        defer {
+            for page in pages {
+                page.view.stopLoading()
+                page.view.configuration.userContentController.removeScriptMessageHandler(forName: "nextPreferences", contentWorld: .page)
+                page.view.navigationDelegate = nil
+                page.window.isHidden = true; page.window.rootViewController = nil
+            }
+            pages.removeAll(); previousWindow?.makeKey()
+        }
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("next-webkit-preferences-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -96,9 +122,5 @@ final class WebPreferencesBridgeTests: XCTestCase {
             """)
         XCTAssertEqual(child as? String, "rejected", "A child frame must not change private native preferences")
         XCTAssertEqual(try NextWebPreferences(folder: folder).values[NextWebPreferences.featureKey], features)
-        for web in [view, restored] {
-            web.stopLoading()
-            web.configuration.userContentController.removeScriptMessageHandler(forName: "nextPreferences", contentWorld: .page)
-        }
     }
 }

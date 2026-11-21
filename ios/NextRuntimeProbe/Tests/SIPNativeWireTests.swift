@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 
 @MainActor
 private final class WireCallAudio: NextSIPCallAudio {
@@ -35,7 +36,11 @@ final class SIPNativeWireTests: XCTestCase {
         struct Account: Decodable { let user: String; let host: String; let port: Int; let password: String }
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "sip-\(direction)", withExtension: "json"))
         let account = try JSONDecoder().decode(Account.self, from: Data(contentsOf: url))
-        XCTAssertEqual(account.host, "127.0.0.1")
+        if direction == "incoming" { XCTAssertEqual(account.host, "127.0.0.1") }
+        else {
+            XCTAssertNotEqual(account.host, "127.0.0.1")
+            XCTAssertTrue(localIPv4Addresses().contains(account.host), "The SIP peer must be bound to this simulator host")
+        }
         XCTAssertTrue((1...65535).contains(account.port))
         let network = NextSIPNetwork(start: false); network.update(.wifi)
         let context = try XCTUnwrap(network.snapshot().first?["interface"])
@@ -63,7 +68,7 @@ final class SIPNativeWireTests: XCTestCase {
         if direction == "outgoing" {
             callID = "private-outgoing-" + UUID().uuidString
             XCTAssertEqual(service.perform(["op":"dial","session":session,"call_id":callID,
-                "peer":"sip:private-peer@127.0.0.1:\(account.port)"])["ok"] as? Bool,true)
+                "peer":"sip:private-peer@\(account.host):\(account.port)"])["ok"] as? Bool,true)
         } else {
             for _ in 0..<200 {
                 collect()
@@ -81,7 +86,10 @@ final class SIPNativeWireTests: XCTestCase {
         }
         XCTAssertTrue(observed.contains(where: { $0["state"] as? String == "ended" && $0["native_id"] as? String == callID }))
         XCTAssertEqual(audio.preparations, direction == "outgoing" ? 1 : 0)
-        XCTAssertFalse(observed.contains(where: { $0["state"] as? String == "engine_failed" }))
+        let failures = observed.filter { ["engine_failed", "audio_error", "command_failed"].contains($0["state"] as? String ?? "") }
+        XCTAssertTrue(failures.isEmpty, "Native signaling errors: " + failures.map {
+            "\($0["state"] as? String ?? "unknown") code=\($0["code"] as? Int ?? -1)"
+        }.joined(separator: ", "))
         _ = service.perform(["op":"close","session":session])
         var closed = false
         for _ in 0..<100 {
@@ -90,4 +98,23 @@ final class SIPNativeWireTests: XCTestCase {
         }
         XCTAssertTrue(closed, "Private native SIP transport did not unregister and exit")
     }
+
+    private func localIPv4Addresses() -> Set<String> {
+        var first: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&first) == 0 else { return [] }
+        defer { if let first { freeifaddrs(first) } }
+        var values = Set<String>()
+        var cursor = first
+        while let row = cursor {
+            if let address = row.pointee.ifa_addr, address.pointee.sa_family == UInt8(AF_INET) {
+                var name = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(address, socklen_t(address.pointee.sa_len), &name, socklen_t(name.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    values.insert(String(cString: name))
+                }
+            }
+            cursor = row.pointee.ifa_next
+        }
+        return values
+    }
+
 }

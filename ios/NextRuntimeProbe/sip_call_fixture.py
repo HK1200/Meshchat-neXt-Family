@@ -1,4 +1,4 @@
-"""Private loopback SIP call peer with per-simulator signaling proof.
+"""Private on-runner SIP call peer with per-simulator signaling proof.
 
 No call is answered, no microphone is read and no RTP is sent. Incoming tests
 explicitly decline; outgoing tests receive Busy. Temporary account files are
@@ -28,15 +28,22 @@ class RecordedCallPeer(signaling.CallPeer):
         self.unregistrations = set()
         self.completed_calls = set()
         self.outgoing_invites = set()
-        # SIP signaling stays on loopback. SDP names a real local interface
-        # because Baresip excludes loopback from its media-interface selection.
-        super().__init__(mode, media_host='127.0.0.1')
+        # Incoming signaling can use loopback with a real SDP interface.
+        # For outgoing INVITEs, Baresip chooses its media interface from the SIP
+        # destination itself. Bind that peer to this runner's own local address.
+        signaling_host = '127.0.0.1' if mode == 'incoming' else media_host
+        super().__init__(mode, media_host=signaling_host)
         self.media_host = media_host
+        self.bound_local_interface = self.socket.getsockname()[0] == self.host
 
     def record(self):
         value = dict(host=self.host, mode=self.mode, authenticated=self.authenticated,
                      registrations=len(self.registrations), unregistrations=len(self.unregistrations),
-                     completed_calls=len(self.completed_calls))
+                     completed_calls=len(self.completed_calls),
+                     scope='loopback' if self.host == '127.0.0.1' else 'local-interface',
+                     bound_local_interface=self.bound_local_interface,
+                     last_messages=[' '.join(line.split()[:2]) if line.startswith('SIP/2.0 ') else line.split()[0]
+                                    for line in self.packet_summaries])
         temporary = self.folder / 'observed.tmp'
         temporary.write_text(json.dumps(value)); temporary.chmod(0o600)
         temporary.replace(self.folder / 'observed.json')
@@ -82,7 +89,7 @@ def main():
         account = args.folder / 'account.json'
         account.write_text(json.dumps(dict(user=peer.user, host=peer.host, port=peer.port, password=peer.password)))
         account.chmod(0o600)
-        print('Private loopback native call peer ready', flush=True)
+        print('Private on-runner native call peer ready', flush=True)
         stopped.wait()
     finally:
         peer.close(); peer.record()

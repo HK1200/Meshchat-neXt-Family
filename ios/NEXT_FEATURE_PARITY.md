@@ -161,3 +161,27 @@ app-hosted wire tests now use private loopback peers to verify an outgoing
 INVITE/rejection and incoming decline without microphone capture. The fixture
 requires a fresh authenticated registration, completed call and logout for each
 simulator, including when both run sequentially. Its four local wire checks pass.
+
+
+## Follow-up verification repairs
+
+The `35c4020` iPad run executed all 57 native cases successfully and confirmed
+the incoming SIP decline on the private peer. The outgoing wire check correctly
+refused qualification: its SIP destination was loopback, which Baresip excludes
+when selecting that outgoing media route. The retry uses only the runner's own
+bound interface and the native test verifies that address against `getifaddrs`;
+it also explicitly rejects audio and command errors. Reticulum simulator peers
+remain restricted to loopback. The strict completed-call proof is retained.
+
+The `4efed20` iPad calling/UI suite passed; iPhone passed both UI cases but its
+offscreen WebKit preference test timed out. That test now hosts the real web
+view in a temporary visible test window, retains its delegate, reports process
+termination and always cleans up on failure. Its persistence, cross-port restore
+and child-frame denial assertions remain unchanged. The normal app window is
+restored afterward. This helper is simulator-test code, not a device-app change.
+
+The `1a35d04` device app compiled successfully, but macOS Bash failed during
+cleanup because the device build had no fixture PIDs. Cleanup now uses two
+explicit optional process IDs. All five focused wire-fixture tests and the
+related preference/proof checks pass locally. The full native retry is required
+before installing the calling candidate or claiming it verified.
