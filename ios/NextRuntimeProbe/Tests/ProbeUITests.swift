@@ -114,10 +114,13 @@ final class ProbeUITests: XCTestCase {
         // is asserted after terminating and reopening the app below, rather
         // than depending on a short-lived toast being exposed to XCTest.
         Thread.sleep(forTimeInterval: 1)
-        let dark = web.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH %@", "Dark Theme")).firstMatch
+        let dark = web.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "weather-night Dark Theme")).firstMatch
         revealWebButton(dark, in: web)
         dark.tap()
-        let brand = app.staticTexts["next-native-brand"]
+        // Stop at the native header instead of asking WebKit to resolve every
+        // Settings element for each polling sample. Large web accessibility
+        // snapshots can exceed the wait even after the theme has applied.
+        let brand = app.staticTexts.matching(identifier: "next-native-brand").firstMatch
         let darkApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "dark"), object: brand)
         XCTAssertEqual(XCTWaiter.wait(for: [darkApplied], timeout: 15), .completed, app.debugDescription)
         app.terminate()
@@ -131,7 +134,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 15))
         let restoredName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Simulator profile"), object: name)
         XCTAssertEqual(XCTWaiter.wait(for: [restoredName], timeout: 15), .completed, app.debugDescription)
-        let light = web.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH %@", "Light Theme")).firstMatch
+        let light = web.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "weather-sunny Light Theme")).firstMatch
         revealWebButton(light, in: web)
         light.tap()
         let lightApplied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "light"), object: brand)
