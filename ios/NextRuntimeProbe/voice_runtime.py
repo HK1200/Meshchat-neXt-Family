@@ -132,6 +132,17 @@ class ReticulumVoice:
             values = {}
             saved_error = "Saved call settings could not be read. Calling is off; messaging is unchanged."
         self.config = Configuration(values.get("enabled", False), values.get("profile"), values.get("mode"))
+        self.policy_contacts = frozenset()
+        self.call_policy = {key: values.get(key, False) for key in
+                            ("do_not_disturb_enabled", "telephone_allow_calls_from_contacts_only", "block_all_from_strangers")}
+        self.blocked_callers = values.get("blocked_callers", [])
+        if (any(type(value) is not bool for value in self.call_policy.values())
+                or not isinstance(self.blocked_callers, list)
+                or any(not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{32}", value) for value in self.blocked_callers)):
+            self.config.telephone_enabled.value = False
+            self.call_policy = {key: True for key in self.call_policy}
+            self.blocked_callers = []
+            saved_error = "Saved caller policy could not be read. Calling is off; messaging is unchanged."
         self.session = uuid.uuid4().hex
         self.engine = None
         self.call = None
@@ -166,13 +177,14 @@ class ReticulumVoice:
         with self.database:
             for key, value in (("enabled", self.config.telephone_enabled.get()),
                                ("profile", self.config.telephone_audio_profile_id.get()),
-                               ("mode", self.config.telephone_call_mode_id.get())):
+                               ("mode", self.config.telephone_call_mode_id.get()),
+                               ("blocked_callers", self.blocked_callers), *self.call_policy.items()):
                 self.database.execute("INSERT INTO next_voice_settings VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                                       (key, json.dumps(value)))
         if self.on_settings: self.on_settings(self.settings_snapshot())
 
     def settings_snapshot(self):
-        return {"telephone_enabled": self.config.telephone_enabled.get(),
+        return {**self.call_policy, "telephone_enabled": self.config.telephone_enabled.get(),
                 "telephone_audio_profile_id": self.config.telephone_audio_profile_id.get(),
                 "telephone_call_mode_id": self.config.telephone_call_mode_id.get()}
 
@@ -222,18 +234,59 @@ class ReticulumVoice:
         if self.closed or not self.config.telephone_enabled.get():
             await asyncio.to_thread(engine.dispose)
             raise ValueError("Reticulum calling was turned off")
+        self.refresh_call_contacts()
+        engine.manager.set_call_policy(allowed_fn=self.caller_allowed)
         self.engine = engine
         self.config.telephone_audio_profile_id.value = engine.manager.resolve_audio_profile_id()
         self.config.telephone_call_mode_id.value = engine.manager.resolve_call_mode_id()
         for event, identity in holder["pending"]:
             self.loop.call_soon(self.transport_event, engine, event, identity)
         holder["pending"].clear()
-        self.error = ""
         return engine
+
+    def refresh_call_contacts(self):
+        # SQLite is owned by the app loop. LXST invokes the allowed callback
+        # on its network worker, which reads only this immutable snapshot.
+        self.policy_contacts = frozenset(self.contacts())
+
+    def caller_allowed(self, identity_hash):
+        # neXt's normal incoming-call policy must be explicitly installed.
+        # TelephoneManager deliberately rejects everyone until this happens.
+        if not isinstance(identity_hash, (bytes, bytearray)) or len(identity_hash) != 16:
+            return False
+        try:
+            import RNS
+            aliases = {bytes(identity_hash).hex(),
+                       RNS.Destination.hash_from_name_and_identity("lxmf.delivery", bytes(identity_hash)).hex(),
+                       RNS.Destination.hash_from_name_and_identity("lxst.telephony", bytes(identity_hash)).hex()}
+            if (not self.config.telephone_enabled.get() or self.call_policy["do_not_disturb_enabled"]
+                    or aliases.intersection(self.blocked_callers)):
+                return False
+            if self.call_policy["telephone_allow_calls_from_contacts_only"] or self.call_policy["block_all_from_strangers"]:
+                return bool(aliases.intersection(self.policy_contacts))
+            return True
+        except Exception:
+            return False
+
+    def set_call_policy(self, payload):
+        if not isinstance(payload, dict) or not payload or set(payload) - (set(self.call_policy) | {"blocked_callers"}):
+            raise ValueError("Choose a supported caller policy")
+        if any(type(value) is not bool for key, value in payload.items() if key != "blocked_callers"):
+            raise ValueError("Caller policy switches must be on or off")
+        blocked = payload.get("blocked_callers", self.blocked_callers)
+        if not isinstance(blocked, list) or len(blocked) > 10000:
+            raise ValueError("Use a list of blocked Reticulum addresses")
+        blocked = sorted({address(value) for value in blocked})
+        self.refresh_call_contacts()
+        self.call_policy.update({key: value for key, value in payload.items() if key != "blocked_callers"})
+        self.blocked_callers = blocked
+        self.save()
+        return {**self.call_policy, "blocked_callers": blocked}
 
     async def configure(self, enabled):
         if type(enabled) is not bool: raise ValueError("Choose whether Reticulum calling is enabled")
         self.config.telephone_enabled.value = enabled
+        self.error = ""
         self.save()
         if enabled:
             self.request("open")
@@ -254,6 +307,7 @@ class ReticulumVoice:
         import RNS
         identity = RNS.Identity.recall(bytes.fromhex(peer))
         canonical = RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity.hash).hex() if identity else peer
+        self.error = ""
         call = Call(uuid.uuid4().hex, canonical, self.name_for(peer), False, requested_peer=peer)
         self.call = call
         try:
@@ -403,6 +457,7 @@ class ReticulumVoice:
 
     async def tick(self):
         if self.closed or not self.available: return
+        self.refresh_call_contacts()
         try:
             for event in self.request("poll").get("events", []):
                 call = self.call
@@ -459,11 +514,11 @@ class ReticulumVoice:
                           remote_identity_name=call.name, is_incoming=call.incoming,
                           status={"preparing":2,"finding":2,"calling":2,"ringing":4,"incoming":4,"connected":6,"ending":3}[call.phase],
                           is_mic_muted=call.muted, is_speaker_muted=call.receive_muted, is_recording=False, is_voicemail=False,
-                          audio_profile_id=getattr(getattr(phone, "active_call", None), "profile", self.config.telephone_audio_profile_id.get()),
+                          audio_profile_id=getattr(getattr(phone, "active_call", None), "profile", None) or self.config.telephone_audio_profile_id.get(),
                           call_mode_id=self.engine.manager.get_active_mode_id() if self.engine else self.config.telephone_call_mode_id.get(),
                           is_half_duplex=self.engine.manager.is_half_duplex() if self.engine else False,
                           is_ptt_active=bool(self.engine.manager.ptt_active) if self.engine else False)
-        return dict(platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
+        return dict(**self.call_policy, platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
                     calling_available=self.available, address=phone.destination.hash.hex() if phone and phone.destination else "",
                     active_call=active, call_status=active["status"] if active else 3, is_busy=call is not None or self.ending is not None,
                     initiation_status=self.engine.manager.initiation_status if self.engine else None,
@@ -579,6 +634,9 @@ class ReticulumVoice:
             value = await request.json()
             if not isinstance(value, dict) or set(value) != {"enabled"}: raise ValueError("Choose whether calling is enabled")
             return await self.configure(value["enabled"])
+        async def policy(request):
+            if request.method == "POST": return self.set_call_policy(await request.json())
+            return {**self.call_policy, "blocked_callers": self.blocked_callers}
         async def dial(request): return await self.dial(request.match_info["peer"])
         async def control(request):
             payload = await request.json()
@@ -599,6 +657,8 @@ class ReticulumVoice:
             router.add_route(method, "/api/v1/" + path, wrapped)
         add("GET", "preview/reticulum-calling", status)
         add("POST", "preview/reticulum-calling", configure)
+        add("GET", "preview/reticulum-call-policy", policy)
+        add("POST", "preview/reticulum-call-policy", policy)
         add("GET", "telephone/status", status)
         add("GET", "telephone/audio-profiles", profiles)
         add("POST", "telephone/call/{peer}", dial)

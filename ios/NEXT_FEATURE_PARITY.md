@@ -426,3 +426,31 @@ neXt telephone controls use the same protected backend. Voice quality can be set
 before dialing, and existing contacts can be selected without retyping their
 addresses. This implementation is being tested; the installed 299.1 preview does
 not yet contain it. The earlier locked-screen SIP alert failure remains open.
+
+
+## Real Reticulum voice transport checkpoint
+
+The native integration now explicitly installs neXt's incoming-call policy;
+TelephoneManager intentionally refuses callers until that policy is installed.
+Do Not Disturb, contacts-only calls and blocked identities remain enforced before
+ringing. The network callback reads an immutable contact snapshot, and contact
+edits refresh that snapshot before the API returns. The native calling panel
+exposes Do Not Disturb and contacts-only switches. Failed setup remains visible
+after the telephone recovers instead of disappearing immediately.
+
+The full neXt iOS backend suite passed 272 checks. The separate real-media proof
+uses two disposable Reticulum processes, localhost TCP only, the checksum-pinned
+0.1.21 backend with the existing hostless-audio backport, production LXST and the
+iOS Codec2 adapter backed by host Codec2. Only the OS permission/answer boundary
+is simulated. Twelve checks passed: decoded PCM in both directions at medium,
+ultra-low, very-low and low bandwidth, switching back to medium, clean hangup,
+and a new call initiated by the other peer. No microphone, speaker, public peer
+or radio is used; this establishes encrypted transport and codec continuity,
+not subjective speech quality or a physical locked-screen alert.
+
+`test-voice-loopback.py` retains only numeric energy/sample results, never an
+audio recording. The new CI job stages the same checksum-verified backend before
+running that proof. The native device archive builds after the settings error
+handler correction; both simulator suites and the policy follow-up still need
+their final GitHub result before a new device install is qualified. Regular
+Family remains unchanged. Apple enrollment remains on hold.

@@ -11,13 +11,14 @@ from hostless_audio_patch import backport_hostless_mixer
 NEXT_WHEEL_SHA256 = "bd67437f00d62323d5d12718832bf24a90d5c8d32556dfe15ebc88c8b2f0d294"
 
 
-def stage(wheel, destination, family_ios):
+def stage(wheel, destination, family_ios, *, voice_only=False):
     if hashlib.file_digest(wheel.open("rb"), "sha256").hexdigest() != NEXT_WHEEL_SHA256:
         raise ValueError("The neXt backend wheel checksum does not match")
-    spec = importlib.util.spec_from_file_location("family_runtime_stager", family_ios / "stage-runtime.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.stage_meshcore(destination, family_ios / "RuntimeBuild/meshcore-wheels")
+    if not voice_only:
+        spec = importlib.util.spec_from_file_location("family_runtime_stager", family_ios / "stage-runtime.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.stage_meshcore(destination, family_ios / "RuntimeBuild/meshcore-wheels")
     with zipfile.ZipFile(wheel) as archive:
         for entry in archive.infolist():
             path = PurePosixPath(entry.filename)
@@ -70,9 +71,10 @@ def stage(wheel, destination, family_ios):
             if entry.filename == "meshchatnext/src/backend/web_audio_bridge.py":
                 payload = backport_hostless_mixer(payload)
             target.write_bytes(payload)
-    import shutil
-    shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",
-                    destination / "family_ios_meshcore_crypto.py")
+    if not voice_only:
+        import shutil
+        shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",
+                        destination / "family_ios_meshcore_crypto.py")
 
 
 if __name__ == "__main__":
@@ -80,5 +82,6 @@ if __name__ == "__main__":
     parser.add_argument("wheel", type=Path)
     parser.add_argument("destination", type=Path)
     parser.add_argument("family_ios", type=Path)
+    parser.add_argument("--voice-only", action="store_true", help="Stage backend code for isolated host voice tests; omit unrelated MeshCore SDK")
     args = parser.parse_args()
-    stage(args.wheel, args.destination, args.family_ios)
+    stage(args.wheel, args.destination, args.family_ios, voice_only=args.voice_only)

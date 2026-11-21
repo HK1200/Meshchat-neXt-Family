@@ -33,3 +33,39 @@ jobs:
         run: python -m pip install --require-hashes -r tests/requirements.lock
       - name: Test Family backend
         run: python -m pytest -q tests
+
+  next-voice-media:
+    name: neXt iOS encrypted voice media
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - name: Install pinned test dependencies and host codecs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopus0 libopusfile0 libogg0 libcodec2-1.2
+          python -m pip install --require-hashes -r tests/requirements.lock
+      - name: Stage the checksum-verified neXt backend
+        run: |
+          mkdir -p temp-tests/voice-source
+          curl --fail --silent --show-error --location --retry 3 --max-time 120 \
+            https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
+            --output temp-tests/voice-source/backend.whl
+          python ios/NextRuntimeProbe/stage-backend.py \
+            temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only
+      - name: Verify private calls, both audio directions and live quality switching
+        run: |
+          python ios/NextRuntimeProbe/test-voice-loopback.py \
+            --backend-source temp-tests/voice-source/staged --work-dir temp-tests/voice-network
+      - name: Keep synthetic voice proof
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: next-ios-encrypted-voice-proof
+          path: temp-tests/voice-network/proof.json
+          if-no-files-found: error
+          retention-days: 14

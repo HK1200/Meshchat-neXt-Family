@@ -20,6 +20,7 @@ struct NextReticulumSettings: View {
         let is_incoming: Bool; let is_mic_muted: Bool; let audio_profile_id: Int?
     }
     private struct Snapshot: Decodable {
+        let do_not_disturb_enabled: Bool; let telephone_allow_calls_from_contacts_only: Bool
         let enabled: Bool; let ready: Bool; let calling_available: Bool; let is_busy: Bool
         let preferred_audio_profile_id: Int?
         let address: String; let error: String; let active_call: Call?
@@ -44,6 +45,16 @@ struct NextReticulumSettings: View {
                         ShareLink("Share voice address", item: address)
                     }
                 }
+                Section("Incoming calls") {
+                    Toggle("Do Not Disturb", isOn: Binding(
+                        get: { snapshot?.do_not_disturb_enabled ?? false },
+                        set: { command("preview/reticulum-call-policy", ["do_not_disturb_enabled": $0]) }))
+                        .accessibilityIdentifier("next-voice-dnd")
+                    Toggle("Only allow calls from contacts", isOn: Binding(
+                        get: { snapshot?.telephone_allow_calls_from_contacts_only ?? false },
+                        set: { command("preview/reticulum-call-policy", ["telephone_allow_calls_from_contacts_only": $0]) }))
+                        .accessibilityIdentifier("next-voice-contacts-only")
+                }.disabled(busy || snapshot == nil)
                 if !profiles.isEmpty {
                     Section("Voice quality") {
                         Picker("Quality", selection: Binding(

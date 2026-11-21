@@ -32,6 +32,7 @@ class Engine:
             phone.active_call=object();phone.call_status=2
         def announce(**value):self.announces.append(value)
         self.manager=SimpleNamespace(telephone=phone,initiation_status=None,
+            set_call_policy=lambda **kwargs: setattr(self, "call_policy", kwargs),
             resolve_audio_profile_id=lambda:64,resolve_call_mode_id=lambda:0,
             initiate=initiate,announce=announce,mute_transmit=lambda:None,unmute_transmit=lambda:None,
             get_active_mode_id=lambda:1,is_half_duplex=lambda:False,ptt_active=False,
@@ -294,4 +295,55 @@ def test_http_voice_routes_enforce_exact_call_ids_and_strict_inputs():
                 response=await client.post('/api/v1/telephone/hangup',json={"call_id":identifier})
                 assert response.status==200 and native.requests[-1]["op"]=="hangup"
             finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_real_engine_installs_live_caller_policy_and_preserves_restrictions():
+    async def run():
+        voice,native,db=fixture()
+        caller=RNS.Identity()
+        lxmf=RNS.Destination.hash_from_name_and_identity("lxmf.delivery",caller.hash).hex()
+        try:
+            assert not voice.caller_allowed(caller.hash)
+            await voice.configure(True)
+            allowed=voice.engine.call_policy["allowed_fn"]
+            assert allowed(caller.hash)
+            voice.set_call_policy({"telephone_allow_calls_from_contacts_only":True})
+            assert not allowed(caller.hash)
+            voice.contacts=lambda:{lxmf:{"name":"Known caller"}}
+            voice.refresh_call_contacts()
+            assert allowed(caller.hash)
+            assert await asyncio.to_thread(allowed, caller.hash)
+            voice.set_call_policy({"do_not_disturb_enabled":True})
+            assert not allowed(caller.hash)
+            voice.set_call_policy({"do_not_disturb_enabled":False,"blocked_callers":[lxmf]})
+            assert not allowed(caller.hash)
+            voice.set_call_policy({"blocked_callers":[]})
+            assert allowed(caller.hash)
+            voice.contacts=lambda:{}
+            voice.refresh_call_contacts()
+            assert not allowed(caller.hash)
+            for malformed in ({"do_not_disturb_enabled":"false"},{"blocked_callers":["bad"]},{"unknown":False}):
+                with pytest.raises(ValueError):voice.set_call_policy(malformed)
+            assert not allowed(caller.hash) and not allowed(b"bad")
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_dial_failure_remains_visible_after_the_engine_recovers():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            async def fail(*args,**kwargs):raise RuntimeError("Private transport refused the call")
+            voice.engine.manager.initiate=fail
+            await voice.dial("a"*32)
+            native.events.append({"operation":"dial","call_id":voice.call.id})
+            await voice.tick();await asyncio.sleep(0)
+            if voice.ending:await voice.ending
+            assert voice.call is None and voice.engine is not None
+            assert "transport refused" in voice.snapshot()["error"]
+            await voice.dial("b"*32)
+            assert not voice.snapshot()["error"]
+        finally:await voice.close();db.close()
     asyncio.run(run())

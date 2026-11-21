@@ -587,6 +587,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 return web.json_response({"message": str(error)}, status=400)
             contacts.clear()
             contacts.update(history.contacts())
+            if voice: voice.refresh_call_contacts()
             return web.json_response({"message": "Contact updated" if request.method == "PATCH" else "Contact removed"})
         label_path = re.fullmatch(r"destination/([a-f0-9]{32})/custom-display-name/update", path)
         if label_path and request.method == "POST":
@@ -605,12 +606,13 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method == "PATCH" and path == "config":
             try:
                 payload = await request.json()
-                voice_keys = {"telephone_enabled", "telephone_audio_profile_id", "telephone_call_mode_id"}
+                voice_keys = {"telephone_enabled", "telephone_audio_profile_id", "telephone_call_mode_id", *voice.call_policy} if voice else set()
                 if voice and isinstance(payload, dict) and voice_keys.intersection(payload):
                     if len(payload) != 1: raise ValueError("Change one call setting at a time")
                     if "telephone_enabled" in payload: await voice.configure(payload["telephone_enabled"])
                     elif "telephone_audio_profile_id" in payload: await voice.set_profile(payload["telephone_audio_profile_id"], {})
-                    else: await voice.set_mode(payload["telephone_call_mode_id"], {})
+                    elif "telephone_call_mode_id" in payload: await voice.set_mode(payload["telephone_call_mode_id"], {})
+                    else: voice.set_call_policy(payload)
                     return web.json_response({"config": config})
                 saved = history.update_preferences(payload, display_name)
             except ValueError as error:
@@ -668,6 +670,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     return web.json_response({"message": "That LXMF address is already saved"}, status=409)
                 history.ensure_contact(address.lower(), name.strip())
                 contacts.update(history.contacts())
+                if voice: voice.refresh_call_contacts()
                 return web.json_response({"message": "Contact added"})
             if path == "lxmf/conversations/bulk-mark-as-read":
                 body = await request.json()
