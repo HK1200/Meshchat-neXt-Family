@@ -4,6 +4,11 @@ set -euo pipefail
 family_ios="$(cd -- "${1:?Pass the Family checkout ios directory}" && pwd)"
 mode="${2:-simulators}"
 case "$mode" in simulators|device) ;; *) exit 2 ;; esac
+simulator_families=(iPhone iPad)
+if [[ -n "${NEXT_PROBE_DEVICE:-}" ]]; then
+    case "$NEXT_PROBE_DEVICE" in iPhone|iPad) simulator_families=("$NEXT_PROBE_DEVICE") ;;
+        *) echo "Choose iPhone or iPad for NEXT_PROBE_DEVICE" >&2; exit 2 ;; esac
+fi
 probe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/next-runtime-probe.XXXXXXXX")"
 peer_pid=
@@ -99,7 +104,7 @@ xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRun
 python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
-for device in iPhone iPad; do
+for device in "${simulator_families[@]}"; do
     destination="$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
 family = sys.argv[1] + " "

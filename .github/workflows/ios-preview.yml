@@ -137,21 +137,28 @@ jobs:
 
   next-runtime-probe:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_runtime_probe }}
+    name: ${{ matrix.device }} neXt Messages
     runs-on: macos-26
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
       - name: Install XcodeGen
         run: command -v xcodegen || brew install xcodegen
-      - name: Test neXt on both simulators
+      - name: Test neXt on the selected simulator
+        env:
+          NEXT_PROBE_DEVICE: ${{ matrix.device }}
         run: bash ios/NextRuntimeProbe/test-simulators.sh ios
       - name: Keep neXt simulator results and synthetic test crash reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: next-ios-simulator-results-${{ github.run_attempt }}
+          name: next-ios-simulator-results-${{ matrix.device }}-${{ github.run_attempt }}
           path: ios/RuntimeBuild/next-results
           if-no-files-found: ignore
           retention-days: 7
