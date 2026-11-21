@@ -10,6 +10,8 @@ targets:
       - App
       - path: SIP-NOTICES.txt
         buildPhase: resources
+      - path: PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: staged
         type: folder
         buildPhase: resources

@@ -23,7 +23,7 @@ trap cleanup EXIT
 bash "$family_ios/prepare-live.sh"
 cd -- "$scratch"
 cp -R "$probe/App" "$probe/project.yml" .
-cp "$family_ios/SIP-NOTICES.txt" .
+cp "$family_ios/SIP-NOTICES.txt" "$probe/PrivacyInfo.xcprivacy" .
 cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
@@ -71,6 +71,8 @@ YAML
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
     test -s "$app/SIP-NOTICES.txt"
+    test -s "$app/PrivacyInfo.xcprivacy"
+    plutil -lint "$app/PrivacyInfo.xcprivacy"
     test ! -e "$app/staged/peer.json"
     test ! -e "$app/sip-account.json"
     /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
