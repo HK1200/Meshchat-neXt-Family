@@ -118,3 +118,17 @@ def test_unsigned_dm_never_reaches_inbox_callback():
     signed = SimpleNamespace(signature_validated=True)
     probe.receive(signed)
     assert received == [signed]
+
+
+def test_delivery_result_requires_explicit_successful_inbox_acceptance():
+    from messaging_probe import MessagingProbe
+    probe = object.__new__(MessagingProbe)
+    signed = SimpleNamespace(signature_validated=True)
+    probe.on_receive = lambda _message: False
+    assert probe.receive(signed) is False
+    probe.on_receive = lambda _message: True
+    assert probe.receive(signed) is True
+    probe.on_receive = None
+    assert probe.receive(signed) is False
+    probe.on_receive = lambda _message: True
+    assert probe.receive(SimpleNamespace(signature_validated=False)) is False

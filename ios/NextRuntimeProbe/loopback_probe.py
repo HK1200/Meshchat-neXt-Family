@@ -22,6 +22,7 @@ from aiohttp import web
 from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_for
 import attachment_fields
 from runtime_access import RuntimeAccess, COOKIE, CSP
+from durable_inbox import DurableInbox
 
 
 def record(message, state):
@@ -334,30 +335,52 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     clients = set()
     tasks = set()
 
-    async def publish(kind, row):
+    def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
-        if not re.fullmatch(r"[a-f0-9]{32}", address) or address == own:
-            return
+        if not re.fullmatch(r"[a-f0-9]{32}", address):
+            return None, False
+        if address == own:
+            return None, True
         if address not in contacts and not history.has_conversation(address):
-            # neXt is an adult messenger: a signed DM may begin a conversation
-            # without adding its sender to the phonebook. Telemetry alone must
-            # not create a new chat or location relationship.
+            # Deliberately consume unwanted telemetry without creating a chat.
+            # A database error is different: it must leave mailbox data unacked.
             if row["is_outbound"] or row.get("is_private_telemetry"):
-                return
-        row = history.save(address, row)
+                return None, True
+        return history.save(address, row), True
+
+    async def notify(kind, row):
         for client in tuple(clients):
             try:
                 await client.send_json({"type": kind, "lxmf_message": attachment_fields.slim(row)})
             except (ConnectionError, RuntimeError):
                 clients.discard(client)
 
-    def schedule(kind, row):
-        task = asyncio.create_task(publish(kind, row))
+    def track(coroutine):
+        task = asyncio.create_task(coroutine)
         tasks.add(task)
         task.add_done_callback(tasks.discard)
 
+    async def publish(kind, row):
+        saved, accepted = persist(row)
+        if saved is not None:
+            await notify(kind, saved)
+        return accepted
+
+    def schedule(kind, row):
+        track(publish(kind, row))
+
+    def commit_received(row):
+        saved, accepted = persist(row)
+        if saved is not None:
+            # Notify after commit, without making transport receipt depend on
+            # a slow or disconnected web view consuming the WebSocket event.
+            track(notify("lxmf.delivery", saved))
+        return accepted
+
+    inbox = DurableInbox(loop, commit_received)
+
     def inbound(message):
-        loop.call_soon_threadsafe(schedule, "lxmf.delivery", record(message, "received"))
+        return inbox.receive(record(message, "received"))
 
     settings = json.loads(fixture.read_text(encoding="utf-8"))
     if not device and peer_settings is not None:
@@ -446,6 +469,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
 
     async def api(request):
         path = request.match_info["path"]
+        responses["status"]["inbox_error"] = inbox.error
         if request.method == "GET":
             if path == "preview/rnode":
                 return web.json_response(probe.rnode.snapshot(), headers={"Cache-Control": "no-store"})
@@ -744,6 +768,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await announce_routes()
             await asyncio.sleep(1)
     finally:
+        inbox.close()
         access.clear_info()
         if meshcore:
             try:

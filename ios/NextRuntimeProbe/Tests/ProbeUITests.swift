@@ -301,8 +301,9 @@ final class ProbeUITests: XCTestCase {
 
     private func replace(_ field: XCUIElement, with value: String, in app: XCUIApplication) {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let placeholder = field.placeholderValue ?? ""
         let reported = field.value as? String ?? ""
-        let previous = reported == field.placeholderValue ? "" : reported
+        let previous = reported == placeholder ? "" : reported
         XCTAssertTrue(field.isEnabled, app.debugDescription)
         field.tap()
         // The first touch after scrolling may stop deceleration rather than
@@ -311,12 +312,13 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         if !previous.isEmpty {
             app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+            let cleared = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value == nil OR value == '' OR value == %@", placeholder), object: field)
+            XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 10), .completed, app.debugDescription)
         }
-        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            let text = field.value as? String ?? ""
-            return text.isEmpty || text == field.placeholderValue
-        }, object: field)
-        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 10), .completed, app.debugDescription)
+        // A new blank row has nothing to delete. Do not poll its placeholder
+        // through a block predicate that repeatedly requests full AX snapshots.
+        // The exact replacement and saved values below remain mandatory.
         app.typeText(value)
         // The video shows the complete hostname before accessibility finishes
         // publishing it. Wait for the exact value, never accept a prefix.

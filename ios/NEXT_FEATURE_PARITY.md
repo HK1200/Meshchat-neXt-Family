@@ -185,3 +185,28 @@ cleanup because the device build had no fixture PIDs. Cleanup now uses two
 explicit optional process IDs. All five focused wire-fixture tests and the
 related preference/proof checks pass locally. The full native retry is required
 before installing the calling candidate or claiming it verified.
+
+
+## Durable inbox prerequisite for offline messages
+
+The old neXt transport callback returned no result even when the inbox declined
+a message. The new regression fails on that code. A bounded thread-safe handoff
+now returns success only after the owning loop commits the SQLite transaction;
+slow web views do not delay that commit. Failed, timed-out or shutdown writes are
+not acknowledged. The staged LXMF fork's strict propagation-delivery callback is
+enabled. Invalid signatures remain rejected.
+
+All 213 existing/new neXt backend checks pass. A real encrypted relay test also
+passes: a simulated failed inbox write leaves the verified message available,
+then a later successful write saves it once. Repeated sync does not duplicate
+it. The sender is not in the phonebook; its public identity is supplied by the
+private fixture so signature verification is genuinely exercised. This is a
+prerequisite, not a claim that neXt's mailbox settings, background scheduling or
+real APNs are finished.
+
+At `755cc00`, iPhone passed the full native/UI and strict SIP peer checks. iPad
+passed all 57 native cases; its new blank peer-host field timed out in an extra
+placeholder-clearing poll before typing. The helper now polls for clearing only
+after actually deleting existing text, using the built-in value predicate. It
+still requires the exact replacement, saved peer values, restart preservation
+and signed replies. The combined retry must pass before qualification.

@@ -56,7 +56,7 @@ wheels-env/bin/python -m pip install --disable-pip-version-check --target staged
     --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
 cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
-cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" staged/
+cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" "$probe/durable_inbox.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
@@ -235,6 +235,11 @@ PYTHON
             fi
         done
         if [[ -f "$scratch/sip/observed.json" ]]; then cp "$scratch/sip/observed.json" "$result_set/$device-sip-observed.json"; fi
+        for direction in incoming outgoing; do
+            if [[ -f "$scratch/sip-$direction/observed.json" ]]; then
+                cp "$scratch/sip-$direction/observed.json" "$result_set/$device-sip-$direction-observed.json"
+            fi
+        done
         cp "$scratch/echo.log" "$result_set/echo.log"
         cat "$scratch/echo.log"
         exit "$next_probe_exit"

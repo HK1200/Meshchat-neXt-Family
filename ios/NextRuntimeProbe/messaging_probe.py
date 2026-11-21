@@ -64,7 +64,7 @@ class MessagingProbe:
         self.source = self.router.register_delivery_identity(
             identity, display_name="neXt iOS" if device else "neXt simulator probe", stamp_cost=0,
         )
-        self.router.register_delivery_callback(self.receive)
+        self.router.register_delivery_callback(self.receive, require_propagation_delivery=True)
         self.discovery = ClientDiscovery(folder / "discovered-clients.sqlite3", self.source.hash.hex())
         RNS.Transport.register_announce_handler(self.discovery)
         self.connections = TCPPeers(self.reticulum, self.router, self.source, device=device)
@@ -90,7 +90,8 @@ class MessagingProbe:
 
     def receive(self, message):
         if self.on_receive and message.signature_validated:
-            self.on_receive(message)
+            return self.on_receive(message) is True
+        return False
 
     def compose(self, content, address, fields=None):
         deadline = time.monotonic() + 35
