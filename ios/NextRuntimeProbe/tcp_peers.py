@@ -53,11 +53,13 @@ def normalize_peers(settings, *, device):
 
 
 class TCPPeers:
-    def __init__(self, reticulum, router, source, *, device, factory=None, clock=time.monotonic):
+    def __init__(self, reticulum, router, source, *, device, factory=None, clock=time.monotonic, wall_clock=time.time):
         import RNS
         from family_tcp import FamilyTCPInterface
         self.reticulum, self.router, self.source = reticulum, router, source
         self.device, self.factory, self.clock = device, factory or FamilyTCPInterface, clock
+        self.wall_clock = wall_clock
+        self.last_announced_at = None
         self.transport, self.link_type = RNS.Transport, RNS.Link
         self.lock = threading.RLock()
         self.rows, self.interfaces, self.pending, self.errors, self.announced = [], {}, {}, {}, {}
@@ -143,7 +145,8 @@ class TCPPeers:
         with self.lock:
             self.announced.clear()
 
-    def announce_due(self):
+    def announce_due(self, interval=3600):
+        sent = 0
         with self.lock:
             for identifier, interface in self.interfaces.items():
                 if not interface.online or interface.detached:
@@ -151,13 +154,16 @@ class TCPPeers:
                 epoch = getattr(interface, "family_connection_epoch", 0)
                 previous = self.announced.get(identifier)
                 now = self.clock()
-                if previous and previous[0] == epoch and now - previous[1] < 3600:
+                if previous and previous[0] == epoch and (interval == 0 or now - previous[1] < interval):
                     continue
                 try:
                     self.source.announce(attached_interface=interface)
                 except Exception:
                     continue  # A failed announce is due again at the next poll.
                 self.announced[identifier] = (epoch, now)
+                self.last_announced_at = int(self.wall_clock())
+                sent += 1
+        return sent
 
     def close(self):
         with self.lock:

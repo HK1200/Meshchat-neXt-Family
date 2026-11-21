@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import sqlite3
+import time
 from pathlib import Path
 from urllib.parse import quote
 import base64
@@ -96,13 +97,30 @@ class ConversationHistory:
             """)
 
     def preferences(self, default_name="neXt iOS"):
-        result = {"display_name": default_name, "theme": "system"}
-        result.update(dict(self.db.execute("SELECT key, value FROM preferences")))
+        result = {"display_name": default_name, "theme": "system", "auto_announce_interval_seconds": 3600}
+        result.update(dict(self.db.execute("SELECT key, value FROM preferences WHERE key != 'last_announced_at'")))
+        result["auto_announce_interval_seconds"] = int(result["auto_announce_interval_seconds"])
         return result
 
+    def last_announce_time(self):
+        row = self.db.execute("SELECT value FROM preferences WHERE key = 'last_announced_at'").fetchone()
+        if row is None:
+            return None
+        try:
+            value = int(row[0])
+            return value if value >= 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    def record_announce_time(self, timestamp):
+        if type(timestamp) is not int or timestamp < 0:
+            raise ValueError("Invalid announce timestamp")
+        with self.db:
+            self.db.execute("INSERT INTO preferences VALUES ('last_announced_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (timestamp,))
+
     def update_preferences(self, changes, default_name="neXt iOS"):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"display_name", "theme"}:
-            raise ValueError("This iOS preview supports saving the display name and theme")
+        if not isinstance(changes, dict) or not changes or set(changes) - {"display_name", "theme", "auto_announce_interval_seconds"}:
+            raise ValueError("This iOS preview supports saving the display name, theme and announce interval")
         values = dict(changes)
         if "display_name" in values:
             name = values["display_name"]
@@ -112,6 +130,10 @@ class ConversationHistory:
             values["display_name"] = name.strip()
         if "theme" in values and values["theme"] not in ("light", "dark", "system"):
             raise ValueError("Choose Light, Dark or System theme")
+        if "auto_announce_interval_seconds" in values:
+            interval = values["auto_announce_interval_seconds"]
+            if type(interval) is not int or interval not in (0, 900, 1800, 3600, 10800, 21600, 43200, 86400):
+                raise ValueError("Choose a listed announce interval")
         with self.db:
             self.db.executemany("INSERT INTO preferences VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                                 values.items())
@@ -295,6 +317,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     contacts = history.contacts()
     display_name = "neXt iOS" if device else "neXt Simulator"
     config = {"lxmf_address_hash": own, "identity_hash": probe.source.identity.hash.hex(),
+              "last_announced_at": history.last_announce_time(),
               **history.preferences(display_name)}
     probe.source.display_name = config["display_name"]
     responses = {
@@ -305,6 +328,37 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         "lxmf/conversation-pins": {"pinned_destination_hashes": []},
         "lxmf/folders": {"folders": []},
     }
+
+    announce_lock = asyncio.Lock()
+
+    async def announce_routes(*, force=False):
+        # Manual requests and the timer share one scheduler. Never mark a
+        # queued/failed announce as sent, or race two identical transmissions.
+        async with announce_lock:
+            # Reticulum ignores equal-second announces for an existing route.
+            # Preserve the real successful time through app restart, and wait
+            # for the next wall-clock second rather than forging a timestamp.
+            previous = config["last_announced_at"]
+            now = time.time()
+            if previous is not None and int(now) == previous:
+                await asyncio.sleep(previous + 1.01 - now)
+            if force:
+                probe.connections.request_announce()
+                probe.rnode.request_announce()
+            interval = config["auto_announce_interval_seconds"]
+            count = await asyncio.to_thread(probe.connections.announce_due, interval)
+            count += bool(await asyncio.to_thread(probe.rnode.announce_due, interval))
+            announced_at = probe.last_announced_at
+            if count and announced_at is not None:
+                history.record_announce_time(announced_at)
+            if count and announced_at != config["last_announced_at"]:
+                config["last_announced_at"] = announced_at
+                for client in tuple(clients):
+                    try:
+                        await client.send_json({"type": "config", "config": config})
+                    except (ConnectionError, RuntimeError):
+                        clients.discard(client)
+            return count
 
     async def meshcore_broadcast(event):
         for client in tuple(clients):
@@ -407,6 +461,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     raise web.HTTPBadRequest(text="Invalid history pagination")
         if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
+        if request.method == "POST" and path == "announce":
+            if not await announce_routes(force=True):
+                return web.json_response({"message": "No connected Reticulum interface could send the announce"}, status=503)
+            return web.json_response({"status": "ok"})
         if request.method == "PATCH" and path == "config":
             try:
                 saved = history.update_preferences(await request.json(), display_name)
@@ -417,6 +475,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             probe.source.display_name = config["display_name"]
             if renamed:
                 probe.connections.request_announce()
+                probe.rnode.request_announce()
             for client in tuple(clients):
                 try:
                     await client.send_json({"type": "config", "config": config})
@@ -579,8 +638,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Each connected route announces at startup/reconnect and hourly.
         # Simulator profiles are separately restricted to loopback only.
         while True:
-            await asyncio.to_thread(probe.connections.announce_due)
-            await asyncio.to_thread(probe.rnode.announce_due)
+            await announce_routes()
             await asyncio.sleep(1)
     finally:
         access.clear_info()

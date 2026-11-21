@@ -198,6 +198,7 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
             assert base.endswith("/#/messages")  # No typed test address required.
             assert api(base, "telephone/contacts")[1]["contacts"] == []
             token = api(base, "auth/csrf")[1]["csrf_token"]
+            assert api(base, "announce", method="POST")[0] == 403
             radio = dict(enabled=False, transport="tcp", endpoint="127.0.0.1",
                          frequency=914.875, bandwidth=125, sf=8, cr=7, power=17)
             assert api(base, "preview/rnode")[1]["settings"] is None
@@ -211,6 +212,8 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
                 rows = api(base, "preview/reticulum-connections")[1]["peers"]
                 return rows if len(rows) == 2 and all(row["online"] for row in rows) else None
             rows = wait(connected)
+            sent_at = wait(lambda: api(base, "config")[1]["config"].get("last_announced_at"))
+            assert type(sent_at) is int and abs(time.time() - sent_at) < 15
             assert api(base, "preview/reticulum-connections", body=config)[0] == 403
             duplicate = dict(peers=[dict(rows[0]), dict(rows[0], id="duplicate")])
             assert api(base, "preview/reticulum-connections", body=duplicate, token=token)[0] == 400
@@ -229,6 +232,12 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
             current = api(base, "config")[1]["config"]
             assert current["identity_hash"] != current["lxmf_address_hash"]
             assert current["display_name"] == profile["display_name"]
+            assert current["last_announced_at"] >= sent_at
+            assert api(base, "announce", method="POST", token=token)[0] == 200
+            first_manual_time = api(base, "config")[1]["config"]["last_announced_at"]
+            assert api(base, "announce", method="POST", token=token)[0] == 200
+            assert api(base, "config")[1]["config"]["last_announced_at"] > first_manual_time
+            assert api(base, "config", body={"auto_announce_interval_seconds": 900}, method="PATCH", token=token)[0] == 200
             assert api(base, "preview/reticulum-connection")[1]["theme"] == "dark"
             assert api(base, "config", body={"display_name": "changed", "theme": "invalid"}, method="PATCH", token=token)[0] == 400
             assert api(base, "config")[1]["config"]["display_name"] == profile["display_name"]
@@ -259,6 +268,7 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
         assert (app / "reticulum/identity").read_bytes() == identity
         current = api(base, "config")[1]["config"]
         assert current["display_name"] == "Private iOS name" and current["theme"] == "dark"
+        assert current["auto_announce_interval_seconds"] == 900
         assert api(base, "preview/rnode")[1]["settings"] == radio
         observed = tmp_path / "hub/observed-name.json"
         def restarted_name():
@@ -416,3 +426,19 @@ def test_signed_unsaved_sender_reaches_inbox_can_be_replied_to_and_survives_rest
         token = api(base, "auth/csrf")[1]["csrf_token"]
         assert api(base, "lxmf/conversations/bulk-mark-as-read", body={"mark_all": True}, token=token)[0] == 200
         assert not api(base, "preview/unread-messages")[1]["messages"]
+
+
+def test_manual_announce_without_connected_route_does_not_report_success(tmp_path):
+    app = tmp_path / "offline-next-app"
+    app.mkdir()
+    settings = app / "settings.json"
+    settings.write_text(json.dumps({"peers": []}))
+    ready = app / "offline.url"
+    with ExitStack() as stack:
+        start(stack, run_server, app, ready, settings)
+        wait(ready.exists)
+        base = backend(ready)
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "config")[1]["config"]["last_announced_at"] is None
+        assert api(base, "announce", method="POST", token=token)[0] == 503
+        assert api(base, "config")[1]["config"]["last_announced_at"] is None

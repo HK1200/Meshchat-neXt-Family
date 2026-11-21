@@ -188,3 +188,45 @@ def test_failed_announce_stays_due_until_success(controller):
     manager.source.announce = original
     manager.announce_due()
     assert len(calls) == 1 and len(manager.announced) == 1
+
+
+def test_announce_display_time_records_only_success_and_survives_disconnect(controller):
+    manager, calls, now = controller
+    wall = [1_800_000_000]
+    manager.wall_clock = lambda: wall[0]
+    manager.apply(dict(peers=[row()]))
+    wait_for(lambda: len(manager.interfaces) == 1)
+    assert manager.last_announced_at is None
+    original = manager.source.announce
+    manager.source.announce = lambda **kw: (_ for _ in ()).throw(OSError("offline"))
+    manager.announce_due()
+    assert manager.last_announced_at is None
+    manager.source.announce = original
+    manager.announce_due()
+    assert manager.last_announced_at == wall[0]
+    wall[0] += 30
+    manager.announce_due()
+    assert manager.last_announced_at == 1_800_000_000  # Not a poll timestamp.
+    manager.request_announce()
+    assert manager.last_announced_at == 1_800_000_000  # Queuing is not transmission.
+    manager.announce_due()
+    assert manager.last_announced_at == wall[0]
+    manager.apply(dict(peers=[row(enabled=False)]))
+    assert manager.last_announced_at == wall[0]
+
+
+def test_custom_announce_interval_and_disabled_timer_keep_reconnect_and_manual(controller):
+    manager, calls, now = controller
+    manager.apply(dict(peers=[row()]))
+    wait_for(lambda: len(manager.interfaces) == 1)
+    assert manager.announce_due(900) == 1
+    now[0] += 899
+    assert manager.announce_due(900) == 0
+    now[0] += 1
+    assert manager.announce_due(900) == 1
+    now[0] += 100_000
+    assert manager.announce_due(0) == 0
+    manager.interfaces["one"].family_connection_epoch += 1
+    assert manager.announce_due(0) == 1
+    manager.request_announce()
+    assert manager.announce_due(0) == 1

@@ -254,3 +254,51 @@ def test_saving_unchanged_connected_or_pairing_profile_does_not_restart(
     }
     manager.apply(profile)
     assert len(manager.radio.applied) == 1
+
+
+def test_radio_announce_display_and_explicit_refresh_record_only_success(tmp_path, profile):
+    manager = make(tmp_path)
+    wall = [1_800_000_000]
+    manager.wall_clock = lambda: wall[0]
+    manager.apply(profile)
+    assert manager.last_announced_at is None
+    manager.announce_due()
+    assert manager.last_announced_at == wall[0]
+    wall[0] += 30
+    manager.request_announce()
+    manager.source.announce = lambda **kw: (_ for _ in ()).throw(OSError("offline"))
+    manager.announce_due()
+    assert manager.last_announced_at == 1_800_000_000
+    manager.source.announce = lambda **kw: None
+    manager.announce_due()
+    assert manager.last_announced_at == wall[0]
+    manager.apply(dict(profile, enabled=False))
+    manager.announce_due()
+    assert manager.last_announced_at == wall[0]
+
+
+def test_combined_announce_display_uses_actual_tcp_or_radio_success():
+    from messaging_probe import MessagingProbe
+    probe = MessagingProbe.__new__(MessagingProbe)
+    probe.connections = SimpleNamespace(last_announced_at=None)
+    probe.rnode = SimpleNamespace(last_announced_at=None)
+    assert probe.last_announced_at is None
+    probe.rnode.last_announced_at = 1_800_000_000
+    assert probe.last_announced_at == 1_800_000_000
+    probe.connections.last_announced_at = 1_800_000_100
+    assert probe.last_announced_at == 1_800_000_100
+
+
+def test_radio_custom_interval_and_manual_announce_with_timer_disabled(tmp_path, profile):
+    now = [100.0]
+    manager = make(tmp_path, clock=lambda: now[0])
+    manager.apply(profile)
+    assert manager.announce_due(900)
+    now[0] += 899
+    assert not manager.announce_due(900)
+    now[0] += 1
+    assert manager.announce_due(900)
+    now[0] += 100_000
+    assert not manager.announce_due(0)
+    manager.request_announce()
+    assert manager.announce_due(0)

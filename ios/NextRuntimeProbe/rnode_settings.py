@@ -21,6 +21,7 @@ class RNodeSettings:
         device,
         factory=None,
         clock=time.monotonic,
+        wall_clock=time.time,
     ):
         self.path = Path(folder) / "rnode.json"
         self.reticulum = reticulum
@@ -29,6 +30,8 @@ class RNodeSettings:
         self.device = device
         self.factory = factory
         self.clock = clock
+        self.wall_clock = wall_clock
+        self.last_announced_at = None
         self.lock = threading.RLock()
         self.radio = None
         self.config = None
@@ -118,7 +121,11 @@ class RNodeSettings:
                 settings = public(self.config)
             return {"settings": settings, "runtime": runtime}
 
-    def announce_due(self):
+    def request_announce(self):
+        with self.lock:
+            self.last_announce = None
+
+    def announce_due(self, interval=3600):
         with self.lock:
             interface = self.radio.interface if self.radio else None
             if (
@@ -132,13 +139,15 @@ class RNodeSettings:
                 self.last_announce = None
                 return
             now = self.clock()
-            if self.last_announce is not None and now - self.last_announce < 3600:
+            if self.last_announce is not None and (interval == 0 or now - self.last_announce < interval):
                 return
             try:
                 self.source.announce(attached_interface=interface)
             except Exception:
                 return  # Retry a failed announce; never record it as sent.
             self.last_announce = now
+            self.last_announced_at = int(self.wall_clock())
+            return True
 
     def close(self):
         with self.lock:

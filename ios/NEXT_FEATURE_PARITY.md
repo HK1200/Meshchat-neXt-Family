@@ -51,12 +51,22 @@ service integrations.
 
 ## Native verification checkpoint
 
-The current permission implementation passed 40 native cases and both UI cases
-on the iPhone simulator. The iPad passed all 40 native cases and the setup
-permission checkup. Its remaining UI failure is the profile-name replacement:
-the recording shows the simulated hardware Select All shortcut leaving the
-caret at the beginning. The next test uses the visible iOS edit menu while
-retaining cleared-field, exact-name and restart assertions.
+The permission implementation passed 40 native cases and both UI cases on the
+iPhone simulator. The iPad passed all 40 native cases and the setup permission
+checkup. Its profile-name test is being repaired using the visible iOS edit menu,
+with cleared-field, exact-name and restart assertions retained. The following
+run stopped earlier: its recording confirms that Done typing left the keyboard
+visible in TCP settings. The native forms now explicitly end editing; both
+simulator suites and the Family forms are being checked before installation.
+
+The announce backend passed all 170 neXt iOS Python checks. The existing Announce
+button now invokes the real connected interfaces, reports failure when none can
+send, and updates the displayed successful time. The interval selector persists
+its supported values; startup/reconnect announces remain separate from the
+periodic timer. A successful timestamp survives app restart, preventing rapid
+replacement announces from reusing the same one-second protocol time. Failed or
+merely queued requests do not overwrite the last successful time. These are
+private loopback and mock-radio results, not new physical RF verification.
 
 The real WebKit bridge test writes through JavaScript into the private native
 preference file, restores it with a new loopback port and rejects a child-frame

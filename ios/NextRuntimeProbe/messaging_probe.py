@@ -82,6 +82,12 @@ class MessagingProbe:
     def online(self):
         return self.connections.online or self.rnode.snapshot()["runtime"]["online"]
 
+    @property
+    def last_announced_at(self):
+        sent = [value for value in (self.connections.last_announced_at,
+                                   self.rnode.last_announced_at) if value is not None]
+        return max(sent, default=None)
+
     def receive(self, message):
         if self.on_receive and message.signature_validated:
             self.on_receive(message)
