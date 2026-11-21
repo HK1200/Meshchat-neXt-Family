@@ -53,6 +53,7 @@ targets:
       - path: Tests/peer.json
         buildPhase: resources
       - path: App/AttachmentExport.swift
+      - path: App/MessageAlerts.swift
     dependencies:
       - target: NextRuntimeProbe
     settings:

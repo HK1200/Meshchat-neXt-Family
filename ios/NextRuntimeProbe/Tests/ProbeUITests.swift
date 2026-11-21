@@ -15,6 +15,7 @@ final class ProbeUITests: XCTestCase {
         app.launch()
         let connections = app.buttons["tcp-connections"]
         XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
+        verifyMessageAlertSettings(app)
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -74,6 +75,17 @@ final class ProbeUITests: XCTestCase {
         verifyOwnContactQR(app)
         verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyMessageAlertSettings(_ app: XCUIApplication) {
+        app.buttons["next-message-alerts"].tap()
+        let navigation = app.navigationBars["Message alerts"]
+        XCTAssertTrue(navigation.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["Allow message alerts"].exists || app.buttons["Open neXt settings"].exists)
+        let limit = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "iOS may pause neXt")).firstMatch
+        XCTAssertTrue(limit.exists, app.debugDescription)
+        navigation.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
 
     private func verifyAttachmentExport(_ app: XCUIApplication) {

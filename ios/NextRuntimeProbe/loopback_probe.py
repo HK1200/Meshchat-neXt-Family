@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 import base64
+import LXMF
 
 # iPadOS terminates sandboxed apps that call sendfile. Configure aiohttp
 # before importing it so both the simulator and device use buffered reads.
@@ -22,13 +23,15 @@ import attachment_fields
 
 
 def record(message, state):
-    reply, fields = decode_reply_fields(message.fields or {})
-    fields.update(attachment_fields.incoming(message.fields or {}))
+    raw_fields = message.fields if isinstance(message.fields, dict) else {}
+    content = message.content_as_string()
+    reply, fields = decode_reply_fields(raw_fields)
+    fields.update(attachment_fields.incoming(raw_fields))
     return {
         "hash": message.hash.hex(),
         "source_hash": message.source_hash.hex(),
         "destination_hash": message.destination_hash.hex(),
-        "content": message.content_as_string(),
+        "content": content,
         "title": "",
         "fields": fields,
         "reply_to_hash": reply,
@@ -37,6 +40,11 @@ def record(message, state):
         "created_at": datetime.fromtimestamp(message.timestamp, timezone.utc).isoformat(),
         "progress": 100 if state == "delivered" else 0,
         "is_outbound": state != "received",
+        "is_private_telemetry": content.startswith("!NFLOC1:") or (
+            not content.strip() and not fields and
+            any(key in raw_fields for key in
+                (LXMF.FIELD_TELEMETRY, LXMF.FIELD_TELEMETRY_STREAM))
+        ),
     }
 
 
@@ -73,6 +81,13 @@ class ConversationHistory:
                 SELECT peer, MAX(id) FROM messages GROUP BY peer
             """)
             self.db.execute("CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS notification_metadata (
+                hash TEXT PRIMARY KEY, eligible INTEGER NOT NULL
+            )""")
+            # The preview did not notify before this migration. Keep old inbox
+            # read state intact without retroactively alerting historical messages.
+            self.db.execute("""INSERT OR IGNORE INTO notification_metadata
+                SELECT hash, 0 FROM messages""")
             # The preview has no persistent outbound queue. A send interrupted
             # by app termination is left visible as failed.
             self.db.execute("""
@@ -130,6 +145,10 @@ class ConversationHistory:
             message_id, = self.db.execute(
                 "SELECT id FROM messages WHERE hash = ?", (row["hash"],)
             ).fetchone()
+            eligible = (row["state"] == "received" and not row.get("is_private_telemetry")
+                        and not str(row.get("content", "")).startswith("!NFLOC1:"))
+            self.db.execute("""INSERT INTO notification_metadata VALUES (?, ?)
+                ON CONFLICT(hash) DO UPDATE SET eligible=excluded.eligible""", (row["hash"], int(eligible)))
         return {**row, "id": message_id}
 
     def page(self, peer, query):
@@ -175,6 +194,23 @@ class ConversationHistory:
             "updated_at": row.get("created_at"),
         }
 
+    def notification_candidates(self):
+        # One current alert per unread saved conversation. Keep file/photo bytes
+        # out of this query, even when a received attachment is near the size limit.
+        rows = self.db.execute("""
+            SELECT m.id, m.hash, m.peer FROM messages m JOIN (
+                SELECT MAX(candidate.id) AS id FROM messages candidate
+                JOIN contacts c ON c.lxmf_address = candidate.peer
+                JOIN notification_metadata n ON n.hash = candidate.hash AND n.eligible = 1
+                LEFT JOIN conversation_reads r ON r.peer = candidate.peer
+                WHERE candidate.state = 'received' AND candidate.id > COALESCE(r.through_id, 0)
+                GROUP BY candidate.peer
+            ) newest ON newest.id = m.id ORDER BY m.id DESC LIMIT 100
+        """).fetchall()
+        return [{"id": message_id, "hash": message_hash, "peer": peer}
+                for message_id, message_hash, peer in rows
+                if re.fullmatch(r"[a-f0-9]{64}", message_hash) and re.fullmatch(r"[a-f0-9]{32}", peer)]
+
     def message(self, message_hash):
         row = self.db.execute("SELECT payload FROM messages WHERE hash = ?", (message_hash,)).fetchone()
         return json.loads(row[0]) if row else None
@@ -194,6 +230,7 @@ class ConversationHistory:
             if row[0] == "sending":
                 raise ValueError("Message is still sending")
             self.db.execute("DELETE FROM messages WHERE hash = ?", (message_hash,))
+            self.db.execute("DELETE FROM notification_metadata WHERE hash = ?", (message_hash,))
 
     def close(self):
         self.db.close()
@@ -261,6 +298,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def api(request):
         path = request.match_info["path"]
         if request.method == "GET":
+            if path == "preview/unread-messages":
+                return web.json_response({"messages": history.notification_candidates()}, headers={"Cache-Control": "no-store"})
             if path == "announces":
                 try:
                     return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})

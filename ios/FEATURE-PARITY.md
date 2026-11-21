@@ -148,3 +148,24 @@ private peer by name, filled the matching address and saved it through an explic
 Add Contact action, with no page errors. No regular device app was involved.
 Native archive and iPhone/iPad simulator verification remain pending owner review
 and upload of this patch.
+
+## neXt native message alerts
+
+The native preview now has a Message alerts control with an explicit permission
+request, a link back to the app's system notification settings, and an explanation
+of iOS suspension. It posts a generic notification for unread saved conversations
+when the app is not active and iOS still permits it to run. No sender name or
+message content is copied into the notification. Tapping the alert routes to its
+validated contact address; ordinary web navigation is not replaced by redraws.
+
+Notification eligibility is stored separately from message payloads, so polling
+never decodes attachment bytes. Location-only telemetry is silent. Migration
+preserves existing unread state without replaying old messages, and permission
+setup records a baseline before posting any new alerts. The native policy tests
+cover denial, foreground suppression, restart/deduplication, OS failure/retry,
+concurrent refreshes, permission races and validated routing.
+
+This is local notification wiring, not APNs or a keep-alive service. It does not
+wake a fully suspended process. Production push delivery and physical lock-screen
+notification checks remain release gates; no background entitlement or Apple
+enrollment is added by this change.

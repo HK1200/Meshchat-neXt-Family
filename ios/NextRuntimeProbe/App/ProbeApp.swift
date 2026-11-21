@@ -3,8 +3,9 @@ import WebKit
 
 @main
 struct ProbeApp: App {
+    @UIApplicationDelegateAdaptor(NextMessageAlerts.self) private var alerts
     var body: some Scene {
-        WindowGroup { ProbeScreen() }
+        WindowGroup { ProbeScreen(alerts: alerts) }
     }
 }
 
@@ -16,6 +17,10 @@ private struct PeerSettings: Encodable {
 }
 
 private struct ProbeScreen: View {
+    @ObservedObject var alerts: NextMessageAlerts
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var appActive = true
+    @State private var showAlerts = false
     @AppStorage("tcpHost") private var host = "rmap.world"
     @AppStorage("tcpPort") private var port = "4343"
     @AppStorage("testAddress") private var contact = ""
@@ -60,6 +65,9 @@ private struct ProbeScreen: View {
                             .accessibilityIdentifier("next-native-brand")
                             .accessibilityValue(theme)
                         Spacer()
+                        Button { showAlerts = true } label: {
+                            Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly)
+                        }.accessibilityIdentifier("next-message-alerts")
                         Button("TCP connections") { showConnections = true }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
@@ -120,6 +128,19 @@ private struct ProbeScreen: View {
             }
         }
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
+        .onChange(of: scenePhase) { _, phase in
+            appActive = phase == .active
+            if appActive { Task { await alerts.refreshAuthorization() } }
+        }
+        .onChange(of: alerts.requestedAddress) { _, peer in
+            if peer != nil { openRequestedConversation() }
+        }
+        .sheet(isPresented: $showAlerts) {
+            NextMessageAlertSettings(alerts: alerts) {
+                guard let url else { throw URLError(.notConnectedToInternet) }
+                return try await Self.unreadMessages(at: url)
+            }
+        }
         .sheet(isPresented: $showConnections) {
             NextTCPConnections(base: url, initial: configuredPeers) { peers in
                 savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
@@ -169,6 +190,9 @@ private struct ProbeScreen: View {
             } catch {
                 tcpConnected = nil
             }
+            if let notices = try? await Self.unreadMessages(at: url) {
+                await alerts.publish(notices, appActive: appActive)
+            }
             do {
                 try await Task.sleep(for: .seconds(3))
             } catch {
@@ -182,9 +206,29 @@ private struct ProbeScreen: View {
             let result = try await Self.start(settings)
             address = result.address
             url = result.url
+            openRequestedConversation()
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func openRequestedConversation() {
+        guard let peer = alerts.requestedAddress, let current = url,
+              var destination = URLComponents(url: current, resolvingAgainstBaseURL: false) else { return }
+        destination.fragment = "/messages/" + peer
+        if let routed = destination.url { url = routed; alerts.consumedRoute() }
+    }
+
+    private static func unreadMessages(at base: URL) async throws -> [NextUnreadNotice] {
+        guard let endpoint = URL(string: "/api/v1/preview/unread-messages", relativeTo: base) else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 2
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        struct Batch: Decodable { let messages: [NextUnreadNotice] }
+        return try JSONDecoder().decode(Batch.self, from: data).messages
     }
 
     private static func start(_ settings: PeerSettings?) async throws -> (url: URL, address: String?) {
@@ -258,7 +302,14 @@ private struct ProbeWebView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func updateUIView(_ view: WKWebView, context: Context) {
+        // React only to an explicit native route request. Comparing view.url
+        // itself would overwrite ordinary in-page navigation on every redraw.
+        if context.coordinator.requestedURL != url {
+            context.coordinator.requestedURL = url
+            view.load(URLRequest(url: url))
+        }
+    }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: NavigationGuard) { coordinator.downloads.cancel() }
 
@@ -266,8 +317,10 @@ private struct ProbeWebView: UIViewRepresentable {
     final class NavigationGuard: NSObject, WKNavigationDelegate {
         let url: URL
         let downloads: NextAttachmentDownloads
+        var requestedURL: URL
         init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void) {
             self.url = url
+            requestedURL = url
             downloads = NextAttachmentDownloads(base: url, onComplete: onExport, onError: onError)
             super.init()
         }
