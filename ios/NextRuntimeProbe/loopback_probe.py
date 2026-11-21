@@ -298,6 +298,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def api(request):
         path = request.match_info["path"]
         if request.method == "GET":
+            if path == "preview/rnode":
+                return web.json_response(probe.rnode.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/unread-messages":
                 return web.json_response({"messages": history.notification_candidates()}, headers={"Cache-Control": "no-store"})
             if path == "announces":
@@ -394,6 +396,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 return web.json_response({"message": str(exc)}, status=409)
             return web.json_response({"status": "success"})
         if request.method == "POST":
+            if path == "preview/rnode":
+                try:
+                    return web.json_response(await asyncio.to_thread(probe.rnode.apply, await request.json()))
+                except ValueError:
+                    raise web.HTTPBadRequest(text="Invalid RNode profile; check the connection and radio settings") from None
             if path == "preview/reticulum-connections":
                 body = await request.json()
                 if not isinstance(body, dict) or "peers" not in body:
@@ -529,6 +536,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         # Simulator profiles are separately restricted to loopback only.
         while True:
             await asyncio.to_thread(probe.connections.announce_due)
+            await asyncio.to_thread(probe.rnode.announce_due)
             await asyncio.sleep(1)
     finally:
         probe.close()

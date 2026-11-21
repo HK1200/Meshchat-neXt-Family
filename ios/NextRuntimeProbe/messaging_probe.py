@@ -8,6 +8,7 @@ import RNS
 
 from tcp_peers import TCPPeers, normalize_peers
 from discovery import ClientDiscovery
+from rnode_settings import RNodeSettings
 
 
 def reply_fields_for(hash_hex, quote):
@@ -68,15 +69,18 @@ class MessagingProbe:
         RNS.Transport.register_announce_handler(self.discovery)
         self.connections = TCPPeers(self.reticulum, self.router, self.source, device=device)
         self.connections.apply(peer)
+        self.rnode = RNodeSettings(workspace, self.reticulum, self.source,
+                                   self.connections.retire_links, device=device)
 
     def close(self):
+        self.rnode.close()
         self.connections.close()
         RNS.Transport.deregister_announce_handler(self.discovery)
         self.discovery.close()
 
     @property
     def online(self):
-        return self.connections.online
+        return self.connections.online or self.rnode.snapshot()["runtime"]["online"]
 
     def receive(self, message):
         if self.on_receive and message.signature_validated:

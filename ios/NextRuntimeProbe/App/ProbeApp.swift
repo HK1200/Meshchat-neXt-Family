@@ -21,6 +21,8 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     @State private var showAlerts = false
+    @State private var showRNode = false
+    @State private var radioWake: FamilyRadioWake?
     @AppStorage("tcpHost") private var host = "rmap.world"
     @AppStorage("tcpPort") private var port = "4343"
     @AppStorage("testAddress") private var contact = ""
@@ -68,6 +70,9 @@ private struct ProbeScreen: View {
                         Button { showAlerts = true } label: {
                             Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly)
                         }.accessibilityIdentifier("next-message-alerts")
+                        Button { showRNode = true } label: {
+                            Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly)
+                        }.accessibilityIdentifier("next-rnode-settings")
                         Button("TCP connections") { showConnections = true }
                             .accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
@@ -84,7 +89,7 @@ private struct ProbeScreen: View {
                         .padding(.horizontal)
                         Text(address).font(.caption.monospaced()).textSelection(.enabled)
                             .accessibilityIdentifier("my-lxmf-address")
-                        Label(tcpConnected == true ? "Reticulum TCP connected" : tcpEnabledCount == 0 ? "Reticulum TCP off" : "No TCP peer connected",
+                        Label(tcpConnected == true ? "Reticulum connected" : "No Reticulum connection",
                               systemImage: tcpConnected == true ? "link" : "link.badge.plus")
                             .font(.caption)
                             .padding(.vertical, 4)
@@ -135,6 +140,10 @@ private struct ProbeScreen: View {
         .onChange(of: alerts.requestedAddress) { _, peer in
             if peer != nil { openRequestedConversation() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .familyRadioData).receive(on: DispatchQueue.main)) { _ in
+            radioWake?.received()
+        }
+        .sheet(isPresented: $showRNode) { if let url { NextRNodeSettings(base: url) } }
         .sheet(isPresented: $showAlerts) {
             NextMessageAlertSettings(alerts: alerts) {
                 guard let url else { throw URLError(.notConnectedToInternet) }
@@ -206,6 +215,19 @@ private struct ProbeScreen: View {
             let result = try await Self.start(settings)
             address = result.address
             url = result.url
+            radioWake = FamilyRadioWake(begin: { expiration in
+                let lease = UIApplication.shared.beginBackgroundTask(withName: "neXt radio inbox") {
+                    Task { @MainActor in expiration() }
+                }
+                return lease == .invalid ? nil : lease.rawValue
+            }, end: { UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: $0)) },
+                now: { ProcessInfo.processInfo.systemUptime },
+                active: { UIApplication.shared.applicationState == .active },
+                refresh: {
+                    if let notices = try? await Self.unreadMessages(at: result.url) {
+                        await alerts.publish(notices, appActive: UIApplication.shared.applicationState == .active)
+                    }
+                }, pause: { try await Task.sleep(for: .seconds(1)) })
             openRequestedConversation()
         } catch {
             self.error = error.localizedDescription
@@ -235,7 +257,7 @@ private struct ProbeScreen: View {
         guard let resources = Bundle.main.resourceURL else { throw CocoaError(.fileNoSuchFile) }
         let modules = resources.appendingPathComponent("staged")
         let directory = try FileManager.default.url(
-            for: settings == nil ? .cachesDirectory : .applicationSupportDirectory,
+            for: .applicationSupportDirectory,
             in: .userDomainMask, appropriateFor: nil, create: true
         )
         let ready = directory.appendingPathComponent("next-\(UUID().uuidString).url")
@@ -248,6 +270,10 @@ private struct ProbeScreen: View {
         let home = resources.appendingPathComponent("python").path
         let modulePath = modules.path
         let readyPath = ready.path
+        next_probe_set_bluetooth { request in
+            guard let request else { return nil }
+            return strdup(FamilyBluetooth.shared.request(String(cString: request)))
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             next_probe_run(home, modulePath, readyPath)
         }

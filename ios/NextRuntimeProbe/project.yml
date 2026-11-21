@@ -21,6 +21,8 @@ targets:
         NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
         NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
+        UIBackgroundModes: [bluetooth-central]
+        NSBluetoothAlwaysUsageDescription: Connect to your chosen RNode radio for Reticulum messaging.
         NSLocalNetworkUsageDescription: Connect to a Reticulum TCP peer on your local network.
         NSAppTransportSecurity:
           NSExceptionDomains:
@@ -54,6 +56,8 @@ targets:
         buildPhase: resources
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift
+      - path: App/NextRNodeProfile.swift
+      - path: App/FamilyRadioWake.swift
     dependencies:
       - target: NextRuntimeProbe
     settings:

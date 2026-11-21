@@ -3,6 +3,37 @@
 #include "ProbeRuntime.h"
 #include "ProbeSignals.h"
 #include <stdio.h>
+#include <stdlib.h>
+
+static NextBluetoothRequest bluetooth_request;
+
+void next_probe_set_bluetooth(NextBluetoothRequest request) {
+    if (!Py_IsInitialized()) bluetooth_request = request;
+}
+
+static PyObject *bluetooth_call(PyObject *self, PyObject *args) {
+    const char *request;
+    if (!PyArg_ParseTuple(args, "s", &request)) return NULL;
+    if (!bluetooth_request) return PyErr_Format(PyExc_RuntimeError, "Bluetooth is unavailable");
+    char *reply;
+    Py_BEGIN_ALLOW_THREADS
+    reply = bluetooth_request(request);
+    Py_END_ALLOW_THREADS
+    if (!reply) return PyErr_NoMemory();
+    PyObject *result = PyUnicode_FromString(reply);
+    free(reply);
+    return result;
+}
+
+static PyMethodDef bluetooth_methods[] = {
+    {"request", bluetooth_call, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef bluetooth_module = {
+    PyModuleDef_HEAD_INIT, "_family_bluetooth", NULL, -1, bluetooth_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_bluetooth(void) { return PyModule_Create(&bluetooth_module); }
 
 static PyStatus append_bundle_path(PyConfig *config, const char *home, const char *suffix) {
     char path[4096];
@@ -20,6 +51,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
         fprintf(stderr, "Could not configure safe TCP write handling\n");
         return;
     }
+    if (PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return;
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.install_signal_handlers = 0;

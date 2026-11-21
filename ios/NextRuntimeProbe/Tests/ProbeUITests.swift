@@ -16,6 +16,7 @@ final class ProbeUITests: XCTestCase {
         let connections = app.buttons["tcp-connections"]
         XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         verifyMessageAlertSettings(app)
+        verifyRNodeEditor(app)
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -63,6 +64,7 @@ final class ProbeUITests: XCTestCase {
         reveal(restoredPrimary, in: restoredForm, up: false)
         XCTAssertEqual(restoredPrimary.value as? String, String(fixture.port))
         app.navigationBars["TCP connections"].buttons["Done"].tap()
+        verifySavedRNodeEditor(app)
         let web = app.webViews.firstMatch
         let composer = web.textViews.firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)
@@ -75,6 +77,42 @@ final class ProbeUITests: XCTestCase {
         verifyOwnContactQR(app)
         verifyAttachmentExport(app)
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
+    }
+
+    private func verifyRNodeEditor(_ app: XCUIApplication) {
+        app.buttons["next-rnode-settings"].tap()
+        let form = app.collectionViews["next-rnode-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
+        let status = app.staticTexts["next-rnode-status"]
+        XCTAssertEqual(status.label, "Off")
+        XCTAssertEqual(app.switches["next-rnode-enabled"].value as? String, "0")
+        let transport = app.segmentedControls["next-rnode-transport"]
+        transport.buttons["Wi-Fi"].tap()
+        let endpoint = app.textFields["next-rnode-endpoint"]
+        XCTAssertTrue(endpoint.waitForExistence(timeout: 10))
+        endpoint.tap()
+        endpoint.typeText("127.0.0.1")
+        let typingDone = app.buttons["Done typing"]
+        XCTAssertTrue(typingDone.waitForExistence(timeout: 10))
+        typingDone.tap()
+        let save = app.buttons["next-rnode-save"]
+        reveal(save, in: form)
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["RNode settings saved"].waitForExistence(timeout: 10), app.debugDescription)
+        // Saved disabled radio profiles must never trigger Bluetooth or RF.
+        XCTAssertEqual(app.switches["next-rnode-enabled"].value as? String, "0")
+        app.navigationBars["RNode"].buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["tcp-connections"].exists)
+    }
+
+    private func verifySavedRNodeEditor(_ app: XCUIApplication) {
+        app.buttons["next-rnode-settings"].tap()
+        let endpoint = app.textFields["next-rnode-endpoint"]
+        XCTAssertTrue(endpoint.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(endpoint.value as? String, "127.0.0.1")
+        XCTAssertEqual(app.switches["next-rnode-enabled"].value as? String, "0")
+        app.navigationBars["RNode"].buttons["Done"].tap()
     }
 
     private func verifyMessageAlertSettings(_ app: XCUIApplication) {

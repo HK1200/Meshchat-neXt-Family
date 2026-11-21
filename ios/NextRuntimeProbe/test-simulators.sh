@@ -16,6 +16,7 @@ trap cleanup EXIT
 bash "$family_ios/prepare-live.sh"
 cd -- "$scratch"
 cp -R "$probe/App" "$probe/project.yml" .
+cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged
 curl --fail --silent --show-error --location --retry 3 \
@@ -30,6 +31,7 @@ wheels-env/bin/python -m pip install --disable-pip-version-check --target staged
     --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
 cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
+cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 if [[ "$mode" == device ]]; then
     # The device project excludes the simulator test target and its echo fixture.
@@ -63,6 +65,7 @@ YAML
 fi
 
 cp -R "$probe/Tests" .
+cp "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" Tests/
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do

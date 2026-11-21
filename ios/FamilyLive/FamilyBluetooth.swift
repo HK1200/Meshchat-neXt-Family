@@ -51,7 +51,7 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             }]
         }
         if operation == "scan" {
-            guard central.state == .poweredOn else { return ["error": "Enable Bluetooth and allow Family access"] }
+            guard central.state == .poweredOn else { return ["error": "Enable Bluetooth and allow radio access in the system prompt"] }
             central.scanForPeripherals(withServices: [service])
             queue.asyncAfter(deadline: .now() + 8) { self.central.stopScan() }
             return ["ok": true]

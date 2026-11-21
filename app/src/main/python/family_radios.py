@@ -189,8 +189,7 @@ class Radio:
                 if config['transport']=='ble':
                     from family_radio_pacing import install
                     install(interface)
-                self.reticulum._add_interface(interface)
-                with self._lock:self.interface=interface;self.applied=config
+                self._register_current(interface,config)
             except Exception as exc:
                 with self._lock:self.error=str(exc)
     def _open_network_radio(self,rns,config):
@@ -201,8 +200,18 @@ class Radio:
             'frequency':config['frequency'],'bandwidth':config['bandwidth'],'txpower':config['power'],
             'spreadingfactor':config['sf'],'codingrate':config['cr'],'flow_control':False,
         })
-        self.reticulum._add_interface(interface)
-        with self._lock:self.interface=interface;self.applied=config
+        self._register_current(interface,config)
+
+    def _register_current(self,interface,config):
+        # A radio can finish pairing after its saved profile was disabled or
+        # replaced. Never attach that stale session to the live transport.
+        with self._lock:
+            if self.config!=config:
+                interface.detach()
+                return False
+            self.reticulum._add_interface(interface)
+            self.interface=interface;self.applied=config
+            return True
 
     def snapshot(self):
         with self._lock:

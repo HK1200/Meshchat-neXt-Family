@@ -196,3 +196,22 @@ gates, and Apple enrollment remains on hold.
 Family Android 0.6.29 is published with signed upgrades and both updater-feed
 checks passing. Its Play code 43 was submitted to closed testing; Google quick
 checks precede review. This does not make either iOS app an App Store release.
+
+
+### neXt native RNode work
+
+The next source change adds opt-in Bluetooth LE and Wi-Fi RNode configuration to
+neXt's native header, reusing Family's tested transport. It retains the agreed
+914.875 MHz / 125 kHz / SF8 / CR4/7 / 17 dBm defaults, saves profiles privately,
+keeps radio data alongside the existing identity, and scopes startup/reconnect
+and hourly announces to the selected radio. Unconfigured profiles never request
+Bluetooth access. Simulator tests reject enabled radio profiles.
+
+It also reuses Family's bounded Bluetooth-wake inbox checks; this is not an
+always-running service. A shared lifecycle repair rejects a radio session that
+finishes opening after its profile was disabled or replaced. That regression
+fails against the previous implementation and passes with the repair. The
+previous full local suite passed 252 tests; additional focused checks cover
+unchanged-profile saves without restarting pairing. Native compilation, editor
+persistence and the real iPad radio test are still required at this checkpoint.
+Regular Family remains untouched, and Apple enrollment remains on hold.

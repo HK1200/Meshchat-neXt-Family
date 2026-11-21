@@ -111,7 +111,7 @@ class TCPPeers:
                 if self.pending.get(row["id"]) is ticket:
                     self.pending.pop(row["id"], None)
 
-    def _retire(self, interface):
+    def retire_links(self, interface):
         for cache in (self.router.direct_links, self.router.backchannel_links):
             for address, link in cache.copy().items():
                 if (link.attached_interface is interface or
@@ -119,6 +119,8 @@ class TCPPeers:
                     link.teardown()
                     if cache.get(address) is link:
                         cache.pop(address, None)
+    def _retire(self, interface):
+        self.retire_links(interface)
         interface.detach()
         if interface in self.transport.interfaces:
             self.transport.interfaces.remove(interface)
