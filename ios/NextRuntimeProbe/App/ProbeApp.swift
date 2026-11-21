@@ -22,6 +22,7 @@ private struct ProbeScreen: View {
     @State private var appActive = true
     @State private var showAlerts = false
     @State private var showRNode = false
+    @State private var meshcoreReturnURL: URL?
     @State private var radioWake: FamilyRadioWake?
     @AppStorage("tcpHost") private var host = "rmap.world"
     @AppStorage("tcpPort") private var port = "4343"
@@ -74,12 +75,20 @@ private struct ProbeScreen: View {
                             Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly)
                         }.accessibilityIdentifier("next-rnode-settings")
                         Button {
-                            var route = URLComponents(url: url, resolvingAgainstBaseURL: true)
-                            route?.fragment = url.fragment == "/settings/meshcore" ? "/messages" : "/settings/meshcore"
-                            if let destination = route?.url { self.url = destination }
+                            if let previous = meshcoreReturnURL {
+                                self.url = previous
+                                meshcoreReturnURL = nil
+                            } else {
+                                var route = URLComponents(url: url, resolvingAgainstBaseURL: true)
+                                route?.fragment = "/settings/meshcore"
+                                if let destination = route?.url {
+                                    meshcoreReturnURL = url
+                                    self.url = destination
+                                }
+                            }
                         } label: {
-                            Label(url.fragment == "/settings/meshcore" ? "Messages" : "MeshCore",
-                                  systemImage: url.fragment == "/settings/meshcore" ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
+                            Label(meshcoreReturnURL != nil ? "Messages" : "MeshCore",
+                                  systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
                                 .labelStyle(.iconOnly)
                         }.accessibilityIdentifier("next-meshcore-settings")
                         Button("TCP connections") { showConnections = true }
@@ -279,6 +288,10 @@ private struct ProbeScreen: View {
         let home = resources.appendingPathComponent("python").path
         let modulePath = modules.path
         let readyPath = ready.path
+        next_probe_set_credentials { request in
+            guard let request else { return nil }
+            return strdup(NextMeshCoreSecrets.shared.request(String(cString: request)))
+        }
         next_probe_set_bluetooth { request in
             guard let request else { return nil }
             return strdup(FamilyBluetooth.shared.request(String(cString: request)))

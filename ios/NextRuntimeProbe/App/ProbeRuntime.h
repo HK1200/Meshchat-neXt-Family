@@ -2,3 +2,5 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
 
 typedef char *(*NextBluetoothRequest)(const char *);
 void next_probe_set_bluetooth(NextBluetoothRequest request);
+
+void next_probe_set_credentials(NextBluetoothRequest request);

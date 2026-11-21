@@ -30,7 +30,14 @@ def stage(wheel, destination, family_ios):
                 continue
             target = destination.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(archive.read(entry))
+            payload = archive.read(entry)
+            if entry.filename == "meshchatnext/src/backend/meshcore_credentials.py":
+                before = b'                if transport_platform() == "linux":'
+                after = b'                import sys\n                if sys.platform == "ios":\n                    from meshcore_keychain import IOSNodePasswords\n                    self._provider = IOSNodePasswords()\n                elif transport_platform() == "linux":'
+                if payload.count(before) != 1:
+                    raise ValueError("The pinned credential-provider source changed")
+                payload = payload.replace(before, after)
+            target.write_bytes(payload)
     import shutil
     shutil.copyfile(family_ios.parent / "app/src/main/python/family_ios_meshcore_crypto.py",
                     destination / "family_ios_meshcore_crypto.py")
