@@ -90,6 +90,7 @@ class IOSSIPEngine:
     def __init__(self, executable=None, *, interface=None, local_address=None,
                  request=native_request, poll_interval=0.1):
         self.request = request
+        self.interface = interface
         self.poll_interval = poll_interval
         self.session = uuid.uuid4().hex
         self.on_event = None
@@ -113,7 +114,7 @@ class IOSSIPEngine:
         async with self._lifecycle:
             if self._running:
                 return
-            await self._request('open')
+            await self._request('open', interface=self.interface)
             self._received_stop = False
             self._opened = True
             self._running = True

@@ -7,6 +7,11 @@
 
 static NextBluetoothRequest bluetooth_request;
 static NextBluetoothRequest credentials_request;
+static NextBluetoothRequest sip_request;
+
+void next_probe_set_sip(NextBluetoothRequest request) {
+    if (!Py_IsInitialized()) sip_request = request;
+}
 
 void next_probe_set_credentials(NextBluetoothRequest request) {
     if (!Py_IsInitialized()) credentials_request = request;
@@ -64,6 +69,30 @@ static struct PyModuleDef credentials_module = {
 };
 static PyObject *init_credentials(void) { return PyModule_Create(&credentials_module); }
 
+static PyObject *sip_call(PyObject *self, PyObject *args) {
+    const char *request;
+    if (!PyArg_ParseTuple(args, "s", &request)) return NULL;
+    if (!sip_request) return PyErr_Format(PyExc_RuntimeError, "Native SIP registration is unavailable");
+    char *reply;
+    Py_BEGIN_ALLOW_THREADS
+    reply = sip_request(request);
+    Py_END_ALLOW_THREADS
+    if (!reply) return PyErr_NoMemory();
+    PyObject *result = PyUnicode_FromString(reply);
+    free(reply);
+    return result;
+}
+
+static PyMethodDef sip_methods[] = {
+    {"request", sip_call, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef sip_module = {
+    PyModuleDef_HEAD_INIT, "_next_sip", NULL, -1, sip_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_sip(void) { return PyModule_Create(&sip_module); }
+
 static PyStatus append_bundle_path(PyConfig *config, const char *home, const char *suffix) {
     char path[4096];
     int length = snprintf(path, sizeof(path), "%s/%s", home, suffix);
@@ -82,6 +111,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
     }
     if (PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return;
     if (PyImport_AppendInittab("_next_credentials", init_credentials) != 0) return;
+    if (PyImport_AppendInittab("_next_sip", init_sip) != 0) return;
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.install_signal_handlers = 0;

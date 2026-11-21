@@ -336,6 +336,10 @@ private struct ProbeScreen: View {
             guard let request else { return nil }
             return strdup(NextCredentials.shared.request(String(cString: request)))
         }
+        next_probe_set_sip { request in
+            guard let request else { return nil }
+            return strdup(NextSIPBridge.request(String(cString: request)))
+        }
         next_probe_set_bluetooth { request in
             guard let request else { return nil }
             return strdup(FamilyBluetooth.shared.request(String(cString: request)))

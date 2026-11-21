@@ -21,7 +21,11 @@ trap cleanup EXIT
 bash "$family_ios/prepare-live.sh"
 cd -- "$scratch"
 cp -R "$probe/App" "$probe/project.yml" .
+cp "$family_ios/SIP-NOTICES.txt" .
 cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
+ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
+cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
+cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
 ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 mkdir staged
@@ -55,6 +59,7 @@ schemes:
       targets:
         NextRuntimeProbe: all
 YAML
+    python3 "$family_ios/build-sip.py" iphoneos arm64
     xcodegen generate --spec device.yml
     xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
         -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
@@ -63,6 +68,7 @@ YAML
     lipo "$app/NextRuntimeProbe" -verify_arch arm64
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
+    test -s "$app/SIP-NOTICES.txt"
     test ! -e "$app/staged/peer.json"
     /usr/libexec/PlistBuddy -c 'Print :UILaunchScreen' "$app/Info.plist" >/dev/null
     /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null
@@ -98,6 +104,7 @@ result_set="$(mktemp -d "$family_ios/RuntimeBuild/next-results/run.XXXXXXXX")"
 # generic simulator destinations otherwise request "arm64 x86_64" as one path.
 simulator_arch="$(uname -m)"
 case "$simulator_arch" in arm64|x86_64) ;; *) echo "Unsupported simulator host architecture" >&2; exit 1 ;; esac
+python3 "$family_ios/build-sip.py" iphonesimulator "$simulator_arch"
 xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
     -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- "ARCHS=$simulator_arch" ONLY_ACTIVE_ARCH=YES
