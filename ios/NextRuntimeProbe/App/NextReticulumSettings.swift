@@ -121,7 +121,7 @@ struct NextReticulumSettings: View {
     }
     private func reload() async {
         do { snapshot = try await get("preview/reticulum-calling", as: Snapshot.self) }
-        catch { if !Task.isCancelled { error = "The call status could not be refreshed." } }
+        catch { if !Task.isCancelled { self.error = "The call status could not be refreshed." } }
     }
     private func control(_ operation: String, call: Call) {
         command("telephone/" + operation, ["call_id": call.call_id])
