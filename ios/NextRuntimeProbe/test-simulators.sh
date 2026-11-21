@@ -65,7 +65,8 @@ YAML
 fi
 
 cp -R "$probe/Tests" .
-cp "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" Tests/
+# The shared wake type is compiled into this test target; do not import the Family app.
+sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do
