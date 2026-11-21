@@ -1,0 +1,6 @@
+DerivedData/
+*.xcodeproj/
+HostInfo.plist
+Package/
+*.ipa
+*.ipa.sha256
