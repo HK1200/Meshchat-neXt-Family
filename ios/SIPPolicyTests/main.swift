@@ -26,6 +26,6 @@ assert(!extensionAddress.matches(ipv6, providerHost: "premium.hamsoverip.com", p
 assert(ipv6.matches(ipv6, providerHost: "[2001:db8::20]", providerPort: 5160, resolvedHosts: []))
 assert(!extensionAddress.matches(FamilySIPAddress("sip:other@[2001:db8::20]:5160")!, providerHost: "premium.hamsoverip.com", providerPort: 5160, resolvedHosts: ["2001:db8::20"]))
 for invalid in ["sip:u@[bad]", "sip:u@[::1", "sip:u@[::1]evil:5060", "sip:u@[::1]:", "sip:u@[::1]:0", "sip:u@[::1]:65536", "sip:u@::1", "sip:u@[::1]:+5060", "sip:u@[:::1]", "sip:u@[::1%lo0]"] {
-    assert(FamilySIPAddress(invalid) == nil, "Accepted malformed IPv6 SIP address")
+    assert(FamilySIPAddress(invalid) == nil, "Accepted malformed IPv6 SIP address: \(invalid)")
 }
 print("IPv6 caller identity canonicalization and exact approved-user matching passed")

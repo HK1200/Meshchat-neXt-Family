@@ -22,6 +22,9 @@ struct FamilySIPAddress: Equatable, Sendable {
         var value = raw.lowercased()
         if value.hasPrefix("[") && value.hasSuffix("]") { value = String(value.dropFirst().dropLast()) }
         if value.contains(":") {
+            // Provider identities do not carry interface scopes, and SIP URI
+            // literals cannot contain an empty group outside one double colon.
+            guard !value.contains("%"), !value.contains(":::") else { return nil }
             var address = in6_addr()
             guard value.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
             var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
