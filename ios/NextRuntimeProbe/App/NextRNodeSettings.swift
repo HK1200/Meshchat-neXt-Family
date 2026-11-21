@@ -124,7 +124,7 @@ struct NextRNodeSettings: View {
             var tokenRequest = URLRequest(url: tokenURL)
             tokenRequest.timeoutInterval = 10
             tokenRequest.cachePolicy = .reloadIgnoringLocalCacheData
-            let (tokenData, tokenResponse) = try await URLSession.shared.data(for: tokenRequest)
+            let (tokenData, tokenResponse) = try await NextHTTP.shared.data(for: tokenRequest)
             guard (tokenResponse as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
             let token = try JSONDecoder().decode(Token.self, from: tokenData).csrf_token
             request.setValue(token, forHTTPHeaderField: "X-CSRF-Token")
@@ -133,7 +133,7 @@ struct NextRNodeSettings: View {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(profile)
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NextHTTP.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         return try JSONDecoder().decode(Snapshot.self, from: data)
     }

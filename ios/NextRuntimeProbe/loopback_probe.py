@@ -20,6 +20,7 @@ from aiohttp import web
 
 from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_for
 import attachment_fields
+from runtime_access import RuntimeAccess, COOKIE, CSP
 
 
 def record(message, state):
@@ -287,6 +288,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     own = probe.source.hash.hex()
     history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3")
     token = secrets.token_urlsafe(32)
+    access = RuntimeAccess(ready_file.parent)
     contact = "Test contact" if device else "Simulator Echo"
     if peer:
         history.ensure_contact(peer, contact)
@@ -296,7 +298,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
               **history.preferences(display_name)}
     probe.source.display_name = config["display_name"]
     responses = {
-        "status": {"status": "ok", "network_ready": True, "ui_ready": True},
+        "status": {"status": "ok", "network_ready": True, "ui_ready": True, "runtime_instance": access.instance},
         "auth/status": {"auth_enabled": False, "authenticated": True},
         "auth/csrf": {"csrf_token": token},
         "config": {"config": config},
@@ -321,6 +323,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             raise web.HTTPBadRequest()
         if request.headers.get("Origin") not in (None, f"http://{authority}"):
             raise web.HTTPForbidden()
+        if (request.path.startswith("/api/") or request.path == "/ws") and not access.allowed(request):
+            raise web.HTTPForbidden(text="This local session is unavailable")
         if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
         return await handler(request)
@@ -539,9 +543,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def index(request):
         headers = {
             "Cache-Control": "no-store",
-            "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+            "Content-Security-Policy": CSP.replace("connect-src 'self'", f"connect-src 'self' ws://{authority}"),
         }
-        return web.FileResponse(frontend / "index.html", headers=headers)
+        response = web.FileResponse(frontend / "index.html", headers=headers)
+        if access.allowed(request):
+            response.set_cookie(COOKIE, access.capability, httponly=True, samesite="Strict", path="/")
+        return response
 
     async def disable_service_worker(request):
         # The embedded host is recreated on each launch and serves its assets locally.
@@ -563,6 +570,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         await site.start()
         host, port = runner.addresses[0]
         authority = f"{host}:{port}"
+        access.write_info(f"http://{authority}")
         staging = ready_file.with_suffix(".tmp")
         route = f"/#/messages/{peer}" if peer else "/#/messages"
         staging.write_text(f"http://{authority}{route}", encoding="utf-8")
@@ -575,6 +583,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await asyncio.to_thread(probe.rnode.announce_due)
             await asyncio.sleep(1)
     finally:
+        access.clear_info()
         if meshcore:
             try:
                 async with asyncio.timeout(30):

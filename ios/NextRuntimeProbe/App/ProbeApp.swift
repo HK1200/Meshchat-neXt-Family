@@ -221,7 +221,7 @@ private struct ProbeScreen: View {
             do {
                 var request = URLRequest(url: endpoint)
                 request.timeoutInterval = 2
-                let (data, _) = try await URLSession.shared.data(for: request)
+                let (data, _) = try await NextHTTP.shared.data(for: request)
                 let status = try JSONDecoder().decode(ConnectionStatus.self, from: data)
                 tcpConnected = status.connected
                 tcpEnabledCount = status.enabledCount
@@ -278,7 +278,7 @@ private struct ProbeScreen: View {
                     guard let requestURL = endpoint.url else { throw URLError(.badURL) }
                     var request = URLRequest(url: requestURL)
                     request.timeoutInterval = 5
-                    let (data, response) = try await URLSession.shared.data(for: request)
+                    let (data, response) = try await NextHTTP.shared.data(for: request)
                     guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
                     struct Result: Decodable { let result: NextMeshCoreAlertTarget? }
                     let target = try JSONDecoder().decode(Result.self, from: data).result
@@ -309,7 +309,7 @@ private struct ProbeScreen: View {
         }
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 2
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NextHTTP.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         struct Batch: Decodable { let messages: [NextUnreadNotice] }
         return try JSONDecoder().decode(Batch.self, from: data).messages
@@ -354,6 +354,8 @@ private struct ProbeScreen: View {
             }
             if let value = try? String(contentsOf: ready, encoding: .utf8),
                let url = URL(string: value), url.scheme == "http", url.host == "127.0.0.1", url.port != nil {
+                let accessFile = directory.appendingPathComponent("next-runtime-info.json")
+                try NextHTTP.shared.configure(Data(contentsOf: accessFile), for: url)
                 return (url, try? String(contentsOf: address, encoding: .utf8))
             }
             try await Task.sleep(for: .milliseconds(100))
@@ -390,7 +392,7 @@ private struct ProbeWebView: UIViewRepresentable {
         }
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
-        view.load(URLRequest(url: url))
+        if let request = try? NextHTTP.shared.authorized(URLRequest(url: url)) { view.load(request) }
         return view
     }
 
@@ -399,7 +401,7 @@ private struct ProbeWebView: UIViewRepresentable {
         // itself would overwrite ordinary in-page navigation on every redraw.
         if context.coordinator.requestedURL != url {
             context.coordinator.requestedURL = url
-            view.load(URLRequest(url: url))
+            if let request = try? NextHTTP.shared.authorized(URLRequest(url: url)) { view.load(request) }
         }
     }
 

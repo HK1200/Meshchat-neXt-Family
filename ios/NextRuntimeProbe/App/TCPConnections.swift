@@ -69,13 +69,13 @@ private enum NextTCPAPI {
 
     static func load(_ base: URL) async throws -> [NextTCPPeer] {
         let endpoint = URL(string: "/api/v1/preview/reticulum-connections", relativeTo: base)!
-        let (data, response) = try await URLSession.shared.data(from: endpoint)
+        let (data, response) = try await NextHTTP.shared.data(from: endpoint)
         try check(data, response)
         return try JSONDecoder().decode(Reply.self, from: data).peers
     }
 
     static func save(_ peers: [NextTCPPeer], at base: URL) async throws -> [NextTCPPeer] {
-        let (data, response) = try await URLSession.shared.data(from: URL(string: "/api/v1/auth/csrf", relativeTo: base)!)
+        let (data, response) = try await NextHTTP.shared.data(from: URL(string: "/api/v1/auth/csrf", relativeTo: base)!)
         try check(data, response)
         let token = try JSONDecoder().decode(Token.self, from: data).csrf_token
         var request = URLRequest(url: URL(string: "/api/v1/preview/reticulum-connections", relativeTo: base)!)
@@ -85,7 +85,7 @@ private enum NextTCPAPI {
         request.setValue(token, forHTTPHeaderField: "X-CSRF-Token")
         request.setValue("http://127.0.0.1:\(base.port!)", forHTTPHeaderField: "Origin")
         request.httpBody = try JSONEncoder().encode(Update(peers: peers))
-        let (result, savedResponse) = try await URLSession.shared.data(for: request)
+        let (result, savedResponse) = try await NextHTTP.shared.data(for: request)
         try check(result, savedResponse)
         return try JSONDecoder().decode(Reply.self, from: result).peers
     }

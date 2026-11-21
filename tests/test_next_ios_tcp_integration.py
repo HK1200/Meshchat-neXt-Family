@@ -106,8 +106,61 @@ def wait(condition, timeout=35):
     raise AssertionError("Private neXt integration condition timed out")
 
 
+SESSIONS = {}
+
+
+def backend(ready):
+    base = ready.read_text()
+    info = json.loads((ready.parent / "next-runtime-info.json").read_text())
+    assert info["origin"] == "http://" + urlsplit(base).netloc
+    assert info["version"] == 1 and len(info["capability"]) == 43
+    SESSIONS[urlsplit(base).netloc] = info["capability"]
+    return base
+
+
+def verify_private_session(base):
+    origin = "http://" + urlsplit(base).netloc
+    status = origin + "/api/v1/status"
+    for headers in ({}, {"X-neXt-Session": "incorrect"}):
+        with pytest.raises(HTTPError) as denied:
+            urlopen(Request(status, headers=headers), timeout=5)
+        assert denied.value.code == 403
+    secret = SESSIONS[urlsplit(base).netloc]
+    with urlopen(Request(origin + "/", headers={"X-neXt-Session": secret}), timeout=5) as response:
+        cookie = response.headers["Set-Cookie"]
+        assert "HttpOnly" in cookie and "SameSite=Strict" in cookie
+        assert secret.encode() not in response.read()
+        assert f"connect-src 'self' ws://{urlsplit(base).netloc} https: wss:" in response.headers["Content-Security-Policy"]
+    with urlopen(Request(status, headers={"Cookie": cookie.split(";", 1)[0]}), timeout=5) as response:
+        assert json.load(response)["runtime_instance"]
+    with pytest.raises(HTTPError) as denied:
+        urlopen(Request(status, headers={"X-neXt-Session": secret, "Origin": "http://example.invalid"}), timeout=5)
+    assert denied.value.code == 403
+    with urlopen(origin + "/", timeout=5) as response:
+        assert response.headers.get("Set-Cookie") is None
+    import asyncio
+    import aiohttp
+    async def websocket_access():
+        async with aiohttp.ClientSession() as session:
+            with pytest.raises(aiohttp.WSServerHandshakeError) as blocked:
+                await session.ws_connect(origin + "/ws")
+            assert blocked.value.status == 403
+            async with session.ws_connect(origin + "/ws", headers={"Cookie": cookie.split(";", 1)[0]}) as ws:
+                await ws.send_json({"type": "ping"})
+                for _ in range(5):
+                    if (await ws.receive_json(timeout=5))["type"] == "pong":
+                        break
+                else:
+                    raise AssertionError("Authenticated WebSocket did not respond")
+    asyncio.run(websocket_access())
+
+
+def private_request(base, path):
+    return Request(urljoin(base, path), headers={"X-neXt-Session": SESSIONS[urlsplit(base).netloc]})
+
+
 def api(base, path, *, body=None, token=None, method=None):
-    headers = {}
+    headers = {"X-neXt-Session": SESSIONS[urlsplit(base).netloc]}
     if body is not None:
         headers["Content-Type"] = "application/json"
         headers["Origin"] = f"http://{urlsplit(base).netloc}"
@@ -140,7 +193,8 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
             ready = app / "first.url"
             start(first, run_server, app, ready, settings)
             wait(ready.exists)
-            base = ready.read_text()
+            base = backend(ready)
+            verify_private_session(base)
             assert base.endswith("/#/messages")  # No typed test address required.
             assert api(base, "telephone/contacts")[1]["contacts"] == []
             token = api(base, "auth/csrf")[1]["csrf_token"]
@@ -201,7 +255,7 @@ def test_neXt_backup_delivery_peer_controls_and_restart_preserve_identity_and_hi
         ready = app / "second.url"
         start(stack, run_server, app, ready, settings)
         wait(ready.exists)
-        base = ready.read_text()
+        base = backend(ready)
         assert (app / "reticulum/identity").read_bytes() == identity
         current = api(base, "config")[1]["config"]
         assert current["display_name"] == "Private iOS name" and current["theme"] == "dark"
@@ -249,7 +303,7 @@ def test_simulator_profile_identity_and_signed_history_survive_actual_restart(tm
             ready = app / "first.url"
             start(first, run_server_mode, app, ready, settings, False)
             wait(ready.exists)
-            base = ready.read_text()
+            base = backend(ready)
             own = ready.with_suffix(".address").read_text()
             token = api(base, "auth/csrf")[1]["csrf_token"]
             radio = dict(enabled=True, transport="tcp", endpoint="127.0.0.1",
@@ -265,7 +319,7 @@ def test_simulator_profile_identity_and_signed_history_survive_actual_restart(tm
         ready = app / "second.url"
         start(stack, run_server_mode, app, ready, settings, False)
         wait(ready.exists)
-        base = ready.read_text()
+        base = backend(ready)
         assert (app / "reticulum-simulator/identity").read_bytes() == identity
         assert ready.with_suffix(".address").read_text() == own
         current = api(base, "config")[1]["config"]
@@ -285,7 +339,7 @@ def test_signed_file_and_photo_delivery_download_and_restart(tmp_path):
         _, hub = start(stack, run_hub, tmp_path / "hub", [port]); assert hub.poll(10); address = hub.recv()
         settings.write_text(json.dumps({"address": address, "peers": [dict(id="private", host="127.0.0.1", port=port, enabled=True)]}))
         with ExitStack() as first:
-            ready = app / "first.url"; start(first, run_server, app, ready, settings); wait(ready.exists); base = ready.read_text()
+            ready = app / "first.url"; start(first, run_server, app, ready, settings); wait(ready.exists); base = backend(ready)
             token = api(base, "auth/csrf")[1]["csrf_token"]
             fields = {"file_attachments": [{"file_name": "../../safe.txt", "file_bytes": base64.b64encode(content).decode()}], "image": {"image_type": "html", "image_bytes": base64.b64encode(png).decode()}}
             status, result = api(base, "lxmf-messages/send", body={"lxmf_message": {"destination_hash": address, "content": "", "fields": fields}}, token=token)
@@ -299,16 +353,16 @@ def test_signed_file_and_photo_delivery_download_and_restart(tmp_path):
             message_hash = received["hash"]
             summary = api(base, "lxmf/conversations")[1]["conversations"][0]
             assert summary["has_attachments"] and summary["latest_message_preview"] == "Echo: "
-        ready = app / "second.url"; start(stack, run_server, app, ready, settings); wait(ready.exists); base = ready.read_text()
+        ready = app / "second.url"; start(stack, run_server, app, ready, settings); wait(ready.exists); base = backend(ready)
         for kind, data, content_type in [("file", content, "application/octet-stream"), ("image", png, "image/png")]:
-            with urlopen(urljoin(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + kind)) as response:
+            with urlopen(private_request(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + kind)) as response:
                 assert response.read() == data
                 assert response.headers["Content-Type"].startswith(content_type)
                 assert response.headers["X-Content-Type-Options"] == "nosniff"
                 if kind == "file": assert "safe.txt" in response.headers["Content-Disposition"] and ".." not in response.headers["Content-Disposition"]
         for suffix in ("file?file_index=-1", "file?file_index=99", "file?file_index=abc", "audio"):
             with pytest.raises(HTTPError) as error:
-                urlopen(urljoin(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + suffix))
+                urlopen(private_request(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + suffix))
             assert error.value.code == 404
 
 
@@ -328,7 +382,7 @@ def test_signed_unsaved_sender_reaches_inbox_can_be_replied_to_and_survives_rest
             ready = app / "first.url"
             start(first, run_server, app, ready, settings)
             wait(ready.exists)
-            base = ready.read_text()
+            base = backend(ready)
             own = api(base, "config")[1]["config"]["lxmf_address_hash"]
             observed = tmp_path / "hub/observed-name.json"
             wait(lambda: observed.exists() and json.loads(observed.read_text())["address"] == own)
@@ -353,7 +407,7 @@ def test_signed_unsaved_sender_reaches_inbox_can_be_replied_to_and_survives_rest
         ready = app / "second.url"
         start(stack, run_server, app, ready, settings)
         wait(ready.exists)
-        base = ready.read_text()
+        base = backend(ready)
         assert api(base, "telephone/contacts")[1]["contacts"] == []
         rows = api(base, "lxmf/conversations")[1]["conversations"]
         assert len(rows) == 1 and not rows[0]["is_contact"]

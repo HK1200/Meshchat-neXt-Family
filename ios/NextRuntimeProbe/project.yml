@@ -60,6 +60,7 @@ targets:
       - path: App/NextMeshCoreSecrets.swift
       - path: App/NextSIPPasswords.swift
       - path: App/NextCredentials.swift
+      - path: App/NextHTTP.swift
       - path: App/NextRNodeProfile.swift
       - path: App/FamilyRadioWake.swift
     dependencies:
