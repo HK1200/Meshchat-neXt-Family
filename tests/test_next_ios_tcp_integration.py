@@ -24,6 +24,17 @@ def run_hub(folder, ports, pipe):
         config += f"[[Private {index}]]\ntype = TCPServerInterface\nenabled = Yes\nlisten_ip = 127.0.0.1\nlisten_port = {port}\n"
     (folder / "config").write_text(config)
     RNS.Reticulum(configdir=str(folder), loglevel=1)
+    # This bounded private hub deliberately receives rapid same-identity startup,
+    # rename and reconnect bursts. Ingress holds are a separate transport policy;
+    # keep this delivery/persistence test independent of their 15-second windows.
+    # Assert the loopback boundary before changing any fixture-only setting.
+    from RNS.Interfaces.TCPInterface import TCPServerInterface
+    listeners = [interface for interface in RNS.Transport.interfaces
+                 if isinstance(interface, TCPServerInterface)]
+    assert len(listeners) == len(ports)
+    for interface in listeners:
+        assert interface.bind_ip == "127.0.0.1"
+        interface.ingress_control = False
     identity = RNS.Identity()
     router = LXMF.LXMRouter(identity=identity, storagepath=str(folder / "lxmf"), autopeer=False)
     source = router.register_delivery_identity(identity, display_name="Private neXt echo", stamp_cost=0)
