@@ -35,3 +35,29 @@ def test_publication_regressions_fail_before_users_receive_wrong_updates(failure
     if failure == "invalid_name": values[0]["apk"] = "../wrong.apk"
     if failure == "wrong_package": values[0]["package"] = "different.app"
     with pytest.raises(feeds.FeedError): feeds.validate(*values)
+
+
+def test_preflight_finds_draft_without_an_existing_git_tag(monkeypatch):
+    draft = {"tag_name": "v0.6.29", "draft": True, "assets": []}
+    paths = []
+    def api(path):
+        paths.append(path)
+        return [{"tag_name": "v0.6.28", "draft": False}, draft]
+    monkeypatch.setattr(feeds, "_json", api)
+    assert feeds.resolve_release("v0.6.29", True) == draft
+    assert paths == ["releases?per_page=100"]
+
+
+@pytest.mark.parametrize("releases", [[], [{"tag_name": "other"}], [{"tag_name": "v0.6.29"}] * 2])
+def test_preflight_does_not_substitute_another_release(monkeypatch, releases):
+    monkeypatch.setattr(feeds, "_json", lambda path: releases)
+    with pytest.raises(feeds.FeedError): feeds.resolve_release("v0.6.29", True)
+
+
+def test_published_checks_use_the_actual_tag_or_latest_endpoint(monkeypatch):
+    paths = []
+    def api(path): paths.append(path); return {"path": path}
+    monkeypatch.setattr(feeds, "_json", api)
+    feeds.resolve_release("v0.6.29")
+    feeds.resolve_release()
+    assert paths == ["releases/tags/v0.6.29", "releases/latest"]

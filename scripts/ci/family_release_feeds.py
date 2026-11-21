@@ -72,6 +72,20 @@ def _json(path):
     return json.loads(_api(path))
 
 
+def resolve_release(tag=None, preflight=False):
+    if not preflight:
+        return _json("releases/tags/" + tag if tag else "releases/latest")
+    # GitHub's by-tag endpoint does not resolve an unpublished draft tag.
+    # Authenticated release listings include drafts and their uploaded assets.
+    releases = _json("releases?per_page=100")
+    if not isinstance(releases, list):
+        raise FeedError("Invalid release listing")
+    matches = [release for release in releases if release.get("tag_name") == tag]
+    if len(matches) != 1:
+        raise FeedError("Preflight release is missing or ambiguous")
+    return matches[0]
+
+
 def _release_asset(release, name):
     candidates = [a for a in release.get("assets", []) if a.get("name") == name]
     if len(candidates) != 1: raise FeedError("Missing release asset: " + name)
@@ -91,7 +105,7 @@ def main():
     args = parser.parse_args()
     if args.tag and not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", args.tag): parser.error("Use a versioned release tag")
     if args.preflight and not args.tag: parser.error("Preflight requires --tag")
-    release = _json("releases/tags/" + args.tag if args.tag else "releases/latest")
+    release = resolve_release(args.tag, args.preflight)
     old = _json("releases/tags/" + LEGACY_TAG)
     stable = None if args.preflight else _release_asset(_json("releases/tags/family-stable"), "family-update.json")
     proof = validate(_release_asset(release, "family-production-update.json"), stable,
