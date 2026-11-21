@@ -76,11 +76,14 @@ final class FamilySIP: ObservableObject {
     }
 
     func save(_ value: FamilySIPAccount) -> Bool {
-        guard FamilySIPAddress("sip:\(value.user)@\(value.host):\(value.port)") != nil,
+        var value = value
+        guard let host = FamilySIPAddress.normalizedHost(value.host),
+              FamilySIPAddress("sip:\(value.user)@\(FamilySIPAddress.hostForURI(host)):\(value.port)") != nil,
               !value.password.isEmpty, value.password.utf8.count <= 256 else {
             error = "Enter the account, provider hostname, port and password."
             return false
         }
+        value.host = FamilySIPAddress.hostForURI(host)
         guard let data = try? JSONEncoder().encode(value) else { return false }
         let changed = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if changed == errSecItemNotFound {
@@ -382,7 +385,8 @@ final class FamilySIP: ObservableObject {
 
     nonisolated private static func resolve(_ host: String) -> Set<String> {
         var result: UnsafeMutablePointer<addrinfo>?
-        guard getaddrinfo(host, nil, nil, &result) == 0 else { return [] }
+        guard let lookup = FamilySIPAddress.normalizedHost(host),
+              getaddrinfo(lookup, nil, nil, &result) == 0 else { return [] }
         defer { if let result { freeaddrinfo(result) } }
         var current = result
         var addresses = Set<String>()
