@@ -48,14 +48,12 @@ targets:
           export EXPANDED_CODE_SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:--}"
           source "$PROJECT_DIR/Python.xcframework/build/utils.sh"
           install_python Python.xcframework staged
-  NextRuntimeProbeUITests:
-    type: bundle.ui-testing
+  NextRuntimeProbeUnitTests:
+    type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
-        excludes: [peer.json]
-      - path: Tests/peer.json
-        buildPhase: resources
+        excludes: [peer.json, ProbeUITests.swift]
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift
       - path: App/NextMeshCoreAlertTarget.swift
@@ -65,8 +63,21 @@ targets:
     dependencies:
       - target: NextRuntimeProbe
     settings:
+      PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe.unit-tests
+      GENERATE_INFOPLIST_FILE: YES
+      TEST_HOST: "$(BUILT_PRODUCTS_DIR)/NextRuntimeProbe.app/NextRuntimeProbe"
+      BUNDLE_LOADER: "$(TEST_HOST)"
+  NextRuntimeProbeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/ProbeUITests.swift
+      - path: Tests/peer.json
+        buildPhase: resources
+    dependencies:
+      - target: NextRuntimeProbe
+    settings:
       PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe.uitests
-      "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": TestsSimulator.entitlements
       GENERATE_INFOPLIST_FILE: YES
       TEST_TARGET_NAME: NextRuntimeProbe
 schemes:
@@ -75,4 +86,4 @@ schemes:
       targets:
         NextRuntimeProbe: all
     test:
-      targets: [NextRuntimeProbeUITests]
+      targets: [NextRuntimeProbeUnitTests, NextRuntimeProbeUITests]

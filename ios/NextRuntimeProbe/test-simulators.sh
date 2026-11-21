@@ -41,7 +41,7 @@ cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 if [[ "$mode" == device ]]; then
     # The device project excludes the simulator test target and its echo fixture.
-    awk '/^  NextRuntimeProbeUITests:/ {exit} {print}' project.yml > device.yml
+    awk '/^  NextRuntimeProbeUnitTests:/ {exit} {print}' project.yml > device.yml
     cat >> device.yml <<'YAML'
 schemes:
   NextRuntimeProbe:
@@ -95,7 +95,7 @@ case "$simulator_arch" in arm64|x86_64) ;; *) echo "Unsupported simulator host a
 xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
     -parallel-testing-enabled NO CODE_SIGN_IDENTITY=- "ARCHS=$simulator_arch" ONLY_ACTIVE_ARCH=YES
-python3 "$probe/sign-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
+python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
 for device in iPhone iPad; do
