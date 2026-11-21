@@ -116,6 +116,8 @@ extension SIPRegistrationTests {
             let value = LinkedSIPCalls(emit:emit); calls = value; return value
         })
         XCTAssertEqual(service.perform(["op":"capabilities"])["calling_available"] as? Bool,true)
+        XCTAssertTrue(["granted", "denied", "not_determined", "unknown"].contains(
+            service.perform(["op":"capabilities"])["microphone_permission"] as? String ?? ""))
         XCTAssertNil(calls)
         XCTAssertEqual(service.perform(["op":"open","session":id,"interface":context])["calling_available"] as? Bool,true)
         let dial: [String: Any] = ["op":"dial","session":id,"call_id":"native-call","peer":"sip:9002@127.0.0.1"]

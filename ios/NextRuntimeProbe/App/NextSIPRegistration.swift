@@ -1,6 +1,7 @@
 import Foundation
 import CoreFoundation
 import UIKit
+import AVFoundation
 
 /// Own-process registration; call operations require an explicitly linked controller.
 @MainActor
@@ -40,7 +41,18 @@ final class NextSIPRegistration {
     }
     func perform(_ value: [String: Any]) -> [String: Any] {
         guard let operation = value["op"] as? String else { return ["ok": false] }
-        if operation == "capabilities" { return ["ok": true, "calling_available": makeCalls != nil, "default_speaker": UIDevice.current.userInterfaceIdiom == .pad] }
+        if operation == "capabilities" {
+            let microphone: String
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted: microphone = "granted"
+            case .denied: microphone = "denied"
+            case .undetermined: microphone = "not_determined"
+            @unknown default: microphone = "unknown"
+            }
+            return ["ok": true, "calling_available": makeCalls != nil,
+                    "default_speaker": UIDevice.current.userInterfaceIdiom == .pad,
+                    "microphone_permission": microphone]
+        }
         if operation == "networks" { return ["ok": true, "networks": network.snapshot()] }
         guard let id = value["session"] as? String,
               id.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil else { return ["ok": false] }

@@ -210,6 +210,19 @@ def test_linked_call_routes_require_the_displayed_call_identity(tmp_path):
     asyncio.run(run())
 
 
+def test_reading_microphone_status_never_connects_or_requests_access(tmp_path):
+    Engine.instances.clear()
+    capability = dict(calling_available=True, microphone_permission='not_determined')
+    runtime = NextSIPRuntime(tmp_path, device=True, vault=Vault(),engine_factory=Engine,
+                            capability_provider=lambda: capability)
+    assert runtime.status()['microphone_permission'] == 'not_determined'
+    capability['microphone_permission'] = 'granted'
+    assert runtime.status()['microphone_permission'] == 'granted'
+    capability['microphone_permission'] = 'invalid private data'
+    assert runtime.status()['microphone_permission'] == 'unknown'
+    assert not Engine.instances and not (tmp_path/'sip/accounts.json').exists()
+
+
 if __name__ == "__main__":
     import tempfile
     checks = [test_actual_service_constructs_without_connecting_or_disclosing_password,
@@ -218,7 +231,8 @@ if __name__ == "__main__":
               test_corrupt_accounts_are_preserved_without_disabling_other_services,
               test_native_route_change_retires_old_engine_and_obeys_allowed_networks,
               test_actual_private_server_protects_sip_routes,
-              test_linked_call_routes_require_the_displayed_call_identity]
+              test_linked_call_routes_require_the_displayed_call_identity,
+              test_reading_microphone_status_never_connects_or_requests_access]
     for check in checks:
         with tempfile.TemporaryDirectory(prefix="next-private-sip-runtime-") as folder:
             check(Path(folder))

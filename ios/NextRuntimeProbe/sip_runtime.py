@@ -41,6 +41,8 @@ def native_service_factory(accounts, executable, **options):
         def _event(self, engine, event):
             if engine is self.engine and event.get("state") == "muted":
                 self.muted = bool(event.get("code"))
+            if engine is self.engine and event.get("state") == "connected":
+                self.error = ""
             super()._event(engine, event)
 
     return NativeService(accounts, executable, **options)
@@ -53,12 +55,14 @@ class NextSIPRuntime:
         self.error = ""
         self.calling_available = False
         self.default_speaker = False
+        self.capability_provider = None
         if not device:
             self.error = "SIP accounts are disabled in the isolated simulator profile"
             return
         from meshchatnext.src.backend.sip_desktop_store import SipAccounts
         if capability_provider is None:
             capability_provider = lambda: native_request({"op": "capabilities"})
+        self.capability_provider = capability_provider
         try:
             capabilities = capability_provider()
             self.calling_available = capabilities.get("calling_available") is True
@@ -76,13 +80,21 @@ class NextSIPRuntime:
             self.error = "SIP account settings could not be opened; other services remain available"
 
     def status(self):
+        microphone = "unknown"
+        if self.capability_provider:
+            try:
+                candidate = self.capability_provider().get("microphone_permission")
+                if candidate in ("granted", "denied", "not_determined"):
+                    microphone = candidate
+            except (ConnectionError, RuntimeError):
+                pass
         value = self.service.status() if self.service else {
             "available": False, "state": "unavailable", "accounts": [],
             "registered": False, "call_state": "idle",
         }
         value.update(platform="ios", account_management_available=self.service is not None,
                      available=self.service is not None and self.calling_available,
-                     calling_available=self.calling_available,
+                     calling_available=self.calling_available, microphone_permission=microphone,
                      speaker=getattr(self.service, "speaker", self.default_speaker),
                      native_telecom_available=self.calling_available)
         if self.error:

@@ -21,7 +21,7 @@ struct NextSIPSettings: View {
         let account_management_available: Bool; let registered: Bool; let state: String
         let selected: String?; let accounts: [Account]; let error: String?
         let calling_available: Bool; let call_state: String; let call_id: String?
-        let peer: String?; let muted: Bool?; let speaker: Bool?
+        let peer: String?; let muted: Bool?; let speaker: Bool?; let microphone_permission: String?
     }
 
     var body: some View {
@@ -32,6 +32,9 @@ struct NextSIPSettings: View {
                         .accessibilityIdentifier("next-sip-status")
                     if state?.calling_available == false {
                         Text("Calling is not available in this build.").foregroundStyle(.secondary)
+                    }
+                    if let permission = state?.microphone_permission {
+                        LabeledContent("Microphone", value: permission == "granted" ? "Allowed" : permission == "denied" ? "Allow in device settings" : "Requested when you place or answer a call")
                     }
                     if let problem = state?.error, !problem.isEmpty { Text(problem).foregroundStyle(.red) }
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
