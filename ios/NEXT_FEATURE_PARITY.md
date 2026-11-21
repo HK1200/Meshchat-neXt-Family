@@ -15,7 +15,7 @@ into the app; physical verification is stated separately.
 | Reticulum direct messages | Real signed exchanges on the iPad and both simulators; conversations survive closing and reopening | Network-loss, extended idle and physical iPhone matrix |
 | Quoted replies | Signed replies preserve their referenced message; verified through the physical iPad backend | Repeat ordinary UI interaction on a physical iPhone |
 | Files and photos | The physical iPad received and returned signed file/photo payloads with matching bytes; simulator file export passes | Real camera/Photos/Files picker and share-sheet checks; larger resource transfers |
-| Contacts and conversation history | Saved contact/history database, new incoming conversations and unread state are integrated; in-place iPad upgrade preserved existing data | Complete additional contact-import methods and physical editor/discovery checks |
+| Contacts and conversation history | Saved contacts, rename/removal, local conversation labels, new incoming conversations and unread state are integrated; in-place iPad upgrade preserved existing data | Complete additional contact-import methods and physical editor/discovery checks |
 | Own contact QR | Native scannable LXMF card and sharing; simulator decodes the displayed QR | Physical sharing between apps |
 | Client discovery | Signed messaging-client announces, name/address filtering and bounded local cache are integrated | Physical discovery picker and additional service identities |
 | Individual TCP peers | Four editable peers, independent toggles and saved settings; native controls/restart tests and physical saved-state checks pass | Repeat real Wi-Fi changes, offline recovery and route failover; connected sockets alone do not prove message traffic |
@@ -51,15 +51,20 @@ service integrations.
 
 ## Native verification checkpoint
 
-The permission implementation passed 40 native cases and both UI cases on the
-iPhone simulator. The iPad passed all 40 native cases and the setup permission
-checkup. Its profile-name test is being repaired using the visible iOS edit menu,
-with cleared-field, exact-name and restart assertions retained. The following
-run stopped earlier: its recording confirms that Done typing left the keyboard
-visible in TCP settings. The native forms now explicitly end editing; both
-simulator suites and the Family forms are being checked before installation.
+The native suite now contains 43 cases, including external-link isolation. All
+43 cases and both UI cases passed on the iPhone at `36bd820`. The iPad passed all
+43 native cases and the setup permission checkup. Its remaining failure read a
+partial hostname immediately after typing; the recording shows the complete
+hostname on screen. The follow-up waits for the exact settled accessibility
+value before continuing. Profile editing, identity preservation and restart
+assertions remain mandatory; the candidate is not yet installed on the iPad.
 
-The announce backend passed all 170 neXt iOS Python checks. The existing Announce
+The backend passed all 183 neXt iOS Python checks, including authenticated
+contact edits in both device and isolated simulator modes. Contact removal keeps
+messages, read state and independent conversation labels. It never creates a
+new contact or conversation from a label alone.
+
+The announce controls are included in that suite. The existing Announce
 button now invokes the real connected interfaces, reports failure when none can
 send, and updates the displayed successful time. The interval selector persists
 its supported values; startup/reconnect announces remain separate from the

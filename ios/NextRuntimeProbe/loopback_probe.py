@@ -64,6 +64,7 @@ class ConversationHistory:
                 )
             """)
             self.db.execute("CREATE INDEX IF NOT EXISTS messages_peer ON messages(peer, id)")
+            self.db.execute("CREATE TABLE IF NOT EXISTS destination_names (address TEXT PRIMARY KEY, name TEXT NOT NULL)")
             self.db.execute("""
                 CREATE TABLE IF NOT EXISTS contacts (
                     id INTEGER PRIMARY KEY,
@@ -146,6 +147,44 @@ class ConversationHistory:
                 (address, name),
             )
 
+    @staticmethod
+    def contact_name(name, *, allow_empty=False):
+        if (not isinstance(name, str) or len(name.strip()) > 120
+                or any(ord(character) < 32 or ord(character) == 127 for character in name)
+                or (not allow_empty and not name.strip())):
+            raise ValueError("Use a name of at most 120 characters without control characters")
+        return name.strip()
+
+    def rename_contact(self, contact_id, name):
+        name = self.contact_name(name)
+        with self.db:
+            row = self.db.execute("SELECT lxmf_address FROM contacts WHERE id = ?", (contact_id,)).fetchone()
+            if row is None:
+                raise KeyError(contact_id)
+            self.db.execute("UPDATE contacts SET name = ? WHERE id = ?", (name, contact_id))
+            self.db.execute("INSERT INTO destination_names VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET name = excluded.name", (row[0], name))
+
+    def remove_contact(self, contact_id):
+        # Removing a phonebook entry never deletes messages, read state or
+        # local conversation labels, and never changes another service's keys.
+        with self.db:
+            if self.db.execute("DELETE FROM contacts WHERE id = ?", (contact_id,)).rowcount != 1:
+                raise KeyError(contact_id)
+
+    def custom_name(self, address):
+        row = self.db.execute("SELECT name FROM destination_names WHERE address = ?", (address,)).fetchone()
+        return row[0] if row else None
+
+    def set_custom_name(self, address, name):
+        if not isinstance(address, str) or not re.fullmatch(r"[a-f0-9]{32}", address):
+            raise ValueError("Enter a valid LXMF address")
+        name = self.contact_name(name, allow_empty=True)
+        with self.db:
+            if name:
+                self.db.execute("INSERT INTO destination_names VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET name = excluded.name", (address, name))
+            else:
+                self.db.execute("DELETE FROM destination_names WHERE address = ?", (address,))
+
     def contacts(self):
         return {
             address: {"id": contact_id, "lxmf_address": address, "name": name}
@@ -160,6 +199,9 @@ class ConversationHistory:
         for (address,) in self.db.execute("SELECT DISTINCT peer FROM messages"):
             if re.fullmatch(r"[a-f0-9]{32}", address):
                 entries.setdefault(address, {"name": address, "is_contact": False})
+        for address, name in self.db.execute("SELECT address, name FROM destination_names"):
+            if address in entries:
+                entries[address]["name"] = name
         return entries
 
     def has_conversation(self, address):
@@ -417,6 +459,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     }
                     for address, entry in history.conversation_entries().items()
                 ]})
+            label = re.fullmatch(r"destination/([a-f0-9]{32})/custom-display-name", path)
+            if label:
+                return web.json_response({"custom_display_name": history.custom_name(label[1])})
             if path == "telephone/contacts":
                 return web.json_response({"contacts": list(contacts.values()), "total_count": len(contacts)})
             if path.startswith("telephone/contacts/check/"):
@@ -461,6 +506,33 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     raise web.HTTPBadRequest(text="Invalid history pagination")
         if request.method in ("POST", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
+        contact_path = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})", path)
+        if contact_path and request.method in ("PATCH", "DELETE"):
+            try:
+                if request.method == "PATCH":
+                    body = await request.json()
+                    if not isinstance(body, dict) or set(body) != {"name"}:
+                        raise ValueError("This contact operation changes the name only")
+                    history.rename_contact(int(contact_path[1]), body["name"])
+                else:
+                    history.remove_contact(int(contact_path[1]))
+            except KeyError:
+                raise web.HTTPNotFound() from None
+            except ValueError as error:
+                return web.json_response({"message": str(error)}, status=400)
+            contacts.clear()
+            contacts.update(history.contacts())
+            return web.json_response({"message": "Contact updated" if request.method == "PATCH" else "Contact removed"})
+        label_path = re.fullmatch(r"destination/([a-f0-9]{32})/custom-display-name/update", path)
+        if label_path and request.method == "POST":
+            try:
+                body = await request.json()
+                if not isinstance(body, dict) or set(body) != {"display_name"}:
+                    raise ValueError("Enter a conversation name")
+                history.set_custom_name(label_path[1], body["display_name"])
+            except ValueError as error:
+                return web.json_response({"message": str(error)}, status=400)
+            return web.json_response({"message": "Custom display name updated"})
         if request.method == "POST" and path == "announce":
             if not await announce_routes(force=True):
                 return web.json_response({"message": "No connected Reticulum interface could send the announce"}, status=503)
@@ -506,15 +578,18 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 except ValueError as error:
                     return web.json_response({"message": str(error)}, status=400)
                 return web.json_response({"peers": peers})
-            if path == "telephone/contacts" and device:
+            if path == "telephone/contacts":
                 body = await request.json()
                 if not isinstance(body, dict):
                     raise web.HTTPBadRequest(text="Expected a contact object")
                 address = body.get("lxmf_address")
                 name = body.get("name")
+                try:
+                    name = history.contact_name(name)
+                except ValueError as error:
+                    return web.json_response({"message": str(error)}, status=400)
                 if (not isinstance(address, str) or not re.fullmatch(r"[a-fA-F0-9]{32}", address)
-                        or address.lower() == own or not isinstance(name, str)
-                        or not name.strip() or len(name.strip()) > 120):
+                        or address.lower() == own):
                     return web.json_response({"message": "Enter a name and a valid LXMF address"}, status=400)
                 if address.lower() in contacts:
                     return web.json_response({"message": "That LXMF address is already saved"}, status=409)

@@ -442,3 +442,51 @@ def test_manual_announce_without_connected_route_does_not_report_success(tmp_pat
         assert api(base, "config")[1]["config"]["last_announced_at"] is None
         assert api(base, "announce", method="POST", token=token)[0] == 503
         assert api(base, "config")[1]["config"]["last_announced_at"] is None
+
+
+@pytest.mark.parametrize("device", [True, False])
+def test_phonebook_edit_delete_and_conversation_labels_through_authenticated_api(tmp_path, device):
+    app = tmp_path / "contacts-app"
+    app.mkdir()
+    settings = app / "settings.json"
+    settings.write_text(json.dumps({"peers": []}))
+    address, other = "ab" * 16, "cd" * 16
+    with ExitStack() as stack:
+        with ExitStack() as first:
+            ready = app / "first.url"
+            start(first, run_server_mode, app, ready, settings, device)
+            wait(ready.exists)
+            base = backend(ready)
+            token = api(base, "auth/csrf")[1]["csrf_token"]
+            assert api(base, "telephone/contacts", body={"name": "Alice", "lxmf_address": address}, token=token)[0] == 200
+            assert api(base, "telephone/contacts", body={"name": "Bob", "lxmf_address": other}, token=token)[0] == 200
+            contacts = api(base, "telephone/contacts")[1]["contacts"]
+            identifier = next(row["id"] for row in contacts if row["lxmf_address"] == address)
+            path = f"telephone/contacts/{identifier}"
+            identity = (app / ("reticulum" if device else "reticulum-simulator") / "identity").read_bytes()
+            assert api(base, path, method="PATCH", body={"name": "Renamed"})[0] == 403
+            assert api(base, path, method="DELETE")[0] == 403
+            for body in [{}, {"name": ""}, {"name": "Invalid\nname"}, {"name": "Renamed", "lxmf_address": other}]:
+                assert api(base, path, method="PATCH", body=body, token=token)[0] == 400
+            assert api(base, path, method="PATCH", body={"name": "Renamed 雪"}, token=token)[0] == 200
+            label = f"destination/{address}/custom-display-name"
+            assert api(base, label)[1] == {"custom_display_name": "Renamed 雪"}
+            assert api(base, label + "/update", body={"display_name": "Chat label"})[0] == 403
+            assert api(base, label + "/update", body={"display_name": "Chat label"}, token=token)[0] == 200
+            assert api(base, label)[1] == {"custom_display_name": "Chat label"}
+        ready = app / "second.url"
+        start(stack, run_server_mode, app, ready, settings, device)
+        wait(ready.exists)
+        base = backend(ready)
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert (app / ("reticulum" if device else "reticulum-simulator") / "identity").read_bytes() == identity
+        contacts = api(base, "telephone/contacts")[1]["contacts"]
+        assert next(row["name"] for row in contacts if row["lxmf_address"] == address) == "Renamed 雪"
+        assert api(base, label)[1] == {"custom_display_name": "Chat label"}
+        assert api(base, path, method="DELETE", token=token)[0] == 200
+        assert api(base, path, method="DELETE", token=token)[0] == 404
+        assert api(base, path, method="PATCH", body={"name": "Missing"}, token=token)[0] == 404
+        assert [row["lxmf_address"] for row in api(base, "telephone/contacts")[1]["contacts"]] == [other]
+        assert api(base, "telephone/contacts/check/" + address)[1]["is_contact"] is False
+        assert api(base, label + "/update", body={"display_name": ""}, token=token)[0] == 200
+        assert api(base, label)[1] == {"custom_display_name": None}
