@@ -215,3 +215,10 @@ previous full local suite passed 252 tests; additional focused checks cover
 unchanged-profile saves without restarting pairing. Native compilation, editor
 persistence and the real iPad radio test are still required at this checkpoint.
 Regular Family remains untouched, and Apple enrollment remains on hold.
+
+
+### neXt RNode and inbox checkpoint (2026-11-20)
+
+The separate neXt iPad preview now includes RNode Bluetooth LE/Wi-Fi configuration, saved radio settings, radio status/battery, startup/reconnect/hourly radio announces and bounded Bluetooth inbox wake handling. The iPhone and iPad simulator runs each passed 18 native checks, and the device archive passed. Build 235.1 was installed over the separate neXt preview on the stock iPad: its identity, seven messages, two contacts and preferences remained byte-identical; regular Family 47.6 and Family Mailbox Test 218.1 were unchanged. The real-device interface started and retained its saved conversation and TCP connection. Physical RNode transmission from neXt itself still needs verification; Family radio tests are not proof for neXt.
+
+neXt's incoming signed private messages may begin a conversation without automatically adding the sender to its phonebook. Existing conversations can receive replies and unread alerts and survive a restart. Family's guardian-approved contact restrictions are unchanged. A new sender must have a verified LXMF identity; unsigned messages are rejected and telemetry alone does not create a new conversation.

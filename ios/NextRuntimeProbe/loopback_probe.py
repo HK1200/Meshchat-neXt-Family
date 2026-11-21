@@ -131,6 +131,18 @@ class ConversationHistory:
             )
         }
 
+    def conversation_entries(self):
+        entries = {address: {**entry, "is_contact": True}
+                   for address, entry in self.contacts().items()}
+        for (address,) in self.db.execute("SELECT DISTINCT peer FROM messages"):
+            if re.fullmatch(r"[a-f0-9]{32}", address):
+                entries.setdefault(address, {"name": address, "is_contact": False})
+        return entries
+
+    def has_conversation(self, address):
+        return bool(isinstance(address, str) and re.fullmatch(r"[a-f0-9]{32}", address)
+                    and self.db.execute("SELECT 1 FROM messages WHERE peer = ? LIMIT 1", (address,)).fetchone())
+
     def save(self, peer, row):
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO conversation_reads VALUES (?, 0)", (peer,))
@@ -195,12 +207,11 @@ class ConversationHistory:
         }
 
     def notification_candidates(self):
-        # One current alert per unread saved conversation. Keep file/photo bytes
+        # One current alert per unread conversation. Keep file/photo bytes
         # out of this query, even when a received attachment is near the size limit.
         rows = self.db.execute("""
             SELECT m.id, m.hash, m.peer FROM messages m JOIN (
                 SELECT MAX(candidate.id) AS id FROM messages candidate
-                JOIN contacts c ON c.lxmf_address = candidate.peer
                 JOIN notification_metadata n ON n.hash = candidate.hash AND n.eligible = 1
                 LEFT JOIN conversation_reads r ON r.peer = candidate.peer
                 WHERE candidate.state = 'received' AND candidate.id > COALESCE(r.through_id, 0)
@@ -243,8 +254,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
 
     async def publish(kind, row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
-        if address not in contacts:
+        if not re.fullmatch(r"[a-f0-9]{32}", address) or address == own:
             return
+        if address not in contacts and not history.has_conversation(address):
+            # neXt is an adult messenger: a signed DM may begin a conversation
+            # without adding its sender to the phonebook. Telemetry alone must
+            # not create a new chat or location relationship.
+            if row["is_outbound"] or row.get("is_private_telemetry"):
+                return
         row = history.save(address, row)
         for client in tuple(clients):
             try:
@@ -321,10 +338,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     {
                         "destination_hash": address,
                         "display_name": entry["name"],
-                        "is_contact": True,
+                        "is_contact": entry["is_contact"],
                         **history.summary(address),
                     }
-                    for address, entry in contacts.items()
+                    for address, entry in history.conversation_entries().items()
                 ]})
             if path == "telephone/contacts":
                 return web.json_response({"contacts": list(contacts.values()), "total_count": len(contacts)})
@@ -362,7 +379,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     headers={"Content-Disposition": disposition, "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin", "Cache-Control": "private, no-store"})
             if path.startswith("lxmf-messages/conversation/"):
                 address = path.rsplit("/", 1)[1]
-                if address not in contacts:
+                if address not in contacts and not history.has_conversation(address):
                     return web.json_response({"lxmf_messages": []})
                 try:
                     return web.json_response({"lxmf_messages": [attachment_fields.slim(row) for row in history.page(address, request.query)]})
@@ -429,16 +446,16 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 body = await request.json()
                 if not isinstance(body, dict):
                     raise web.HTTPBadRequest(text="Expected a conversation selection")
-                addresses = list(contacts) if body.get("mark_all") is True else body.get("destination_hashes")
+                addresses = list(history.conversation_entries()) if body.get("mark_all") is True else body.get("destination_hashes")
                 if (not isinstance(addresses, list) or len(addresses) > 1000
-                        or any(not isinstance(address, str) or address not in contacts for address in addresses)):
-                    raise web.HTTPBadRequest(text="Select saved conversations")
+                        or any(not isinstance(address, str) or (address not in contacts and not history.has_conversation(address)) for address in addresses)):
+                    raise web.HTTPBadRequest(text="Select existing conversations")
                 for address in addresses:
                     history.mark_read(address)
                 return web.json_response({"status": "success"})
             if path.startswith("lxmf/conversations/") and path.endswith("/mark-as-read"):
                 address = path.removeprefix("lxmf/conversations/").removesuffix("/mark-as-read")
-                if address not in contacts:
+                if address not in contacts and not history.has_conversation(address):
                     raise web.HTTPNotFound()
                 history.mark_read(address)
                 return web.json_response({"status": "success"})
@@ -449,8 +466,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     raise web.HTTPBadRequest(text="Expected an LXMF message object")
                 content = draft.get("content")
                 address = draft.get("destination_hash")
-                if not isinstance(address, str) or address not in contacts or not isinstance(content, str):
-                    return web.json_response({"message": "Choose a saved LXMF contact"}, status=400)
+                if not isinstance(address, str) or (address not in contacts and not history.has_conversation(address)) or not isinstance(content, str):
+                    return web.json_response({"message": "Choose an LXMF contact or an existing conversation"}, status=400)
                 try:
                     fields = attachment_fields.outgoing(draft.get("fields") or {}, content)
                 except ValueError as error:

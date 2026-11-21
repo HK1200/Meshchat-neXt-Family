@@ -53,7 +53,18 @@ def run_hub(folder, ports, pipe):
     RNS.Transport.register_announce_handler(ObservedNames())
     source.announce()
     pipe.send(source.hash.hex())
-    pipe.recv()
+    while True:
+        command = pipe.recv()
+        if not isinstance(command, dict):
+            break
+        if command.get("announce"):
+            source.announce()
+            continue
+        address = bytes.fromhex(command["send_to"])
+        identity = RNS.Identity.recall(address)
+        assert identity is not None
+        target = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery")
+        router.handle_outbound(LXMF.LXMessage(target, source, command["content"], desired_method=LXMF.LXMessage.DIRECT))
 
 
 def run_server(folder, ready, settings, pipe):
@@ -299,3 +310,55 @@ def test_signed_file_and_photo_delivery_download_and_restart(tmp_path):
             with pytest.raises(HTTPError) as error:
                 urlopen(urljoin(base, "/api/v1/lxmf-messages/attachment/" + message_hash + "/" + suffix))
             assert error.value.code == 404
+
+
+def test_signed_unsaved_sender_reaches_inbox_can_be_replied_to_and_survives_restart(tmp_path):
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    app = tmp_path / "next-app"
+    app.mkdir()
+    settings = app / "settings.json"
+    settings.write_text(json.dumps({"peers": [dict(id="private", host="127.0.0.1", port=port, enabled=True)]}))
+    with ExitStack() as stack:
+        _, hub = start(stack, run_hub, tmp_path / "hub", [port])
+        assert hub.poll(10)
+        sender = hub.recv()
+        with ExitStack() as first:
+            ready = app / "first.url"
+            start(first, run_server, app, ready, settings)
+            wait(ready.exists)
+            base = ready.read_text()
+            own = api(base, "config")[1]["config"]["lxmf_address_hash"]
+            observed = tmp_path / "hub/observed-name.json"
+            wait(lambda: observed.exists() and json.loads(observed.read_text())["address"] == own)
+            assert api(base, "telephone/contacts")[1]["contacts"] == []
+            hub.send({"announce": True})
+            wait(lambda: any(row["destination_hash"] == sender for row in api(base, "announces")[1]["announces"]))
+            hub.send({"send_to": own, "content": "Signed first message from an unsaved sender"})
+            conversations = wait(lambda: api(base, "lxmf/conversations")[1]["conversations"])
+            assert len(conversations) == 1
+            assert conversations[0]["destination_hash"] == sender
+            assert not conversations[0]["is_contact"] and conversations[0]["is_unread"]
+            incoming = api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]
+            assert incoming[0]["content"] == "Signed first message from an unsaved sender"
+            assert api(base, "preview/unread-messages")[1]["messages"][0]["peer"] == sender
+            assert api(base, "telephone/contacts/check/" + sender)[1]["is_contact"] is False
+            token = api(base, "auth/csrf")[1]["csrf_token"]
+            assert api(base, "lxmf/conversations/" + sender + "/mark-as-read", body={}, token=token)[0] == 200
+            assert not api(base, "preview/unread-messages")[1]["messages"]
+            status, _ = api(base, "lxmf-messages/send", body={"lxmf_message": {"destination_hash": sender, "content": "Reply without saving a contact"}}, token=token)
+            assert status == 200
+            wait(lambda: any(row["content"] == "Echo: Reply without saving a contact" for row in api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]))
+        ready = app / "second.url"
+        start(stack, run_server, app, ready, settings)
+        wait(ready.exists)
+        base = ready.read_text()
+        assert api(base, "telephone/contacts")[1]["contacts"] == []
+        rows = api(base, "lxmf/conversations")[1]["conversations"]
+        assert len(rows) == 1 and not rows[0]["is_contact"]
+        assert rows[0]["destination_hash"] == sender and rows[0]["is_unread"]
+        assert len(api(base, "lxmf-messages/conversation/" + sender)[1]["lxmf_messages"]) == 3
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "lxmf/conversations/bulk-mark-as-read", body={"mark_all": True}, token=token)[0] == 200
+        assert not api(base, "preview/unread-messages")[1]["messages"]

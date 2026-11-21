@@ -15,7 +15,7 @@ def row(number, content='Private text', state='received', **extra):
     return dict(hash=f'{number:064x}', state=state, content=content, fields={}, **extra)
 
 
-def test_alerts_only_include_latest_unread_message_per_saved_conversation(tmp_path):
+def test_alerts_include_latest_unread_message_without_saving_unknown_sender(tmp_path):
     history = ConversationHistory(tmp_path / 'history')
     history.ensure_contact(ALICE, 'Local nickname')
     history.ensure_contact(BOB, 'Other nickname')
@@ -24,10 +24,10 @@ def test_alerts_only_include_latest_unread_message_per_saved_conversation(tmp_pa
     history.save('cd' * 16, row(4))
     history.save(ALICE, row(5, state='delivered'))
     notices = history.notification_candidates()
-    assert [notice['hash'] for notice in notices] == [f'{3:064x}', f'{2:064x}']
+    assert [notice['hash'] for notice in notices] == [f'{4:064x}', f'{3:064x}', f'{2:064x}']
     assert all(set(notice) == {'id', 'hash', 'peer'} for notice in notices)
     history.mark_read(ALICE)
-    assert [n['peer'] for n in history.notification_candidates()] == [BOB]
+    assert [n['peer'] for n in history.notification_candidates()] == ['cd' * 16, BOB]
     history.close()
 
 
@@ -87,3 +87,34 @@ def test_non_dictionary_signed_fields_do_not_break_chat_recording():
         destination_hash=b'c'*16, timestamp=time.time(), content_as_string=lambda: 'Chat text')
     saved = record(message, 'received')
     assert saved['content'] == 'Chat text' and not saved['is_private_telemetry']
+
+
+def test_incoming_conversation_does_not_create_phonebook_contact(tmp_path):
+    path = tmp_path / 'history'
+    history = ConversationHistory(path)
+    history.save(ALICE, row(1))
+    assert history.has_conversation(ALICE)
+    assert not history.has_conversation('not-an-address')
+    assert history.contacts() == {}
+    assert history.conversation_entries()[ALICE] == {'name': ALICE, 'is_contact': False}
+    history.close()
+    history = ConversationHistory(path)
+    assert history.summary(ALICE)['is_unread']
+    assert history.contacts() == {}
+    history.ensure_contact(ALICE, 'My nickname')
+    assert list(history.conversation_entries()) == [ALICE]
+    assert history.conversation_entries()[ALICE]['name'] == 'My nickname'
+    assert history.conversation_entries()[ALICE]['is_contact']
+    history.close()
+
+
+def test_unsigned_dm_never_reaches_inbox_callback():
+    from messaging_probe import MessagingProbe
+    probe = object.__new__(MessagingProbe)
+    received = []
+    probe.on_receive = received.append
+    probe.receive(SimpleNamespace(signature_validated=False))
+    assert received == []
+    signed = SimpleNamespace(signature_validated=True)
+    probe.receive(signed)
+    assert received == [signed]
