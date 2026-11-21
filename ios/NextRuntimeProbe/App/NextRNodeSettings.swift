@@ -5,6 +5,7 @@ struct NextRNodeSettings: View {
     @Environment(\.dismiss) private var dismiss
     @State private var profile = NextRNodeProfile()
     @State private var runtime: Runtime?
+    @State private var baseline = NextRNodeProfile()
     @State private var loaded = false
     @State private var saving = false
     @State private var message = ""
@@ -29,6 +30,8 @@ struct NextRNodeSettings: View {
                 Section {
                     Text(!profile.enabled ? "Off" : runtime?.online == true ? "Connected" : runtime?.connecting == true ? "Connecting…" : "Not connected")
                         .accessibilityIdentifier("next-rnode-status")
+                    if !message.isEmpty { Text(message) }
+                    if !failure.isEmpty { Text(failure).foregroundStyle(.red) }
                     if let battery = runtime?.battery {
                         LabeledContent("Radio battery", value: "\(Int(battery.percent))% · \(battery.state)")
                     }
@@ -63,42 +66,50 @@ struct NextRNodeSettings: View {
                     Stepper("TX power: \(profile.power) dBm", value: $profile.power, in: 0...30)
                 }
                 Section {
-                    Button("Save RNode settings") {
-                        editing = false; saving = true; message = ""; failure = ""
-                        let submitted = profile
-                        Task {
-                            defer { saving = false }
-                            do {
-                                let state = try await fetch(profile: submitted)
-                                if profile == submitted, let saved = state.settings { profile = saved }
-                                runtime = state.runtime
-                                message = "RNode settings saved"
-                            } catch { failure = "RNode settings could not be saved. Check the address and radio settings, then try again." }
-                        }
-                    }.disabled(!loaded || saving || !profile.canSave).accessibilityIdentifier("next-rnode-save")
-                    if !message.isEmpty { Text(message) }
-                    if !failure.isEmpty { Text(failure).foregroundStyle(.red) }
-                } footer: {
                     Text("Saved radios reconnect when neXt is running. Bluetooth packets can wake neXt while locked; iOS still controls background availability.")
+                        .foregroundStyle(.secondary)
                 }
+
             }
             .accessibilityIdentifier("next-rnode-form")
             .navigationTitle("RNode")
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(profile == baseline ? "Done" : "Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!loaded || saving || !profile.canSave)
+                        .accessibilityIdentifier("next-rnode-save")
+                }
                 ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done typing") { editing = false } }
             }
             .task {
                 while !Task.isCancelled {
                     do {
                         let state = try await fetch()
-                        if !loaded { profile = state.settings ?? NextRNodeProfile(); loaded = true; failure = "" }
+                        if !loaded { profile = state.settings ?? NextRNodeProfile(); baseline = profile; loaded = true; failure = "" }
                         runtime = state.runtime
                     } catch { if !loaded { failure = "RNode settings are unavailable. Check that neXt is running." } }
                     do { try await Task.sleep(for: .seconds(2)) } catch { return }
                 }
             }
+        }
+    }
+
+    private func save() {
+        editing = false; saving = true; message = ""; failure = ""
+        let submitted = profile
+        Task {
+            defer { saving = false }
+            do {
+                let state = try await fetch(profile: submitted)
+                baseline = state.settings ?? submitted
+                if profile == submitted { profile = baseline }
+                runtime = state.runtime
+                message = "RNode settings saved"
+            } catch { failure = "RNode settings could not be saved. Check the address and radio settings, then try again." }
         }
     }
 
