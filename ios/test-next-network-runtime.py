@@ -260,3 +260,167 @@ def test_trace_missing_and_invalid_paths_do_not_request_or_change_settings(monke
             assert invalid.status==400
             assert not calls and len(runtime.probe.connections.snapshot())==1
     asyncio.run(run())
+
+
+def probe_fixture(monkeypatch, status=None):
+    runtime=fixture();identity=RNS.Identity()
+    address=RNS.Destination.hash_from_name_and_identity('test.echo.request',identity).hex()
+    monkeypatch.setattr(RNS.Identity,'recall',lambda destination:identity)
+    monkeypatch.setattr(RNS.Transport,'has_path',lambda destination:True)
+    monkeypatch.setattr(RNS.Transport,'hops_to',lambda destination:1)
+    runtime.probe.reticulum.get_next_hop=lambda destination:bytes.fromhex('cd'*16)
+    runtime.probe.reticulum.get_next_hop_if_name=lambda destination:'Private test'
+    sent=[]
+    class Packet:
+        def __init__(self,target,data):
+            assert target.hash.hex()==address
+            self.data=data
+        def pack(self): pass
+        def send(self):
+            sent.append(self.data)
+            return SimpleNamespace(status=RNS.PacketReceipt.DELIVERED if status is None else status,
+                                   proof_packet=SimpleNamespace(rssi=-70,snr=7),get_rtt=lambda:.125)
+    monkeypatch.setattr(RNS,'Packet',Packet)
+    return runtime,dict(destination_hash=address,full_name='test.echo.request',timeout=1),sent
+
+
+def test_probe_uses_standard_receipt_result_contract_and_random_bounded_payloads(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json={**body,'probes':2,'size':24,'wait':0})
+            assert response.status==200 and response.headers['Cache-Control']=='no-store'
+            value=await response.json()
+            assert (value['sent'],value['delivered'],value['timeouts'],value['failed'])==(2,2,0,0)
+            assert [row['probe_number'] for row in value['results']]==[1,2]
+            assert all(row['rtt']==.125 and row['hops']==1 and row['reception_stats']=={'rssi':-70,'snr':7} for row in value['results'])
+            assert len(sent)==2 and all(len(data)==24 for data in sent) and sent[0]!=sent[1]
+            assert runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('bad', [{'size':0},{'size':99999},{'size':True},{'probes':0},{'probes':51},
+                                {'probes':1.5},{'wait':-1},{'wait':float('nan')},{'wait':float('inf')},
+                                {'timeout':False},{'timeout':601},{'full_name':'wrong name'},
+                                {'full_name':'test'},{'full_name':''},{'destination_hash':'invalid'},
+                                {'unknown':True}])
+def test_probe_rejects_invalid_input_before_any_packet(monkeypatch,bad):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json={**body,**bad})
+            assert response.status==400 and not sent
+            assert runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_rechecks_block_after_path_request_without_sending_probe(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch);blocked=[]
+        runtime.blocked=lambda address:bool(blocked)
+        monkeypatch.setattr(RNS.Transport,'has_path',lambda destination:False)
+        runtime.prepare_request=lambda destination:blocked.append(destination)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json=body)
+            assert response.status==400 and not sent and len(blocked)==1
+            assert runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('status,field',[(RNS.PacketReceipt.SENT,'timeouts'),(RNS.PacketReceipt.FAILED,'failed')])
+def test_probe_reports_timeout_and_failure_without_claiming_delivery(monkeypatch,status,field):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch,status)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json={**body,'timeout':.001})
+            value=await response.json()
+            assert response.status==200 and value['delivered']==0 and value[field]==1 and len(sent)==1
+    asyncio.run(run())
+
+
+def test_probe_cancelled_client_releases_slot_and_stops_next_packet(monkeypatch):
+    import contextlib
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch,RNS.PacketReceipt.SENT)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            task=asyncio.create_task(client.post('/api/v1/rnprobe',json={**body,'probes':3}))
+            while not sent: await asyncio.sleep(.01)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):await task
+            for _ in range(30):
+                if runtime.probe_slots._value==1:break
+                await asyncio.sleep(.02)
+            assert runtime.probe_slots._value==1 and len(sent)==1
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('payload', [b'{', b'x'*4097])
+def test_probe_rejects_malformed_and_oversized_bodies(monkeypatch,payload):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',data=payload)
+            assert response.status==400 and not sent and runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_name_must_bind_to_the_recalled_identity(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch)
+        wrong=RNS.Identity();monkeypatch.setattr(RNS.Identity,'recall',lambda destination:wrong)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json=body)
+            assert response.status==400 and not sent and runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_blocked_contact_never_starts(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch);runtime.blocked=lambda address:True
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json=body)
+            assert response.status==400 and not sent and runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_stops_next_packet_when_blocked_during_result_lookup(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch);blocked=[]
+        runtime.blocked=lambda address:bool(blocked)
+        def next_hop(destination):blocked.append(True);return bytes.fromhex('cd'*16)
+        runtime.probe.reticulum.get_next_hop=next_hop
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json={**body,'probes':3})
+            assert response.status==400 and len(sent)==1 and runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_batch_deadline_releases_slot_and_stops_next_packet(monkeypatch):
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch,RNS.PacketReceipt.SENT);runtime.PROBE_BUDGET=.05
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json={**body,'probes':3})
+            assert response.status==503 and len(sent)==1 and runtime.probe_slots._value==1
+    asyncio.run(run())
+
+
+def test_probe_rejects_nonfinite_adaptive_timeout(monkeypatch):
+    import network_runtime
+    monkeypatch.setattr(network_runtime,'path_response_window',lambda *args:float('nan'))
+    async def run():
+        runtime,body,sent=probe_fixture(monkeypatch);body.pop('timeout')
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/rnprobe',json=body)
+            assert response.status==400 and not sent and runtime.probe_slots._value==1
+    asyncio.run(run())

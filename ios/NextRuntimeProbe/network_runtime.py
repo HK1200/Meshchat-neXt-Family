@@ -2,6 +2,8 @@
 """Local Reticulum diagnostics using the same handlers as the desktop app."""
 import asyncio
 import json
+import math
+import os
 import re
 
 from aiohttp import web
@@ -20,15 +22,18 @@ def jsonable(value):
 
 
 class NetworkRuntime:
+    PROBE_BUDGET = 600
     def __init__(self, probe, blocked):
         self.probe, self.blocked = probe, blocked
         self.paths = RNPathHandler(probe.reticulum)
         self.status = RNStatusHandler(probe.reticulum)
         self.reads = asyncio.Semaphore(2)
         self.waits = asyncio.Semaphore(2)
+        self.probe_slots = asyncio.Semaphore(1)
         self.prepare_request = lambda destination: prepare_fresh_path_request(probe.reticulum, destination)
 
     def register(self, router):
+        router.add_post('/api/v1/rnprobe', self.probe_api)
         for path in ('rnstatus', 'interface-stats', 'reticulum/interfaces', 'rnpath/table', 'rnpath/rates'):
             router.add_get('/api/v1/' + path, self.api)
         router.add_get('/api/v1/rnpath/trace/{destination_hash}', self.api)
@@ -124,6 +129,107 @@ class NetworkRuntime:
                 'interface': route['next_hop_interface'], 'next_hop': route['next_hop'],
                 'path_stale': snapshot.get('path_stale', False),
                 'path_unresponsive': snapshot.get('path_unresponsive', False)}
+
+    async def probe_api(self, request):
+        acquired = False
+        try:
+            body = bytearray()
+            async with asyncio.timeout(5):
+                while len(body) < 4097:
+                    chunk = await request.content.read(4097 - len(body))
+                    if not chunk: break
+                    body.extend(chunk)
+            if len(body) > 4096: raise ValueError('Probe request is too large')
+            data = json.loads(body)
+            allowed = {'destination_hash', 'full_name', 'size', 'probes', 'wait', 'timeout'}
+            if not isinstance(data, dict) or not set(data) <= allowed: raise ValueError('Invalid probe request')
+            address = self.address(data.get('destination_hash'))
+            name = data.get('full_name')
+            if not isinstance(name, str) or not 1 <= len(name) <= 256 or any(c.isspace() for c in name):
+                raise ValueError('Enter the full destination name')
+            app_name, aspects = RNS.Destination.app_and_aspects_from_name(name)
+            if not app_name or not aspects or any(not part for part in aspects):
+                raise ValueError('Enter the full destination name')
+            size = self.number(data, 'size', 16, 1, max(1, RNS.Reticulum.MTU - 96))
+            probes = self.number(data, 'probes', 1, 1, 50)
+            def seconds(field, default, minimum, maximum):
+                value = data.get(field, default)
+                if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                    raise ValueError('Invalid ' + field)
+                value = float(value)
+                if not math.isfinite(value) or not minimum <= value <= maximum:
+                    raise ValueError('Invalid ' + field)
+                return value
+            wait = seconds('wait', 0, 0, 120)
+            raw_timeout = data.get('timeout')
+            timeout = None if raw_timeout is None or (not isinstance(raw_timeout, bool) and raw_timeout in (0, '0')) else seconds('timeout', 0, 0.001, 600)
+            def guard():
+                if self.blocked(address): raise ValueError('This destination is blocked')
+                if request.transport is None or request.transport.is_closing(): raise asyncio.CancelledError()
+            async def pause(duration):
+                end = asyncio.get_running_loop().time() + duration
+                while asyncio.get_running_loop().time() < end:
+                    guard()
+                    await asyncio.sleep(min(.1, max(0, end - asyncio.get_running_loop().time())))
+                guard()
+            guard()
+            await asyncio.wait_for(self.probe_slots.acquire(), 1)
+            acquired = True
+            guard()
+            async with asyncio.timeout(self.PROBE_BUDGET):
+                destination = bytes.fromhex(address)
+                if timeout is None:
+                    timeout = await self.read(lambda: path_response_window(destination, self.probe.reticulum))
+                    guard()
+                    timeout = float(timeout)
+                    if not math.isfinite(timeout): raise ValueError('Invalid path response timeout')
+                    timeout = min(600, max(1, timeout))
+                deadline = asyncio.get_running_loop().time() + timeout
+                if not RNS.Transport.has_path(destination):
+                    guard(); self.prepare_request(destination)
+                while not RNS.Transport.has_path(destination):
+                    if asyncio.get_running_loop().time() >= deadline: raise TimeoutError('No Reticulum path')
+                    await pause(.1)
+                guard()
+                identity = RNS.Identity.recall(destination)
+                if identity is None or RNS.Destination.hash_from_name_and_identity(name, identity) != destination:
+                    raise ValueError('Destination name does not match the known destination')
+                target = RNS.Destination(identity, RNS.Destination.OUT, RNS.Destination.SINGLE, app_name, *aspects)
+                results = []
+                for index in range(probes):
+                    if index: await pause(wait)
+                    guard()
+                    packet = RNS.Packet(target, os.urandom(size)); packet.pack()
+                    guard(); receipt = packet.send()
+                    if receipt is None: raise RuntimeError('Reticulum did not create a probe receipt')
+                    deadline = asyncio.get_running_loop().time() + timeout
+                    while receipt.status == RNS.PacketReceipt.SENT and asyncio.get_running_loop().time() < deadline:
+                        await pause(.1)
+                    guard()
+                    via, interface = await self.read(lambda: (self.probe.reticulum.get_next_hop(destination), self.probe.reticulum.get_next_hop_if_name(destination)))
+                    guard()
+                    result = {'probe_number': index + 1, 'size': size, 'destination': RNS.prettyhexrep(destination),
+                              'via': ' via ' + RNS.prettyhexrep(via) if via else '',
+                              'interface': ' on ' + interface if interface and interface != 'None' else '',
+                              'status': 'timeout' if receipt.status == RNS.PacketReceipt.SENT else 'failed'}
+                    if receipt.status == RNS.PacketReceipt.DELIVERED:
+                        rtt = receipt.get_rtt()
+                        proof = getattr(receipt, 'proof_packet', None)
+                        stats = {key: value for key, value in ((key, getattr(proof, attr, None)) for key, attr in (('rssi', 'rssi'), ('snr', 'snr'), ('quality', 'q'))) if value is not None}
+                        result.update(status='delivered', hops=RNS.Transport.hops_to(destination), rtt=rtt,
+                                      rtt_string=f'{round(rtt, 3)} seconds' if rtt >= 1 else f'{round(rtt * 1000, 3)} milliseconds', reception_stats=stats)
+                    results.append(result)
+                result = {'results': results, 'sent': len(results),
+                          'delivered': sum(row['status'] == 'delivered' for row in results),
+                          'timeouts': sum(row['status'] == 'timeout' for row in results),
+                          'failed': sum(row['status'] == 'failed' for row in results)}
+                return web.json_response(result, headers={'Cache-Control': 'no-store'})
+        except (ValueError, TypeError) as error:
+            return web.json_response({'message': str(error)}, status=400)
+        except (TimeoutError, OSError, RuntimeError):
+            return web.json_response({'message': 'Probe unavailable or timed out. Try fewer probes or a shorter wait.'}, status=503)
+        finally:
+            if acquired: self.probe_slots.release()
 
     async def wait_for_path(self, address, timeout):
         # Bound concurrent waits, and recheck a ban after every asynchronous boundary.
