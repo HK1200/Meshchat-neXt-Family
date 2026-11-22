@@ -62,9 +62,29 @@ async def bluetooth_devices(*, device):
     if not device:
         return []
     from family_ios_bluetooth import request
+    # CBCentralManager reports unknown/resetting briefly after its first use.
+    # Let its delegate deliver the real state before treating startup as a
+    # permission failure. These reads never pair, connect or transmit.
+    problems = {2: "Bluetooth LE is not supported on this device",
+                3: "Allow Bluetooth for neXt in iOS Settings, then scan again",
+                4: "Turn on Bluetooth in iOS Settings, then scan again"}
+    for attempt in range(31):
+        reply = await asyncio.to_thread(request, "devices")
+        state = reply.get("state")
+        if type(state) is int and state == 5: break
+        if type(state) is not int or state not in (0, 1):
+            raise ConnectionError((problems.get(state) if type(state) is int else None)
+                                  or "Bluetooth status is unavailable; try scanning again")
+        if attempt == 30:
+            raise ConnectionError("Bluetooth is still starting; try scanning again shortly")
+        await asyncio.sleep(0.1)
     await asyncio.to_thread(request, "scan")
     await asyncio.sleep(6)
     reply = await asyncio.to_thread(request, "devices")
+    state = reply.get("state")
+    if type(state) is not int or state != 5:
+        raise ConnectionError((problems.get(state) if type(state) is int else None)
+                              or "Bluetooth changed during scanning; try again")
     return [{"address": row["id"], "name": row.get("name") or "Bluetooth radio"}
             for row in reply.get("devices", [])]
 

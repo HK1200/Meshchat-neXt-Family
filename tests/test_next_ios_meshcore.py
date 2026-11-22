@@ -56,14 +56,14 @@ def test_discovery_does_not_connect_and_is_disabled_on_simulator(monkeypatch):
     calls = []
     def request(operation):
         calls.append(operation)
-        return {"devices": [{"id": UUID, "name": "Fairside J"}]} if operation == "devices" else {}
+        return {"state": 5, "devices": [{"id": UUID, "name": "Fairside J"}]} if operation == "devices" else {}
     async def immediate(_seconds): pass
     monkeypatch.setattr(family_ios_bluetooth, "request", request)
     monkeypatch.setattr(runtime.asyncio, "sleep", immediate)
     assert asyncio.run(runtime.bluetooth_devices(device=False)) == []
     assert not calls
     assert asyncio.run(runtime.bluetooth_devices(device=True)) == [{"address": UUID, "name": "Fairside J"}]
-    assert calls == ["scan", "devices"]
+    assert calls == ["devices", "scan", "devices"]
 
 
 def test_radio_http_selection_and_simulator_isolation(monkeypatch):
@@ -105,3 +105,89 @@ def test_backend_hash_rejected_before_mutating_destination(tmp_path):
     with pytest.raises(ValueError, match='checksum'):
         stager.stage(wheel, destination, tmp_path)
     assert not destination.exists()
+
+
+def test_bluetooth_startup_waits_for_powered_on_before_scanning(monkeypatch):
+    import family_ios_bluetooth
+    states = iter([0, 1, 5, 5]); calls = []
+    def request(operation):
+        calls.append(operation)
+        if operation == 'scan':
+            assert calls == ['devices', 'devices', 'devices', 'scan']
+            return {'ok': True}
+        return {'state': next(states), 'devices': [{'id': UUID, 'name': 'Fairside J'}]}
+    async def immediate(_seconds): pass
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    monkeypatch.setattr(runtime.asyncio, 'sleep', immediate)
+    assert asyncio.run(runtime.bluetooth_devices(device=True)) == [{'address': UUID, 'name': 'Fairside J'}]
+    assert calls[-1] == 'devices' and calls.count('scan') == 1
+
+
+@pytest.mark.parametrize('state, message', [(2, 'not supported'), (3, 'Settings'), (4, 'Turn on')])
+def test_bluetooth_startup_reports_the_specific_system_state(monkeypatch, state, message):
+    import family_ios_bluetooth
+    calls = []
+    def request(operation):
+        calls.append(operation)
+        assert operation == 'devices', 'Unavailable Bluetooth must not start scanning'
+        return {'state': state, 'devices': []}
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    with pytest.raises(ConnectionError, match=message):
+        asyncio.run(runtime.bluetooth_devices(device=True))
+    assert calls == ['devices']
+
+
+def test_bluetooth_startup_is_bounded_and_never_connects(monkeypatch):
+    import family_ios_bluetooth
+    calls = []
+    def request(operation):
+        calls.append(operation)
+        assert operation == 'devices'
+        return {'state': 0, 'devices': []}
+    async def immediate(_seconds): pass
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    monkeypatch.setattr(runtime.asyncio, 'sleep', immediate)
+    with pytest.raises(ConnectionError, match='starting'):
+        asyncio.run(runtime.bluetooth_devices(device=True))
+    assert 1 < len(calls) <= 31
+
+
+@pytest.mark.parametrize('state', [None, '5', True, {}, []])
+def test_bluetooth_startup_rejects_malformed_native_state_without_scanning(monkeypatch, state):
+    import family_ios_bluetooth
+    calls = []
+    def request(operation):
+        calls.append(operation)
+        return {'state': state, 'devices': []}
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    with pytest.raises(ConnectionError, match='status is unavailable'):
+        asyncio.run(runtime.bluetooth_devices(device=True))
+    assert calls == ['devices']
+
+
+def test_bluetooth_switching_off_during_discovery_does_not_return_stale_radios(monkeypatch):
+    import family_ios_bluetooth
+    states = iter([5, 4]); calls = []
+    def request(operation):
+        calls.append(operation)
+        return {'ok': True} if operation == 'scan' else {'state': next(states), 'devices': [{'id': UUID}]}
+    async def immediate(_seconds): pass
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    monkeypatch.setattr(runtime.asyncio, 'sleep', immediate)
+    with pytest.raises(ConnectionError, match='Turn on'):
+        asyncio.run(runtime.bluetooth_devices(device=True))
+    assert calls == ['devices', 'scan', 'devices']
+
+
+def test_cancelling_bluetooth_startup_does_not_scan_or_connect(monkeypatch):
+    import family_ios_bluetooth
+    calls = []
+    def request(operation):
+        calls.append(operation)
+        return {'state': 0, 'devices': []}
+    async def cancelled(_seconds): raise asyncio.CancelledError()
+    monkeypatch.setattr(family_ios_bluetooth, 'request', request)
+    monkeypatch.setattr(runtime.asyncio, 'sleep', cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(runtime.bluetooth_devices(device=True))
+    assert calls == ['devices']
