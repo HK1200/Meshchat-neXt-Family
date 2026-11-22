@@ -8,25 +8,23 @@ import sip_frontend
 
 def synthetic_source():
     return ('/* unrelated Android/Linux code stays intact */'
-            + ';'.join('["linux","windows"].includes(ws.platform)' for _ in range(3))
-            + ';["linux","windows"].includes(e.platform);'
-            + sip_frontend.COMMAND + ';'
+            + ';'.join('["linux","windows","ios"].includes(ws.platform)' for _ in range(3))
+            + ';["linux","windows","ios"].includes(e.platform);'
+            + sip_frontend.CALL_GUARD + ';' + sip_frontend.COMMAND + ';'
             + 'Could not update SIP feature settings;/sip/status;SIP calling is unavailable in this build')
 
 
-def test_backport_adds_only_ios_policy_and_exact_call_context():
+def test_upstream_ios_policy_and_call_context_are_verified_without_rewriting():
     source = synthetic_source()
-    changed = sip_frontend.rewrite(source)
-    assert changed.count('["linux","windows","ios"]') == 4
-    assert sip_frontend.COMMAND_IOS in changed
-    assert '"ios"===ws.platform' in changed and '{call_id:ws.call_id}' in changed
-    restored = changed.replace('["linux","windows","ios"]', '["linux","windows"]')
-    assert restored.replace(sip_frontend.COMMAND_IOS, sip_frontend.COMMAND) == source
+    assert sip_frontend.rewrite(source) == source
+    assert source.count('["linux","windows","ios"]') == 4
+    assert '"ios"===ws.platform' in source and '{call_id:ws.call_id}' in source
 
 
 @pytest.mark.parametrize('source', [synthetic_source().replace('/sip/status', '/changed'),
                                    synthetic_source() + sip_frontend.COMMAND,
-                                   synthetic_source().replace('includes(e.platform)', 'includes(other.platform)')])
+                                   synthetic_source().replace('includes(e.platform)', 'includes(other.platform)'),
+                                   synthetic_source().replace(sip_frontend.CALL_GUARD, '')])
 def test_changed_bundle_boundaries_require_explicit_review(source):
     with pytest.raises(ValueError): sip_frontend.rewrite(source)
 

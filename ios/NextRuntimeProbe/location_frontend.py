@@ -2,9 +2,9 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/shared-async-Bl2dehMi.js'
-# The prior SIP compatibility step is part of this exact input checksum.
-SHA256 = 'a4f7fe7dad93d79cd75d05cd4281f0c88ab4b87679176cfdc5c617c1acffe4ac'
+CHUNK = 'assets/shared-async-BJVXkEgq.js'
+# The prior SIP compatibility step verifies this upstream source without rewriting it.
+SHA256 = '3376e7c54ec3490823ef998bf294db7ef21ca88fa0cbb5a7d3e75a59125abf6e'
 
 
 def rewrite(source, client):

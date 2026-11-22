@@ -323,7 +323,11 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
         let fallback = app.switches["next-mailbox-fallback"]
         XCTAssertEqual(fallback.value as? String, "0")
-        fallback.tap()
+        XCTAssertTrue(fallback.isEnabled)
+        XCTAssertTrue(fallback.isHittable)
+        // XCTest chose the rounded corner (310,468) for a 309,467,61,28
+        // switch frame. Target its center; retain the exact value assertion.
+        fallback.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let enabledFallback = app.switches.matching(NSPredicate(
             format: "identifier == %@ AND value == %@", "next-mailbox-fallback", "1"
         )).firstMatch

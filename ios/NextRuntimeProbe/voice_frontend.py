@@ -8,8 +8,8 @@ import hashlib
 from pathlib import Path
 
 CHUNKS = {
-    "app-vEJgH78T.js": "3ed833d13715b3cc6261bc2b290b8aadaac1ab9ce90917052c64bb1d90d8cb43",
-    "CallPage-C1Oevjsh.js": "51a33f19e46214e7c8f8d266435ba3b0744f8c16caa100cbcbca366dd14dfc41",
+    "app-C1lU8zPZ.js": "f765bef83ae627ba5098121a40855563ef18afce7a48aa9dd80f5e6c5614ef7e",
+    "CallPage-kCZk-idq.js": "bc2bea6c00959415d5a7eec8ee0c20b107e4f0614b8b394f5ad5fd324f83c147",
 }
 
 
@@ -19,7 +19,7 @@ def replace_once(source, before, after):
 
 
 def rewrite(source, *, page):
-    route = "R" if page else "qe"
+    route = "k" if page else "Te"
     functions = ["async answerCall(){", "async hangupCall(){", "async toggleMicrophone(){",
                  "async toggleSpeaker(){", "async setPttActive(e){",
                  "async switchCallMode(e){" if page else "async toggleDuplexMode(){"]

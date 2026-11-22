@@ -11,22 +11,23 @@ ROOT=Path(__file__).resolve().parent
 
 @pytest.mark.parametrize('page',[False,True])
 def test_answer_keeps_the_displayed_call_id_across_the_real_async_permission_handler(page,tmp_path):
-    source=(ROOT/'fixtures'/('next-021-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
+    source=(ROOT/'fixtures'/('next-023-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
     rewritten=voice_frontend.rewrite(source,page=page)
     script=tmp_path/'handler.js'
     script.write_text('''const assert=require('node:assert/strict');
 let release,ready;const permission=new Promise(resolve=>release=resolve);const permissionReady=new Promise(resolve=>ready=resolve);const posts=[];
 const window={api:{post:async(path,body)=>{posts.push({path,body});return {data:{}}}}};
-const qe=x=>x,R=x=>x,g=()=>{ready();return permission};
-const xe={error:message=>{throw Error(message)}},k=xe;
+const Te=x=>x,g=()=>{ready();return permission};
+const M={error:message=>{throw Error(message)}},V=M;
+const k='''+('x=>x' if page else 'g')+''';
 const controls='''+rewritten+''';
-const context={activeCall:{call_id:'original-call',hash:'original-link',status:4,is_incoming:true},
+const context={activeCall:{call_id:'original-call',hash:'original-link',status:5,is_incoming:true},
  webAudioBridgeEnabled:true,requestAudioPermission:g,
  getStatus:async function(){return this.activeCall},
  $route:{name:'call',query:{tab:'phone'}},$router:{push:async()=>{}},$t:x=>x};
 (async()=>{
  const pending=controls.answerCall.call(context);
- await permissionReady;context.activeCall={call_id:'replacement-call',hash:'replacement-link',status:4,is_incoming:true};
+ await permissionReady;context.activeCall={call_id:'replacement-call',hash:'replacement-link',status:5,is_incoming:true};
  release();await pending;
  assert.equal(posts.length,1);assert.equal(posts[0].path,'/telephone/answer');
  assert.equal(posts[0].body?.call_id,'original-call');
@@ -37,7 +38,7 @@ const context={activeCall:{call_id:'original-call',hash:'original-link',status:4
 
 @pytest.mark.parametrize('page',[False,True])
 def test_handler_boundary_changes_fail_closed(page):
-    source=(ROOT/'fixtures'/('next-021-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
+    source=(ROOT/'fixtures'/('next-023-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
     with pytest.raises(ValueError):voice_frontend.rewrite(source.replace('async answerCall(){','async changedAnswer(){'),page=page)
 
 

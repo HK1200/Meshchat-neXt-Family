@@ -7,10 +7,9 @@ import json
 from pathlib import Path, PurePosixPath
 import zipfile
 
-from hostless_audio_patch import backport_hostless_mixer
 from mobile_rrc_codec import portable_rrc
 
-NEXT_WHEEL_SHA256 = "bd67437f00d62323d5d12718832bf24a90d5c8d32556dfe15ebc88c8b2f0d294"
+NEXT_WHEEL_SHA256 = "07d2dc3cb1b3600372ae4b2d84c3de060ea3173a2c194a2c3b1bb0a6f2a21f9d"
 
 
 def stage(wheel, destination, family_ios, *, voice_only=False, cbor_wheel=None):
@@ -92,8 +91,6 @@ def stage(wheel, destination, family_ios, *, voice_only=False, cbor_wheel=None):
                 if payload.count(before) != 1:
                     raise ValueError("The pinned SIP discovery source changed")
                 payload = payload.replace(before, after)
-            if entry.filename == "meshchatnext/src/backend/web_audio_bridge.py":
-                payload = backport_hostless_mixer(payload)
             target.write_bytes(payload)
     if not voice_only:
         import shutil

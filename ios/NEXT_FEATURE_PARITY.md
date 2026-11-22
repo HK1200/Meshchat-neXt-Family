@@ -7,6 +7,12 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
+The next iOS build pins both the verified 0.1.23 backend and frontend and uses
+0.1.23 as its displayed app version. The hostless audio and SIP platform repairs
+are now upstream; native call identity, voice playback and location bindings
+retain explicit checksum checks and regression coverage. Native qualification
+of this updated bundle remains required.
+
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
