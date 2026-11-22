@@ -5,6 +5,8 @@ final class ProbeUITests: XCTestCase {
     private struct EchoFixture: Decodable {
         let message: String
         let port: Int
+        let deleteMessage: String?
+        let freshMessage: String?
     }
 
     func testConversationSendsAndReceivesSignedLXMF() throws {
@@ -118,10 +120,12 @@ final class ProbeUITests: XCTestCase {
             XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 105), app.debugDescription)
             return reply
         }
-        let deletedReply = sendPrivateMessage("Delete proof: " + fixture.message)
-        let messages = web.buttons["Messages"].firstMatch
-        XCTAssertTrue(messages.waitForExistence(timeout: 15), app.debugDescription)
-        messages.tap()
+        let deletedReply = sendPrivateMessage(try XCTUnwrap(fixture.deleteMessage))
+        // The chat back button is visible on both layouts; the sidebar
+        // Messages item is a Link and may be collapsed on a phone.
+        let back = web.buttons["arrow-left"].firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 15), app.debugDescription)
+        back.tap()
         let contact = web.staticTexts["Simulator Echo"].firstMatch
         XCTAssertTrue(contact.waitForExistence(timeout: 15), app.debugDescription)
         // Use the real selection control on both layouts. A phone long press
@@ -146,7 +150,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
         // The actual send API requires the saved contact after history was
         // removed. A fresh signed reply proves the contact remains usable.
-        let freshReply = sendPrivateMessage("Fresh after delete: " + fixture.message)
+        let freshReply = sendPrivateMessage(try XCTUnwrap(fixture.freshMessage))
         XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
         app.terminate()
         app.launch()

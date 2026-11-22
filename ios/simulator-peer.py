@@ -53,6 +53,9 @@ def main(folder, public, drop_test=False, attachment_echo=False):
 
     challenge = "Hello from simulator " + secrets.token_hex(4)
     reconnect_message = "Hello after reconnect " + secrets.token_hex(4) if drop_test else None
+    # Explicit private-only challenges for independent native history deletion.
+    delete_message = "Delete proof: " + challenge if not public else None
+    fresh_message = "Fresh after delete: " + challenge if not public else None
 
     def drop_client(_):
         from RNS.Interfaces.TCPInterface import TCPServerInterface
@@ -96,7 +99,7 @@ def main(folder, public, drop_test=False, attachment_echo=False):
         print("No return path to the simulator test client", flush=True)
 
     def echo(message):
-        if message.content_as_string() not in (challenge, reconnect_message):
+        if message.content_as_string() not in (challenge, reconnect_message, delete_message, fresh_message):
             return
         if message.signature_validated or message.unverified_reason == LXMF.LXMessage.SOURCE_UNKNOWN:
             threading.Thread(target=reply, args=(message,), daemon=True).start()
@@ -107,6 +110,7 @@ def main(folder, public, drop_test=False, attachment_echo=False):
     pending.write_text(json.dumps({
         "host": host, "port": port, "address": destination.hash.hex(),
         "message": challenge, "reconnectMessage": reconnect_message,
+        "deleteMessage": delete_message, "freshMessage": fresh_message,
     }))
     pending.replace(folder / "peer.json")
     threading.Event().wait()
