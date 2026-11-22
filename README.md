@@ -1,5 +1,7 @@
 # neXt Family
 
+Testing on Google Play? Follow the [closed-test setup guide](docs/CLOSED_TESTING.md) for the correct opt-in links and existing-install updates.
+
 **[Download Family v0.6.30 for Android (ARM64)](https://github.com/HK1200/Meshchat-neXt-Family/releases/download/v0.6.30/MeshchatNextFamily-v0.6.30-android-arm64.apk)**
 
 neXt Family is an Android companion to Meshchat neXt. A guardian approves the people and rooms the device can reach, then locks those settings. Family members can call or text an approved person from a simple contact list.
