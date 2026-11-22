@@ -117,6 +117,10 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
         let off = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "next-mailbox-status", "Off")).firstMatch
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        let fallback = app.switches["next-mailbox-fallback"]
+        XCTAssertEqual(fallback.value as? String, "0")
+        fallback.tap()
+        XCTAssertEqual(fallback.value as? String, "1")
         let field = app.textFields["next-mailbox-address"]
         replace(field, with: "not-a-propagation-address", in: app)
         XCTAssertFalse(app.buttons["next-mailbox-save"].isEnabled)
@@ -127,6 +131,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["tcp-connections"].exists)
         app.buttons["next-mailbox-settings"].tap()
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.switches["next-mailbox-fallback"].value as? String, "0")
         XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
         app.navigationBars["Offline mailbox"].buttons["Done"].tap()
     }

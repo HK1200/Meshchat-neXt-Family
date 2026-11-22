@@ -31,7 +31,7 @@ into the app; physical verification is stated separately.
 | Location and telemetry | Optional map-centering permission is explained; reviewing the guide requests no position | Wire the native location/telemetry backend, sharing sessions and pin updates; verify expiry, stopping and background behavior |
 | Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Native room UI, mentions, reconnect and physical device checks |
 | Other Reticulum tools | Their frontend menus are bundled | Register the remaining real services and test their actions; a visible menu does not establish working functionality |
-| Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once | Verify the native editor; add outbound propagation, suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
+| Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then add suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
 ## Verified checkpoints
@@ -83,7 +83,7 @@ those require device tests.
 * The map backend is wired and privately tested; its native UI/download checks
   remain pending. Location sharing and other Reticulum tools still
   need real backend integration; Relay Chat needs native/device qualification. Bundled menus do not qualify those services.
-* Outbound propagation, suspended mailbox scheduling, push enrollment and complete
+* Native outbound mailbox controls, suspended mailbox scheduling, push enrollment and complete
   identity/settings recovery need integration and device verification.
 * A physical iPhone is still needed for the final phone-specific reliability
   matrix. Simulator success does not replace this.

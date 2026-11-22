@@ -43,7 +43,7 @@ def record(message, state):
         "state": state,
         "method": {LXMF.LXMessage.PROPAGATED: "propagated", LXMF.LXMessage.OPPORTUNISTIC: "opportunistic"}.get(getattr(message, "method", None), "direct"),
         "created_at": datetime.fromtimestamp(message.timestamp, timezone.utc).isoformat(),
-        "progress": 100 if state == "delivered" else 0,
+        "progress": 100 if state in ("delivered", "sent") else 0,
         "is_outbound": state != "received",
         "is_private_telemetry": content.startswith("!NFLOC1:") or (
             not content.strip() and not fields and
@@ -420,6 +420,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     config = {"lxmf_address_hash": own, "identity_hash": probe.source.identity.hash.hex(),
               "last_announced_at": history.last_announce_time(),
               **history.preferences(display_name)}
+    def mailbox_config():
+        return {"auto_send_failed_messages_to_propagation_node": mailbox.send_fallback,
+                "lxmf_preferred_propagation_node_destination_hash": mailbox.address if mailbox.send_fallback else None}
+    config.update(mailbox_config())
     probe.source.display_name = config["display_name"]
     responses = {
         "status": {"status": "ok", "network_ready": True, "ui_ready": True, "runtime_instance": access.instance},
@@ -578,6 +582,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     result = mailbox.tick(force=True)
                 else:
                     result = mailbox.configure(await request.json())
+                    config.update(mailbox_config())
+                    await meshcore_broadcast({"type": "config", "config": config})
                 return web.json_response(result, headers={"Cache-Control": "no-store"})
             except ValueError as error:
                 return web.json_response({"message": str(error)}, status=400)
@@ -616,6 +622,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method == "PATCH" and path == "config":
             try:
                 payload = await request.json()
+                if isinstance(payload, dict) and "auto_send_failed_messages_to_propagation_node" in payload:
+                    if set(payload) != {"auto_send_failed_messages_to_propagation_node"}:
+                        raise ValueError("Change one mailbox setting at a time")
+                    mailbox.configure({"address": mailbox.address,
+                        "send_fallback": payload["auto_send_failed_messages_to_propagation_node"]})
+                    config.update(mailbox_config())
+                    await meshcore_broadcast({"type": "config", "config": config})
+                    return web.json_response({"config": config})
                 if relay and isinstance(payload, dict) and set(relay.settings()).intersection(payload):
                     config.update(await relay.configure(payload))
                     return web.json_response({"config": config})
@@ -729,23 +743,44 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     if previous is None:
                         return web.json_response({"message": "The quoted message is unavailable in this conversation"}, status=404)
                     fields.update(reply_fields_for(reply, previous["content"]))
+                delivery_method = body.get("delivery_method")
+                selected_node = mailbox.outbound_node()
                 try:
-                    message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields)
+                    message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields,
+                        delivery_method=delivery_method, propagation_node=selected_node)
+                    if message.desired_method == LXMF.LXMessage.PROPAGATED:
+                        if selected_node is None or mailbox.outbound_node() != selected_node:
+                            raise ValueError("Mailbox sending was turned off or changed before submission")
+                        probe.router.set_outbound_propagation_node(selected_node)
                     message.pack()
+                except ValueError as exc:
+                    return web.json_response({"message": str(exc)}, status=400)
                 except TimeoutError as exc:
                     return web.json_response({"message": str(exc)}, status=504)
 
                 def state_changed(updated, state):
                     loop.call_soon_threadsafe(schedule, "lxmf_message_state_updated", record(updated, state))
 
-                message.register_delivery_callback(lambda updated: state_changed(updated, "delivered"))
-                message.register_failed_callback(lambda updated: state_changed(updated, "failed"))
+                def failed(updated):
+                    # Run on the app loop: a callback must recheck the current
+                    # explicit opt-in before a relay receives any message.
+                    from outbound_mailbox import retry_via_mailbox
+                    retried = retry_via_mailbox(updated, probe.router, selected_node,
+                        mailbox.outbound_node(), automatic=delivery_method is None)
+                    state_changed(updated, "sending" if retried else "failed")
+                    return retried
+
+                message.register_delivery_callback(lambda updated: state_changed(updated,
+                    "sent" if updated.method == LXMF.LXMessage.PROPAGATED else "delivered"))
+                message.register_failed_callback(lambda updated: loop.call_soon_threadsafe(failed, updated))
                 row = history.save(address, record(message, "sending"))
                 try:
                     probe.send(message)
                 except Exception:
-                    await publish("lxmf_message_state_updated", {**row, "state": "failed"})
-                    return web.json_response({"message": "Could not queue the message"}, status=502)
+                    message.state = LXMF.LXMessage.FAILED
+                    if not failed(message):
+                        await publish("lxmf_message_state_updated", {**row, "state": "failed"})
+                        return web.json_response({"message": "Could not queue the message"}, status=502)
                 return web.json_response({"lxmf_message": attachment_fields.slim(row)})
         raise web.HTTPNotFound()
 

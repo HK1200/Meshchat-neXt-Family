@@ -72,6 +72,7 @@ cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py
 cp "$probe/relay_runtime.py" staged/relay_runtime.py
+cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
 cp "$family_ios/../app/src/main/python/family_maps.py" staged/family_maps.py
 cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py
 cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser

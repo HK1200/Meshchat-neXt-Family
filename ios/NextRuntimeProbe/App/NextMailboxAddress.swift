@@ -8,3 +8,11 @@ enum NextMailboxAddress {
     }
 }
 
+
+struct NextMailboxState: Decodable {
+    let address: String
+    let send_fallback: Bool?
+    let status: String
+    let last_checked_at: Double?
+    let error: String?
+}

@@ -93,7 +93,16 @@ class MessagingProbe:
             return self.on_receive(message) is True
         return False
 
-    def compose(self, content, address, fields=None):
+    def compose(self, content, address, fields=None, *, delivery_method=None, propagation_node=None):
+        if delivery_method not in (None, "direct", "opportunistic", "propagated"):
+            raise ValueError("Choose Automatic, Direct, Opportunistic or Propagated delivery")
+        if delivery_method == "propagated" and propagation_node is None:
+            raise ValueError("Enable failed-send fallback and save a mailbox before using propagated delivery")
+        identity = RNS.Identity.recall(address)
+        if delivery_method == "propagated":
+            if identity is None:
+                raise ValueError("Receive a verified contact announce before sending through a mailbox")
+            return self._message(identity, content, fields, LXMF.LXMessage.PROPAGATED)
         deadline = time.monotonic() + 35
         next_request = 0
         while time.monotonic() < deadline:
@@ -112,12 +121,19 @@ class MessagingProbe:
                 next_request = now + 3
             time.sleep(0.2)
         else:
+            identity = RNS.Identity.recall(address)
+            if delivery_method is None and propagation_node is not None and identity is not None:
+                return self._message(identity, content, fields, LXMF.LXMessage.PROPAGATED)
             raise TimeoutError("Could not find a Reticulum path to the contact")
+        method = LXMF.LXMessage.OPPORTUNISTIC if delivery_method == "opportunistic" else LXMF.LXMessage.DIRECT
+        return self._message(identity, content, fields, method)
+
+    def _message(self, identity, content, fields, method):
         destination = RNS.Destination(
             identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery",
         )
         return LXMF.LXMessage(
-            destination, self.source, content, fields=fields, desired_method=LXMF.LXMessage.DIRECT,
+            destination, self.source, content, fields=fields, desired_method=method,
         )
 
     def send(self, message):

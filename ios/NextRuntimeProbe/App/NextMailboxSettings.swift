@@ -1,18 +1,11 @@
 import Foundation
 import SwiftUI
 
-struct NextMailboxState: Decodable {
-    let address: String
-    let status: String
-    let last_checked_at: Double?
-    let error: String?
-}
-
-
 struct NextMailboxSettings: View {
     let base: URL
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
+    @State private var sendFallback = false
     @State private var state: NextMailboxState?
     @State private var busy = false
     @State private var loaded = false
@@ -27,6 +20,10 @@ struct NextMailboxSettings: View {
                     TextField("Propagation node address", text: $address)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($typing).accessibilityIdentifier("next-mailbox-address")
+                    Toggle("Use mailbox when a direct message fails", isOn: $sendFallback)
+                        .accessibilityIdentifier("next-mailbox-fallback")
+                    Text("Off by default. When enabled, Automatic delivery may leave an encrypted message at this relay if the recipient is offline. The relay can see delivery metadata. Sent means the relay accepted it, not that the recipient has read or received it.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     Button("Save mailbox") {
                         typing = false
                         Task { await update(save: true) }
@@ -97,7 +94,8 @@ struct NextMailboxSettings: View {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 if save {
                     guard let normalized = NextMailboxAddress.normalize(address) else { throw URLError(.badURL) }
-                    request.httpBody = try JSONEncoder().encode(["address": normalized])
+                    struct Settings: Encodable { let address: String; let send_fallback: Bool }
+                    request.httpBody = try JSONEncoder().encode(Settings(address: normalized, send_fallback: !normalized.isEmpty && sendFallback))
                 } else { request.httpBody = Data("{}".utf8) }
             }
             let (data, response) = try await NextHTTP.shared.data(for: request)
@@ -106,7 +104,7 @@ struct NextMailboxSettings: View {
             }
             let result = try JSONDecoder().decode(NextMailboxState.self, from: data)
             state = result
-            if initial || save || !loaded { address = result.address }
+            if initial || save || !loaded { address = result.address; sendFallback = result.send_fallback == true }
             loaded = true
             error = ""
         } catch { self.error = error.localizedDescription }

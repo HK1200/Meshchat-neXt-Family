@@ -142,3 +142,21 @@ last received update; a pin is not proof that the person is still there.
 For a bug report, include the app/build version, connection method, whether the
 screen was locked and the visible error. Do not send guardian passwords, SIP
 passwords, Apple credentials or private location history.
+
+### neXt preview: sending through a mailbox
+
+In the separate neXt iOS preview, open **Offline mailbox** and save the relay's
+propagation address. Receiving checks do not automatically enable sending.
+**Use mailbox when a direct message fails** is off by default. If you enable it
+and save, Automatic delivery can use that relay when a known recipient is
+offline; the Propagated delivery choice uses the same saved opt-in. The relay
+holds encrypted content and can observe delivery metadata. A verified contact
+identity must already be known, so an address alone is insufficient for an
+offline first message.
+
+**Sent** means the relay accepted the message. It does not prove the recipient
+received or read it. **Delivered** is reserved for a recipient delivery proof.
+Turning this option off prevents new fallback attempts; it cannot recall a
+message already accepted by a relay. An interrupted unsent message is still
+shown as failed after an app restart; persistent outbound retry is not yet
+implemented in this preview.

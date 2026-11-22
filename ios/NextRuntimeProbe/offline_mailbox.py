@@ -1,7 +1,7 @@
 """Opt-in LXMF mailbox receiving, owned by the app's asyncio loop.
 
 This polls only while the runtime is executing. It is not an iOS background
-wake mechanism, and does not change how outbound messages are routed.
+wake mechanism. Outbound fallback requires its own explicit saved opt-in.
 """
 import re
 import time
@@ -22,8 +22,13 @@ class OfflineMailbox:
         self.clock, self.wall = clock, wall
         with database:
             database.execute("CREATE TABLE IF NOT EXISTS next_mailbox (id INTEGER PRIMARY KEY CHECK(id=1), address TEXT NOT NULL)")
-        row = database.execute("SELECT address FROM next_mailbox WHERE id=1").fetchone()
+        columns = {row[1] for row in database.execute("PRAGMA table_info(next_mailbox)")}
+        if "send_fallback" not in columns:
+            with database:
+                database.execute("ALTER TABLE next_mailbox ADD COLUMN send_fallback INTEGER NOT NULL DEFAULT 0")
+        row = database.execute("SELECT address, send_fallback FROM next_mailbox WHERE id=1").fetchone()
         self.address = normalize_address(row[0]) if row else ""
+        self.send_fallback = bool(row[1]) if row else False
         self.current_session = None
         self.next_check = 0
         self.started = None
@@ -32,18 +37,24 @@ class OfflineMailbox:
         self.closed = False
 
     def configure(self, payload):
-        if not isinstance(payload, dict) or set(payload) != {"address"}:
+        if not isinstance(payload, dict) or "address" not in payload or set(payload) - {"address", "send_fallback"}:
             raise ValueError("Choose an LXMF mailbox address, or leave it blank to turn it off")
         address = normalize_address(payload["address"])
+        fallback = payload.get("send_fallback", self.send_fallback if address else False)
+        if type(fallback) is not bool:
+            raise ValueError("Choose whether to use the mailbox for failed sends")
+        if fallback and not address:
+            raise ValueError("Choose a mailbox before enabling failed-send fallback")
         if self.closed:
             raise RuntimeError("Mailbox is closed")
-        if address != self.address:
+        if address != self.address or fallback != self.send_fallback:
             # Commit first: a failed settings save must not silently change the
             # selected relay or cancel the existing download.
             with self.database:
-                self.database.execute("INSERT INTO next_mailbox VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET address=excluded.address", (address,))
+                self.database.execute("INSERT INTO next_mailbox (id, address, send_fallback) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET address=excluded.address, send_fallback=excluded.send_fallback", (address, int(fallback)))
             self.router.cancel_propagation_node_requests()
             self.address = address
+            self.send_fallback = fallback
             self.current_session = None
             self.started = None
             self.next_check = 0
@@ -56,8 +67,13 @@ class OfflineMailbox:
         active = self.router.PR_IDLE < phase < self.router.PR_COMPLETE
         status = ("off" if not self.address else "failed" if self.error else
                   "syncing" if active else "complete" if self.last_checked_at else "waiting")
-        return dict(address=self.address, status=status, last_checked_at=self.last_checked_at,
+        return dict(address=self.address, send_fallback=self.send_fallback, status=status, last_checked_at=self.last_checked_at,
                     error=self.error, polling_interval_seconds=300)
+
+    def outbound_node(self):
+        if not self.closed and self.address and self.send_fallback:
+            return bytes.fromhex(self.address)
+        return None
 
     def tick(self, *, force=False):
         if self.closed or not self.address:
