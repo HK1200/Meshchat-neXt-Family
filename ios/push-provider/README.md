@@ -1,4 +1,4 @@
-# Optional Family mailbox alerts
+# Optional Family and neXt mailbox alerts
 
 Run this provider alongside a private LXMF propagation node. It reads the mailbox spool and sends a generic Apple alert after an approved sender signs a hint for a stored message. It does not decrypt mail. The APNs payload contains only the generic alert, and APNs request identifiers are derived with a private key rather than exposing the LXMF message hash.
 
@@ -18,6 +18,7 @@ Use Python with `cryptography`, curl with HTTP/2 support, and a private director
     }
   },
   "apns": {
+    "app": "family",
     "environment": "development",
     "topic": "<push-enabled Family bundle identifier>",
     "team": "<Apple developer team ID>",
@@ -55,3 +56,11 @@ Both Reticulum addresses use lowercase hex. Provision the approved recipient's v
 After LXMF confirms transfer to that relay, the client submits a signed hint. It contains the recipient address, the encrypted packet hash, sender public key, timestamp, and signature. Message content and attachments stay in LXMF. Clients retry transient errors briefly, then leave the relay delivery status as-is.
 
 HTTP 204 means the provider accepted the alert or already recorded it. A caller can retry a temporary 429 or 503 within the five-minute hint window. A 404 means the encrypted message is not currently stored. Recipients can use a compatible iPad client to open Family and fetch the mailbox after the generic alert. APNs delivery depends on the network, the iPad notification settings, and Apple. The provider needs valid Apple credentials and a token from a signed, push-enabled build for a live test.
+
+## Receiving alerts in neXt iOS
+
+Development source after neXt 0.1.21 adds **Offline mailbox → Mailbox push alerts**. This is separate from **Recipient mailbox alerts**, which configures sending hints. Save a mailbox first, enter a private provider's HTTPS address and enrollment code, and explicitly select verified saved contacts. New phonebook contacts do not automatically get push permission. The enrollment code remains in neXt's own Keychain; Family's settings and credentials are not accessed.
+
+Run a separate provider instance for neXt with `apns.app` set to `next` and the exact signed neXt bundle identifier as `apns.topic`. Family remains the default app. Each instance uses its fixed configured Apple topic and generic app-specific alert; senders cannot choose the topic or alert text. The APNs environment must match the signing profile. For a push-enabled neXt device archive, set `NEXT_APNS_ENVIRONMENT` to `development` or `production`; the build adds its APNs entitlement only when explicitly requested. A matching paid-developer provisioning profile is still required before signing. Personal previews leave this setting empty and cannot enable Apple push enrollment.
+
+A visible push alert can arrive while iOS suspends neXt. Tapping it opens Messages and retrieves the encrypted mailbox while the app is running. This does not promise silent retrieval while fully suspended, instant radio delivery, or background call ringing. Token rotation and contact revocations sync when neXt runs. Turning alerts off remains pending until the provider acknowledges token removal. No live Apple push delivery has been qualified yet; Apple enrollment is still on hold.

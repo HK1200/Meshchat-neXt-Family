@@ -196,3 +196,24 @@ This sender integration does not make the current personal-signed neXt preview
 receive Apple push alerts. Receiving-side enrollment, Apple push entitlements
 and a functioning provider remain separate requirements. Ordinary TCP or SIP
 traffic cannot guarantee that a fully suspended iPhone or iPad wakes.
+
+### neXt receiving mailbox alerts (development source)
+
+After saving an offline mailbox, open **Offline mailbox → Mailbox push alerts**.
+The chosen provider supplies its HTTPS address and private enrollment code.
+Select which verified saved Reticulum contacts may send alerts, then explicitly
+enable the service. The code is stored only in neXt’s private Keychain. New
+phonebook contacts do not automatically receive push permission. Saved contact
+removals and Apple token changes are synced while neXt runs.
+
+Personal-signed previews cannot enable Apple push alerts. Their radio
+notifications and ordinary mailbox retrieval remain available. A future
+push-enabled signed build must use a matching Apple profile, provider topic and
+APNs environment. Apple enrollment remains on hold; real APNs delivery has not
+been qualified. Opening the settings does not request permission or upload data.
+
+The provider and Apple receive a generic alert rather than message text. Tap it
+to open Messages and retrieve encrypted mail. This does not guarantee silent
+retrieval while fully suspended or wake incoming calls. **Turn off push alerts**
+stays pending until the provider confirms removal; reopen neXt online or use
+Retry if needed. Family’s enrollment, account and settings remain separate.

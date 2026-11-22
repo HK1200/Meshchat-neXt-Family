@@ -3,10 +3,11 @@ import subprocess
 from hashlib import sha256
 
 import RNS
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from provider import ALERT, APNs, Provider, Unavailable, signed_bytes
+from provider import ALERT, NEXT_ALERT, APNs, Provider, Unavailable, signed_bytes
 
 
 def mailbox_item(spool, recipient, content):
@@ -75,7 +76,8 @@ def test_transient_failure_and_rate_limit(tmp_path):
     broker.database.close()
 
 
-def test_apns_uses_generic_payload_and_hides_credentials(tmp_path, monkeypatch):
+@pytest.mark.parametrize("app,expected", [("family", ALERT), ("next", NEXT_ALERT)])
+def test_apns_uses_generic_payload_and_hides_credentials(tmp_path, monkeypatch, app, expected):
     key = ec.generate_private_key(ec.SECP256R1())
     keyfile = tmp_path / "key.pem"
     keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
@@ -87,7 +89,7 @@ def test_apns_uses_generic_payload_and_hides_credentials(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(args, 0, stdout="200")
 
     monkeypatch.setattr(subprocess, "run", run)
-    send = APNs({"topic": "org.example.mailbox", "team": "TEST", "key_id": "KEY",
+    send = APNs({"app": app, "topic": "org.example.mailbox", "team": "TEST", "key_id": "KEY",
                  "key_file": keyfile, "environment": "development", "id_key": "ef" * 32})
     token, message = "ab" * 32, "cd" * 32
     send(token, message)
@@ -97,7 +99,7 @@ def test_apns_uses_generic_payload_and_hides_credentials(tmp_path, monkeypatch):
     assert f"api.sandbox.push.apple.com/3/device/{token}" in config
     assert "apns-push-type: alert" in config and "apns-priority: 10" in config
     assert message not in config
-    assert json.loads(json.loads(config.split("data = ")[1])) == ALERT
+    assert json.loads(json.loads(config.split("data = ")[1])) == expected
 
 
 def test_guardian_enrollment_token_rotation_and_disable(tmp_path):

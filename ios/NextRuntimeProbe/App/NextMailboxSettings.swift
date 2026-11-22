@@ -3,11 +3,13 @@ import SwiftUI
 
 struct NextMailboxSettings: View {
     let base: URL
+    let push: NextPushRegistration
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
     @State private var sendFallback = false
     @State private var state: NextMailboxState?
     @State private var busy = false
+    @State private var showPushSettings = false
     @State private var showRecipientAlerts = false
     @State private var saving = false
     @State private var loaded = false
@@ -45,6 +47,10 @@ struct NextMailboxSettings: View {
                     Text("Leave the address blank and save to turn mailbox checks off. This does not delete saved messages.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                Section("Receiving alerts") {
+                    Button("Mailbox push alerts") { showPushSettings = true }
+                        .accessibilityIdentifier("next-push-settings")
+                }
                 Section("Sending alerts") {
                     Button("Recipient mailbox alerts") { showRecipientAlerts = true }
                         .accessibilityIdentifier("next-recipient-alerts")
@@ -69,6 +75,7 @@ struct NextMailboxSettings: View {
                 }
             }
             .sheet(isPresented: $showRecipientAlerts) { NextRecipientAlerts(base: base).interactiveDismissDisabled() }
+            .sheet(isPresented: $showPushSettings) { NextPushSettings(base: base, push: push) }
             .task {
                 await update(initial: true)
                 while !Task.isCancelled {

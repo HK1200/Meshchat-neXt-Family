@@ -144,6 +144,18 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.switches["next-mailbox-fallback"].value as? String, "0")
         XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
+        let receiving = app.buttons["next-push-settings"]
+        reveal(receiving, in: form)
+        receiving.tap()
+        XCTAssertTrue(app.collectionViews["next-push-form"].waitForExistence(timeout: 15), app.debugDescription)
+        let receivingOff = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "next-push-status", "Off"
+        )).firstMatch
+        XCTAssertTrue(receivingOff.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["next-push-unavailable"].exists)
+        XCTAssertFalse(app.buttons["next-push-enable"].isEnabled)
+        XCTAssertFalse(app.alerts.firstMatch.exists, "Opening optional settings must not request Apple permission")
+        app.navigationBars["Mailbox push alerts"].buttons["Done"].tap()
         let recipients = app.buttons["next-recipient-alerts"]
         reveal(recipients, in: form)
         recipients.tap()

@@ -554,6 +554,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if maps and path == "config": config.update(maps.settings())
             if telemetry and path == "config": config.update(telemetry.settings())
             if relay and path == "config": config.update(relay.settings())
+            if path == "preview/push-enrollment-state":
+                from push_receiving import snapshot
+                return web.json_response(snapshot(history, probe.source, mailbox), headers={"Cache-Control": "no-store"})
             if path == "preview/mailbox":
                 return web.json_response(mailbox.snapshot(), headers={"Cache-Control": "no-store"})
             if path == "preview/rnode":

@@ -25,6 +25,7 @@ targets:
         CFBundleShortVersionString: "0.1.21"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
+        NextPushEnvironment: "$(NEXT_APNS_ENVIRONMENT)"
         NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
         NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
@@ -43,6 +44,7 @@ targets:
         codeSign: true
     settings:
       CURRENT_PROJECT_VERSION: "1"
+      NEXT_APNS_ENVIRONMENT: ""
       PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.next.ios.runtimeprobe
       "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": AppSimulator.entitlements
       SWIFT_OBJC_BRIDGING_HEADER: App/ProbeRuntime.h
@@ -82,6 +84,8 @@ targets:
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift
       - path: App/NextMailboxAddress.swift
+      - path: App/NextPushServices.swift
+      - path: App/NextPushRegistration.swift
       - path: App/NextSIPAccountDraft.swift
       - path: App/NextSIPRegistration.swift
       - path: App/NextSIPCallSession.swift

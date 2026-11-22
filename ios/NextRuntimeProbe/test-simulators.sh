@@ -4,6 +4,16 @@ set -euo pipefail
 family_ios="$(cd -- "${1:?Pass the Family checkout ios directory}" && pwd)"
 mode="${2:-simulators}"
 case "$mode" in simulators|device) ;; *) exit 2 ;; esac
+push_settings=()
+if [[ -n "${NEXT_APNS_ENVIRONMENT:-}" ]]; then
+    case "$NEXT_APNS_ENVIRONMENT" in development|production) ;;
+        *) echo "NEXT_APNS_ENVIRONMENT must be development or production" >&2; exit 2 ;;
+    esac
+    if [[ "$mode" != device ]]; then
+        echo "APNs entitlements require a device build and matching Apple profile" >&2; exit 2
+    fi
+    push_settings=("NEXT_APNS_ENVIRONMENT=$NEXT_APNS_ENVIRONMENT" "CODE_SIGN_ENTITLEMENTS=AppPush.entitlements")
+fi
 simulator_families=(iPhone iPad)
 if [[ -n "${NEXT_PROBE_DEVICE:-}" ]]; then
     case "$NEXT_PROBE_DEVICE" in iPhone|iPad) simulator_families=("$NEXT_PROBE_DEVICE") ;;
@@ -37,7 +47,7 @@ bash "$family_ios/prepare-live.sh"
 cd -- "$scratch"
 cp -R "$probe/App" "$probe/project.yml" .
 cp "$family_ios/SIP-NOTICES.txt" "$probe/PrivacyInfo.xcprivacy" .
-cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" .
+cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" "$probe/AppPush.entitlements" .
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
@@ -75,6 +85,7 @@ cp "$probe/voice_runtime.py" staged/voice_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py
 cp "$probe/relay_runtime.py" staged/relay_runtime.py
 cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
+cp "$probe/push_receiving.py" staged/push_receiving.py
 cp "$probe/telemetry_runtime.py" staged/telemetry_runtime.py
 cp "$family_ios/../app/src/main/python/family_location.py" "$family_ios/../app/src/main/python/family_meshcore_location.py" staged/
 cp "$family_ios/../app/src/main/python/family_maps.py" staged/family_maps.py
@@ -96,7 +107,7 @@ YAML
     xcodegen generate --spec device.yml
     xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
         -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
-        CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}"
+        CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
     app=DerivedData/Build/Products/Release-iphoneos/NextRuntimeProbe.app
     lipo "$app/NextRuntimeProbe" -verify_arch arm64
     test -f "$app/Frameworks/Python.framework/Python"

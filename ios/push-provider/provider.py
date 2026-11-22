@@ -24,6 +24,8 @@ ALERT = {"aps": {"alert": {"title": "New Family message", "body": "Open neXt Fam
                  "sound": "default"}}
 HINT_FIELDS = {"recipient", "message", "sender", "issued", "signature"}
 HINT_LIFETIME = 300
+NEXT_ALERT = {"aps": {"alert": {"title": "New neXt message", "body": "Open Meshchat neXt to read it."},
+                       "sound": "default"}}
 ALERTS_PER_MINUTE = 6
 
 
@@ -164,6 +166,10 @@ def b64url(value):
 
 class APNs:
     def __init__(self, settings):
+        app = settings.get("app", "family")
+        if app not in ("family", "next"):
+            raise ValueError("APNs app must be family or next")
+        self.alert = ALERT if app == "family" else NEXT_ALERT
         self.topic = settings["topic"]
         self.team = settings["team"]
         self.key_id = settings["key_id"]
@@ -194,7 +200,7 @@ class APNs:
     def __call__(self, token, message):
         # Curl reads credentials via stdin so the token and JWT stay out of argv.
         now = int(time.time())
-        content = json.dumps(ALERT, separators=(",", ":"))
+        content = json.dumps(self.alert, separators=(",", ":"))
         alert_id = hmac.digest(self.id_key, bytes.fromhex(message), "sha256").hex()
         headers = [
             f"authorization: bearer {self.authorization(now)}",

@@ -46,6 +46,8 @@ private struct ProbeScreen: View {
     @State private var error: String?
     @State private var starting = false
     @State private var theme = "system"
+    @State private var pushSyncing = false
+    @State private var lastPushCheck = ContinuousClock.now - .seconds(15)
     @State private var tcpConnected: Bool?
     @State private var tcpEnabledCount: Int?
 
@@ -194,6 +196,9 @@ private struct ProbeScreen: View {
                 Task { await alerts.refreshAuthorization() }
             }
         }
+        .onChange(of: alerts.mailboxInboxRequested) { _, wanted in
+            if wanted { openMailboxInbox() }
+        }
         .onChange(of: alerts.requestedAddress) { _, peer in
             if peer != nil { openRequestedConversation() }
         }
@@ -223,7 +228,7 @@ private struct ProbeScreen: View {
                     }
                 }
             case .mailbox:
-                if let url { NextMailboxSettings(base: url).interactiveDismissDisabled() }
+                if let url { NextMailboxSettings(base: url, push: alerts.push).interactiveDismissDisabled() }
             case .reticulum:
                 if let url { NextReticulumSettings(base: url).interactiveDismissDisabled() }
             case .sip:
@@ -301,6 +306,14 @@ private struct ProbeScreen: View {
                     lastRecovery = ContinuousClock.now
                 }
             }
+            if alerts.push.configured || alerts.push.busy {
+                await refreshPushState(at: url)
+            }
+            if !alerts.push.configured || alerts.push.stopping {
+                alerts.consumedMailboxSync(through: alerts.mailboxSyncGeneration)
+            } else if alerts.mailboxSyncRequested && !pushSyncing {
+                Task { await retrievePushMailbox(at: url) }
+            }
             if let notices = try? await Self.unreadMessages(at: url) {
                 await alerts.publish(notices, appActive: appActive)
             }
@@ -310,6 +323,53 @@ private struct ProbeScreen: View {
                 return
             }
         }
+    }
+
+    @MainActor private func refreshPushState(at base: URL) async {
+        do {
+            let endpoint = URL(string: "/api/v1/preview/push-enrollment-state", relativeTo: base)!
+            let (data, response) = try await NextHTTP.shared.data(from: endpoint)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            alerts.push.refresh(try JSONDecoder().decode(NextPushState.self, from: data))
+        } catch { /* Keep enrollment/revocation pending while the local listener recovers. */ }
+    }
+
+    @MainActor private func retrievePushMailbox(at base: URL) async {
+        guard alerts.push.configured, !alerts.push.stopping, !pushSyncing,
+              lastPushCheck.duration(to: ContinuousClock.now) >= .seconds(15) else { return }
+        pushSyncing = true; lastPushCheck = .now
+        defer { pushSyncing = false }
+        let generation = alerts.mailboxSyncGeneration
+        do {
+            struct Token: Decodable { let csrf_token: String }
+            let (tokenData, tokenResponse) = try await NextHTTP.shared.data(from: URL(string: "/api/v1/auth/csrf", relativeTo: base)!)
+            guard (tokenResponse as? HTTPURLResponse)?.statusCode == 200 else { return }
+            let token = try JSONDecoder().decode(Token.self, from: tokenData)
+            let endpoint = URL(string: "/api/v1/preview/mailbox/sync", relativeTo: base)!
+            var request = URLRequest(url: endpoint); request.httpMethod = "POST"; request.timeoutInterval = 15
+            request.setValue(token.csrf_token, forHTTPHeaderField: "X-CSRF-Token")
+            var origin = URLComponents(url: base, resolvingAgainstBaseURL: true)!
+            origin.path = ""; origin.query = nil; origin.fragment = nil
+            request.setValue(origin.string, forHTTPHeaderField: "Origin")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data("{}".utf8)
+            let (data, response) = try await NextHTTP.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            var state = try JSONDecoder().decode(NextMailboxState.self, from: data)
+            for _ in 0..<45 {
+                guard !Task.isCancelled, alerts.push.configured, !alerts.push.stopping else { return }
+                if state.status == "complete" || state.status == "off" {
+                    alerts.consumedMailboxSync(through: generation)
+                    lastPushCheck = .now - .seconds(15)
+                    return
+                }
+                if state.status == "failed" { return }
+                try await Task.sleep(for: .seconds(1))
+                let (fresh, result) = try await NextHTTP.shared.data(from: URL(string: "/api/v1/preview/mailbox", relativeTo: base)!)
+                guard (result as? HTTPURLResponse)?.statusCode == 200 else { return }
+                state = try JSONDecoder().decode(NextMailboxState.self, from: fresh)
+            }
+        } catch { /* The generation stays pending for a bounded retry after reconnect. */ }
     }
 
     private func launch(_ settings: PeerSettings?) async {
@@ -331,9 +391,19 @@ private struct ProbeScreen: View {
                     }
                 }, pause: { try await Task.sleep(for: .seconds(1)) })
             openRequestedConversation()
+            if alerts.mailboxInboxRequested { openMailboxInbox() }
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func openMailboxInbox() {
+        guard alerts.mailboxInboxRequested, let current = url,
+              var destination = URLComponents(url: current, resolvingAgainstBaseURL: false) else { return }
+        destination.fragment = "/messages"
+        guard let routed = destination.url else { return }
+        panel = nil; meshcoreReturnURL = nil; url = routed
+        alerts.consumedMailboxInbox()
     }
 
     private func openRequestedConversation() {
@@ -358,7 +428,7 @@ private struct ProbeScreen: View {
                           var destination = URLComponents(url: current, resolvingAgainstBaseURL: true) else { throw URLError(.badServerResponse) }
                     guard alerts.requestedMeshCoreKey == key else { return }
                     destination.fragment = fragment
-                    if let routed = destination.url { url = routed }
+                    if let routed = destination.url { panel = nil; url = routed }
                     alerts.consumedRoute()
                 } catch {
                     if alerts.requestedMeshCoreKey == key {
@@ -372,7 +442,7 @@ private struct ProbeScreen: View {
         guard let peer = alerts.requestedAddress, let current = url,
               var destination = URLComponents(url: current, resolvingAgainstBaseURL: false) else { return }
         destination.fragment = "/messages/" + peer
-        if let routed = destination.url { url = routed; alerts.consumedRoute() }
+        if let routed = destination.url { panel = nil; url = routed; alerts.consumedRoute() }
     }
 
     private static func unreadMessages(at base: URL) async throws -> [NextUnreadNotice] {

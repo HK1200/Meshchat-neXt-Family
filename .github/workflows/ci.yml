@@ -32,7 +32,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --require-hashes -r tests/requirements.lock
       - name: Test Family backend
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests ios/push-provider/test_provider.py
 
   next-voice-media:
     name: neXt iOS encrypted voice media

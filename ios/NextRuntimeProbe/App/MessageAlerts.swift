@@ -61,6 +61,11 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @Published private(set) var requestedAddress: String?
     @Published private(set) var requestedMeshCoreKey: String?
+    let push: NextPushRegistration
+    @Published private(set) var mailboxInboxRequested = false
+    @Published private(set) var mailboxSyncGeneration = 0
+    private var mailboxAcknowledgedGeneration = 0
+    var mailboxSyncRequested: Bool { mailboxSyncGeneration > mailboxAcknowledgedGeneration }
     private let center: any NextAlertPosting
     private let defaults: UserDefaults
     private let ledgerKey = "next.notifiedMessageIDs.v1"
@@ -70,11 +75,13 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
     private var authorizing = false
 
     override init() {
+        push = NextPushRegistration()
         center = NextSystemAlerts()
         defaults = .standard
         super.init()
     }
-    init(center: any NextAlertPosting, defaults: UserDefaults) {
+    init(center: any NextAlertPosting, defaults: UserDefaults, push: NextPushRegistration? = nil) {
+        self.push = push ?? NextPushRegistration()
         self.center = center; self.defaults = defaults
         super.init()
     }
@@ -82,6 +89,30 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
+    }
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+        push.receivedToken(token)
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        push.registrationFailed()
+    }
+    @discardableResult func requestMailboxSync(openInbox: Bool = false) -> Bool {
+        guard push.configured, !push.stopping else { return false }
+        mailboxSyncGeneration += 1
+        if openInbox { mailboxInboxRequested = true }
+        return true
+    }
+    func consumedMailboxInbox() { mailboxInboxRequested = false }
+    func consumedMailboxSync(through generation: Int) {
+        guard generation > mailboxAcknowledgedGeneration, generation <= mailboxSyncGeneration else { return }
+        mailboxAcknowledgedGeneration = generation
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                           willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        if notification.request.trigger is UNPushNotificationTrigger {
+            return await requestMailboxSync() ? [.banner, .sound] : []
+        }
+        return [.banner, .sound]
     }
     var enabled: Bool { [.authorized, .provisional, .ephemeral].contains(authorization) }
     var reticulumBaselineID: Int {
@@ -149,8 +180,12 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                            didReceive response: UNNotificationResponse) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let hash = response.notification.request.content.userInfo["message"] as? String,
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        if response.notification.request.trigger is UNPushNotificationTrigger {
+            await requestMailboxSync(openInbox: true)
+            return
+        }
+        guard let hash = response.notification.request.content.userInfo["message"] as? String,
               let peer = response.notification.request.content.userInfo["peer"] as? String else { return }
         let rawKey = response.notification.request.content.userInfo["meshcore"]
         if rawKey != nil && !(rawKey is String) { return }
