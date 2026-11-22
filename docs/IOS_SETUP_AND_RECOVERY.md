@@ -168,8 +168,21 @@ Location sharing starts **Disabled**. In neXt Settings, choose Browser GPS for
 an explicit device fix, or Manual for coordinates you enter yourself. Reviewing
 the permission guide or opening the map does not send your position. To send it,
 open a conversation and choose the location action, then confirm the recipient.
-Current timed sessions run while the interface is active and stop when it is
-hidden; do not rely on locked-screen sharing in the neXt preview yet.
+The native **Location sharing** panel lets you select Reticulum recipients and
+choose 15 minutes, one hour, or until stopped. **Continue with the screen locked**
+is off by default and is saved separately for each started session. Start while
+neXt is open and accept While Using the App location permission if requested.
+iOS displays its location indicator during background sharing. Foreground-only
+sessions pause when locked; cold starts do not resume GPS without your action.
+
+Use **Stop sharing** in the conversation, **Stop all sharing**, or the native
+panel to end a session. Expiry keeps the original deadline even if sending is
+waiting for a route. Updates are limited to once a minute while moving and every
+five minutes when stationary. Both simulators have proved the actual native GPS
+update, signed Reticulum receipt and chat Stop path. Actual neXt iPad locked
+sharing still needs qualification; Family's separate device result does not
+establish neXt's result. Existing Manual and MeshCore foreground controls remain
+available; MeshCore native background sharing is not implemented yet.
 
 Received signed location updates appear on the map with their timestamp. They
 do not create message alerts, unread chats or empty chat bubbles. Location data
@@ -266,3 +279,19 @@ builds with **Family contact**, choose that format to include your saved
 nickname, public identity and voice address when Reticulum calling is enabled.
 A Family guardian still reviews and approves the imported contact. Neither card
 contains a private identity key, SIP password or Apple credentials.
+
+### neXt contact codes and local blocking (development preview)
+
+Open **My contact QR → Add contact** to scan a QR, choose a QR image, or paste a
+Reticulum contact code. Review the name and address, then tap **Save contact**.
+Scanning and reviewing do not approve or save a contact. Existing contacts are
+shown for review without being renamed or added twice. Public identity keys
+must match the supplied address. MeshCore and SIP details are handled in their
+own service menus; this Reticulum importer does not silently approve them.
+
+**Blocked destinations** applies to private messages and calls. Blocking removes
+that contact's local history and cancels its location sessions and mailbox-alert
+route. New blocked traffic is rejected before inbox records or notifications.
+Unblocking allows future traffic; it does not restore removed history or restart
+sharing. This is a local communication block, not a Reticulum transport
+blackhole announcement.
