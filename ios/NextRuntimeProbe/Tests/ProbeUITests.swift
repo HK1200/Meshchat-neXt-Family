@@ -134,7 +134,13 @@ final class ProbeUITests: XCTestCase {
             "Selection mode", "checkbox-multiple-marked-outline")).firstMatch
         XCTAssertTrue(selection.waitForExistence(timeout: 10), app.debugDescription)
         selection.tap()
-        contact.tap()
+        XCTAssertTrue(web.staticTexts["0 selected"].waitForExistence(timeout: 10), app.debugDescription)
+        // This disposable fixture has exactly one conversation. Use its
+        // visible selection-toolbar checkbox after the layout has settled;
+        // tapping a cached text frame can hit the iPad's moved row boundary.
+        let selectAll = web.switches.firstMatch
+        XCTAssertTrue(selectAll.exists && selectAll.isHittable, app.debugDescription)
+        selectAll.tap()
         XCTAssertTrue(web.staticTexts["1 selected"].waitForExistence(timeout: 10), app.debugDescription)
         let delete = web.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 10), app.debugDescription)
