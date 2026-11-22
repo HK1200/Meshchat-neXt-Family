@@ -64,6 +64,7 @@ struct NextLocationSettings: View {
                             Text("Until I stop sharing").tag("ongoing")
                         }
                         Toggle("Continue with the screen locked", isOn: $background)
+                            .accessibilityIdentifier("next-location-background")
                         Button("Start sharing") {
                             let request: [String: Any] = ["action": "start", "targets": Array(selected).sorted(),
                                 "duration": duration, "background": background,
@@ -71,6 +72,7 @@ struct NextLocationSettings: View {
                                 "consent_epoch": state.consent_epoch]
                             Task { await action(request) }
                         }.disabled(busy || selected.isEmpty || selected.count > 16)
+                        .accessibilityIdentifier("next-location-start")
                     } header: { Text("Share device location") } footer: {
                         Text("Locked-screen sharing is optional and uses more battery. Start it while neXt is open. iOS shows a location indicator. Force-quitting neXt ends the session. Updates use private Reticulum messages, never a public room or offline mailbox.")
                     }
@@ -79,8 +81,9 @@ struct NextLocationSettings: View {
                 } else { ProgressView("Loading location controls…") }
                 if !error.isEmpty { Text(error).foregroundStyle(.red) }
             }
+            .accessibilityIdentifier("next-location-form")
             .navigationTitle("Location sharing")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(busy) } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(busy).accessibilityIdentifier("next-location-done") } }
             .task {
                 await refresh(initial: true)
                 while !Task.isCancelled {

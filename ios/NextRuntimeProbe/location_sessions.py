@@ -149,7 +149,9 @@ class LocationSessions:
             available = await self.catalog()
             if any(key not in available for key in targets):
                 raise ValueError('A selected contact or radio is no longer available')
-            proposed = self._active()
+            # Starting a new selection is not consent to resume other saved
+            # recipients. Those need the explicit Resume path and native grants.
+            proposed = self._active() if self.armed else {}
             until = deadline if deadline is not None else (-1 if duration == 'ongoing' else self.clock() + DURATIONS[duration])
             for key in targets: proposed[key] = Session(until, duration, request_id)
             if len(proposed) > MAX_TARGETS: raise ValueError('Share with at most 16 recipients')

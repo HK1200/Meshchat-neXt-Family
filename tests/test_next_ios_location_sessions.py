@@ -268,3 +268,21 @@ def test_native_consent_is_separate_for_each_recipient_in_one_start_request():
             assert len(retained)==1 and retained < approved
         finally:await f.close()
     asyncio.run(run())
+
+
+def test_new_start_never_silently_resumes_other_saved_recipients_after_restart():
+    async def run():
+        f=Fixture()
+        f.contacts['rns:two']={'name':'Two','service':'reticulum','online':True}
+        restored=None
+        try:
+            await f.manager.start(['rns:one'],'15')
+            await f.manager.close()
+            restored=LocationSessions(f.db,f.catalog,f.native,f.transmit,clock=lambda:f.now,monotonic=lambda:f.monotonic)
+            assert (await restored.snapshot())['paused']
+            await restored.start(['rns:two'],'15')
+            assert set(restored.sessions)=={'rns:two'}
+        finally:
+            if restored:await restored.close()
+            await f.close()
+    asyncio.run(run())

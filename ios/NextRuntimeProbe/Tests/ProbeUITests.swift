@@ -102,6 +102,29 @@ final class ProbeUITests: XCTestCase {
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
     }
 
+    func testLocationControlsRequireExplicitRecipientsAndDefaultToForeground() {
+        executionTimeAllowance = 180
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        let address = app.staticTexts["my-lxmf-address"].label
+        let control = app.buttons["next-location-settings"]
+        XCTAssertTrue(control.waitForExistence(timeout: 30) && control.isHittable, app.debugDescription)
+        control.tap()
+        XCTAssertTrue(app.navigationBars["Location sharing"].waitForExistence(timeout: 15), app.debugDescription)
+        let background = app.switches["next-location-background"]
+        XCTAssertTrue(background.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertEqual(background.value as? String, "0", app.debugDescription)
+        let start = app.buttons["next-location-start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(start.isEnabled, "No recipient was selected; opening this screen must not start GPS or sending.")
+        app.buttons["next-location-done"].tap()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, address)
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20), app.debugDescription)
+    }
+
     func testConversationDeletionKeepsContactAndAllowsFreshSignedReply() throws {
         executionTimeAllowance = 600
         continueAfterFailure = false
