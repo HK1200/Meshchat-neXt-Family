@@ -346,3 +346,18 @@ def test_block_while_finding_a_path_prevents_opening_the_file_link(tmp_path):
             assert not value.links and chosen.read_bytes() == b'not transmitted'
         await with_client(value, check)
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('started', [False, True])
+def test_real_mobile_fetch_deadline_only_limits_waiting_for_resource_start(tmp_path, monkeypatch, started):
+    from rncp_lifetime_fixture import exercise
+    async def run():
+        value = runtime(tmp_path)
+        try:
+            if started:
+                await exercise(value.handler, monkeypatch, tmp_path, started=True)
+            else:
+                with pytest.raises(TimeoutError, match='waiting for remote resource'):
+                    await exercise(value.handler, monkeypatch, tmp_path, started=False)
+        finally: await value.close()
+    asyncio.run(run())
