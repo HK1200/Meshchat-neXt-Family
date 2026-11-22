@@ -17,11 +17,11 @@ into the app; physical verification is stated separately.
 | Reticulum direct messages | Real signed exchanges on the iPad and both simulators; conversations survive closing and reopening | Network-loss, extended idle and physical iPhone matrix |
 | Quoted replies | Signed replies preserve their referenced message; verified through the physical iPad backend | Repeat ordinary UI interaction on a physical iPhone |
 | Files and photos | The physical iPad received and returned signed file/photo payloads with matching bytes; simulator file export passes | Real camera/Photos/Files picker and share-sheet checks; larger resource transfers |
-| Voice notes | Development source now streams recorded PCM through the upstream Opus/Ogg writer, preserves standard Codec2/Opus LXMF fields, and serves bounded WAV previews for iOS versions without Ogg playback. Private host tests verify signed audio-only delivery, playback, byte limits, duration, tone energy and corrupt-input handling. Inline WAV previews have an 8 MB decoded-PCM bound; original encoded bytes remain available from the authenticated raw attachment endpoint | New bundled-codec assertions still need Xcode; physical microphone recording, playback and export remain required |
+| Voice notes | Development source now streams recorded PCM through the upstream Opus/Ogg writer, preserves standard Codec2/Opus LXMF fields, and serves bounded WAV previews for iOS versions without Ogg playback. Private host tests verify signed audio-only delivery, playback, byte limits, duration, tone energy and corrupt-input handling. Inline WAV previews have an 8 MB decoded-PCM bound; original encoded bytes remain available from the authenticated raw attachment endpoint | Bundled Ogg/Opus encode/decode assertions passed in 83 native tests on both simulators. The actual iPad encoded and decoded a signed synthetic tone; physical microphone recording, audible playback controls and export remain required |
 | Contacts and conversation history | Saved contacts, rename/removal, local conversation labels, new incoming conversations and unread state are integrated; in-place iPad upgrade preserved existing data | Complete additional contact-import methods and physical editor/discovery checks |
-| Conversation organization | Durable folders, pinning, moving, folder import/export, Unicode names and name/unread/failed/attachment filters are wired to the real interface in development source. Private HTTP tests prove restart and identity preservation, atomic failed imports and idempotent reimports. The archived interface passed create/pin/move/reload at desktop and phone browser sizes | Native iPhone/iPad interaction and physical-device qualification remain required |
-| Local conversation deletion | Individual and selected-history removal now fence late delivery callbacks, clear pins/folder assignments atomically and preserve contacts and identity. A real private signed exchange passes before deletion and a new signed message reopens the chat afterward; browser confirmation/removal passes at both sizes | New native delete/restart/fresh signed-reply case awaits both simulators; physical-device checks remain required |
-| Own contact QR | Native scannable LXMF card and sharing; simulator decodes the displayed QR | Physical sharing between apps |
+| Conversation organization | Durable folders, pinning, moving, folder import/export, Unicode names and name/unread/failed/attachment filters are wired to the real interface in development source. Private HTTP tests prove restart and identity preservation, atomic failed imports and idempotent reimports. The archived interface passed create/pin/move/reload at desktop and phone browser sizes | The iPhone native UI passed; the actual iPad backend passed pin/move/export/import and process restart. Full iPad UI qualification remains pending |
+| Local conversation deletion | Individual and selected-history removal now fence late delivery callbacks, clear pins/folder assignments atomically and preserve contacts and identity. A real private signed exchange passes before deletion and a new signed message reopens the chat afterward; browser confirmation/removal passes at both sizes | The iPhone UI case passed. Actual iPad backend deletion preserved the contact, fenced old messages and received a fresh signed reply; the full iPad UI restart case is still being retried |
+| Own contact QR | Native scannable LXMF card and sharing; simulator decodes the displayed QR. Development source also adds a Family-compatible public card with nickname and optional voice address | New Family-card native tests and physical sharing between apps |
 | Client discovery | Signed messaging-client announces, name/address filtering and bounded local cache are integrated | Physical discovery picker and additional service identities |
 | Individual TCP peers | Four editable peers, independent toggles and saved settings; native controls/restart tests and physical saved-state checks pass | Repeat real Wi-Fi changes, offline recovery and route failover; connected sockets alone do not prove message traffic |
 | RNode | Native editor, shared Bluetooth transport, saved settings, batteries and bounded radio wake handling are integrated | Actual neXt pairing, LoRa exchange, locked delivery and radio power-cycle checks |
@@ -40,12 +40,33 @@ into the app; physical verification is stated separately.
 
 ## Verified checkpoints
 
-On November 21, 2026, the separate physical neXt preview was running build
-299.1. Its in-place upgrade preserved all 12 messages, both saved contacts,
-the Reticulum identity, ratchet keys, native preferences and four TCP peers.
-All non-cache support files were compared before the first launch. Physical
-signed file/photo exchanges matched their original bytes and survived restart.
-The real camera, Files/Photos pickers and share sheets still need device checks.
+On November 21, 2026, the separate physical neXt preview upgraded from build
+299.1 to diagnostic build **331.1**, using its existing signing key and device
+profile. Before first launch, all **2,861 non-cache support files**, native
+preferences, all 12 messages, both contacts and the Reticulum identity were
+byte-identical. The four saved TCP peers were retained.
+
+The actual iPad then exchanged signed text, file, photo and synthetic Opus voice
+content with a private LAN receiver. File and photo bytes matched exactly; the
+native codec produced standard Ogg/Opus and decoded it to the expected waveform.
+After terminating and relaunching the app, the records and attachment bytes
+remained intact. Folder creation, pin/move, export/import and deletion were
+exercised through the authenticated backend. Deleting only the synthetic chat
+preserved its contact, rejected its old records and allowed a fresh signed reply.
+Temporary contacts, folders and peers were removed afterward. These are actual
+device/backend checks, not manual camera, microphone or share-sheet UI checks.
+
+An early test retry timed out because its API-added LAN peer was temporary;
+relaunch correctly restored the four native saved peers. Reattaching the private
+fixture allowed the complete test to pass. No app routing change was made for
+that fixture issue.
+
+Build 331.1 is **not public-release qualified**. Its runtime-identical test source
+passed all **86 iPhone cases**; the iPad passed all 83 native cases and the main
+Messages UI, but its additional deletion test encountered an XCTest relaunch
+failure without a retained app crash report. An unchanged fresh-runner retry is
+in progress. The Family-compatible contact-card follow-up is undergoing its own
+native checks and is not installed on the iPad yet.
 
 Regular Family 47.6 and Family Mailbox Test 218.1 were not replaced. Family's
 successful locked-screen radio and location tests do not qualify neXt's separate

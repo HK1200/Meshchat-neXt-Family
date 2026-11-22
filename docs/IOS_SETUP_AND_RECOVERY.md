@@ -3,8 +3,9 @@
 This guide describes the native live Family app. The sample **FamilyPreview**
 app is a separate interface demonstration. The separate **Family Mailbox Test**
 install is for testing; keep an existing regular Family install intact when
-trying it. The neXt iOS prototype is also separate and currently supports
-Reticulum messaging, rather than every desktop/Android neXt feature.
+trying it. The separate neXt iOS preview includes Reticulum messaging and development
+integrations for calling, radios, maps and mailbox delivery. It does not yet
+qualify every desktop/Android neXt feature.
 
 The iOS app is still under verification. It is not yet an App Store release.
 See [the feature and device verification audit](../ios/FEATURE-PARITY.md) for the
@@ -250,3 +251,18 @@ The app retains only local deleted-packet identifiers to ignore late delivery
 callbacks and repeated copies of those packets. Deleted content is removed
 from the message history and attachment endpoints. A failed database write
 preserves the previous chats, notification state and folder assignments.
+
+### neXt voice notes and contact sharing
+
+The development preview converts a recorded voice note to standard Opus/Ogg for
+LXMF delivery. Incoming Opus notes use a bounded WAV playback preview on iOS;
+the original encoded data is kept. Maximum encoded size and playback length are
+separate limits: the WAV preview is limited to 8 MB of decoded PCM. A message
+can be saved even when its recording is too long for inline playback. Native
+microphone recording and playback controls still need physical UI verification.
+
+**My contact QR** normally shares the plain Reticulum messaging address. In
+builds with **Family contact**, choose that format to include your saved
+nickname, public identity and voice address when Reticulum calling is enabled.
+A Family guardian still reviews and approves the imported contact. Neither card
+contains a private identity key, SIP password or Apple credentials.
