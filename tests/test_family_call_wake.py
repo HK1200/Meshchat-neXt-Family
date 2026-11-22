@@ -455,3 +455,54 @@ def test_call_service_requires_private_files_and_explicit_call_opt_in(tmp_path):
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match="Apple application identity"):
         load_config(path)
+
+
+def test_operator_revocation_blocks_lookup_before_idle_cleanup(setup):
+    s = setup
+    packet = hint(s)
+    assert s["provider"].notify(packet, now=1000) == 204
+    s["subscriptions"][s["owner"]]["allow_calls"] = False
+    assert s["provider"].lookup(
+        s["owner"], packet["call"], s["authorization"], now=1000
+    ) == (403, None)
+    assert s["provider"].notify(packet, now=1000) == 403
+    # Token removal remains possible after the operator withdraws its grant.
+    assert (
+        s["provider"].register(dict(s["registration"], token=None), s["authorization"])
+        == 204
+    )
+
+
+def test_native_fixture_is_reproducible_from_public_test_keys():
+    from call_provider import seal
+
+    fixture = json.loads(
+        (ROOT / "ios/NextRuntimeProbe/Tests/call-wake-fixture.json").read_text()
+    )
+    recipient = RNS.Identity.from_bytes(bytes(range(64)))
+    caller = RNS.Identity.from_bytes(bytes(range(64, 128)))
+    assert fixture["recipient"] == voice_hash(recipient.get_public_key())
+    assert fixture["caller"] == voice_hash(caller.get_public_key())
+    for name, issued, cancel, forged in [
+        ("valid", 1000, False, False),
+        ("expired", 969, False, False),
+        ("future", 1011, False, False),
+        ("forged", 1000, False, True),
+        ("cancel", 1000, True, False),
+    ]:
+        packet = build_hint(
+            caller,
+            fixture["recipient"],
+            "private-calls",
+            call_id="03" * 16,
+            issued=issued,
+            cancel=cancel,
+        )
+        if forged:
+            packet["signature"] = "00" * 64
+        assert fixture["vectors"][name] == seal(
+            packet,
+            recipient.get_public_key().hex(),
+            ephemeral=x25519.X25519PrivateKey.from_private_bytes(bytes([1]) * 32),
+            nonce=bytes([2]) * 12,
+        )

@@ -1,0 +1,52 @@
+{
+  "purpose": "Deterministic public test vectors only; identities are generated from byte ranges, never used on a network.",
+  "recipient": "5e41bd9341efb57befe5b42d0d02a6ad",
+  "caller": "f8971ef844dff1150d12ee6da67f3cbb",
+  "vectors": {
+    "valid": {
+      "aps": {},
+      "next_call": {
+        "v": 1,
+        "key": "pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=",
+        "nonce": "AgICAgICAgICAgIC",
+        "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IA7eaMLkfZy6GAAco/Ssj+4A9oKyD4J/1P5nR6rlSf/9boETsfzKaOb9n4PJQKp1Ymp+mlRGCPA7ogsZEtSEs+Vf2kNaXJf0KcjTNijOOiq3SjxkW9UuwsBIgZ/cCzVy3ZWKRHINCV+CcsTwwLmn8MwMkhF9XhBwC9SkgQ3R0Yc+aaizeeiXjuSJYjP2xomLB6lOXH+HCCmOBl6geLfjV7K/TiLSEX+Ty9UHsE5Gn8H5EQaFyGv/wxeliYC2Amz3Ni7n/v7wX5HYGALyPNE3LhR8vOpG2VWXAdRp+1xGqQGHZuNJojHnteqmcAOVIDBY+J0skYOukzEwqF2PoJi4WxEo94oYm3nBsJaqLvjnEG+LtgPm1niKDj8TlyPosnCky8JZK4MdeZv9cBvwuFQEumcK2s2BI6XmShvAXCP/v8aG2C8raqbU1p85q8nSVkizmMMxwsN2e4zVd00PBhpfUg=="
+      }
+    },
+    "expired": {
+      "aps": {},
+      "next_call": {
+        "v": 1,
+        "key": "pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=",
+        "nonce": "AgICAgICAgICAgIC",
+        "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IAbYYd7qLYu8EhkFr/+22fYY4dLjCtF5ifRgQv7mTaj/O4YQsqydPuCry9edQvkiNW84lFoXHvsxoxxJCsyRvb0I30EOXJb1fZvXaXKUO3TgST5nWoQpw8RNgcuJWWMj2puATnNTDAuNfJCqwOKnq8AOwRcmX0h3Vdnw1QmBgYE9aKi1KL6WjbaJYjHzk4aCD/RIXnzUWnuPBwmjK+DgB7HrGXLRES6VzNMHvkIRypKpFlTSzWzzyRylg9W0U3v5OH/98Pf/SpDfD0XqJMVmehEruulD3VfAVII8qVUTqQ+ANrQc9jOys7v3JQyQdDFXoMkuxoWuzzRm/QnboMSwU0Utp4cUnnSXsJD4K/64Hjrc5gfr1y3cDj4TxCC7snKly8QMeYMYes/+eUugvwFXu2cEjJ6BcPO5H02QC3av7cSE3H5+aayN1chorciGQhffhLRA2SbtebqpokWx43pU"
+      }
+    },
+    "future": {
+      "aps": {},
+      "next_call": {
+        "v": 1,
+        "key": "pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=",
+        "nonce": "AgICAgICAgICAgIC",
+        "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IA7eacPkfZy6GAAco/Ssj+4A9oKyD4J/1P5nR6rlSf/9boETsfzKaOb9n4PJQKp1Ymp+mlRGCPA7ogsZEtSEs+Vf2kNaXJf0KcjTNijOOiq3SjxkW9UuwsBIgZ/cCzVy3ZWKRHINCV+CcsTwwLmn8MwMkhF9XhBwC9SkgQ3R0Yc+aaizeeiXjuSJYjP2xomLB6lOXH+HCCmOBl6geLfjV7K/TiLSEX+Ty9UHsE5Gn8H5EQaFyGv/wxeliYC2Amz3Ni7n/v7wX5HYGALyPNE9LxEs67sQiVDCUNZtrlobrQXaMbYc+WW85ujzdV6SImZcpMsoxdD4kmU0rgaEpJO8DhYp9NcUynTKs5OvKfq2ED2O4wOzjX6MDTlJxnTu5iWmlsdYeIRAKcr4JRzxslNUuGAMj5mPePe8G0/HXSD+7pSCiHspafeNgZw4rZ3SUkiz8PT/hTSZYnh8pVF0NA5xww=="
+      }
+    },
+    "forged": {
+      "aps": {},
+      "next_call": {
+        "v": 1,
+        "key": "pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=",
+        "nonce": "AgICAgICAgICAgIC",
+        "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IA7eaMLkfZy6GAAco/Ssj+4A9oKyD4J/1P5nR6rlSf/9boETsfzKaOb9n4PJQKp1Ymp+mlRGCPA7ogsZEtSEs+Vf2kNaXJf0KcjTNijOOiq3SjxkW9UuwsBIgZ/cCzVy3ZWKRHINCV+CcsTwwLmn8MwMkhF9XhBwC9SkgQ3R0Yc+aaizeeiXjuSJYjP2xomLB6lOXH+HCCmOBl6geLfjV7K/TiLSEX+Ty9UHsE5Gn8H5EQaFyGv/wxeliYC2Amz3Ni7n/v7wX5HYGALyPNE1L0B/uugQjFKUAoVp+10SrgbSMOUY8We1sO7ydgrDdjNf8ch6k4SuxzZmqQ6N8pC4WxEq84Mcn33DtJL+f/qxF27a4lLi3n/eDjkawXLqtCHwn8ZZeIZJK5v4cU31ugEBvGMMiZmHcfTvTU7GCCD+7sHQ3igqOKSFh5xtrMjSUEizPoVW0ghxzue0jXmK5GX9pA=="
+      }
+    },
+    "cancel": {
+      "aps": {},
+      "next_call": {
+        "v": 1,
+        "key": "pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=",
+        "nonce": "AgICAgICAgICAgIC",
+        "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IA7eaMLkfZy6GAAco/Ssj+4A9oKyD4J/1P5nR6rlSf/9boETsfzKaOb9n4PJQKp1Ymp+mlRGCPA7ogsZEtSEs+Vf2kNaXJf0KcjTNijOOiq3SjxkW9UuwsBIgZ/cCzVy3ZWKRHINCV+CcsTwwLmn8MwMkhF9XhBwC9SkgQ3R0Yc+aaizeeiXjuSJYjP2xomLB6lOXH+HCCmOBl6geLfjV7K/TiLSEX+Ty9UHsE5Gn8H5EQaFyGv/wxeliYC2Amz3Ni7n/v7wX5HYGALyPNEwJ0Epuu9GjwScA4Vt+ggRrwHUNbNL9WLjuOqjJwKVI2VYo8kpkYf7zmMyrQrb8JW9DRMuodIclimSvMb5LPOwRmeLsFfq3SmPCmsTxna4vXT4mcBYfYcaeJvwdx+gsgEGvGsM35mFJ/S9Hk3EAHH255PVinl/Pa3U1s1ppMvSVkiz5aqW7gjHi6ddWS2bWF7KrQ=="
+      }
+    }
+  }
+}

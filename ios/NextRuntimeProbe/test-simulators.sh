@@ -57,6 +57,7 @@ cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
 cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" App/
 cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
+cp "$family_ios/FamilyLive/FamilyCallWake.swift" App/
 cp "$family_ios/FamilyLive/FamilyQRScanner.swift" App/
 cp "$family_ios/FamilyLive/FamilyNativeHTTPS.swift" App/
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/

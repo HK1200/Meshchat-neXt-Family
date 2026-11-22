@@ -270,7 +270,10 @@ class CallProvider:
     def lookup(self, owner, call_id, authorization, now=None):
         if not hex_value(owner, 16) or not hex_value(call_id, 16):
             return 400, None
-        if not self.authorized(owner, authorization):
+        if (
+            not self.authorized(owner, authorization)
+            or self.subscriptions.get(owner, {}).get("allow_calls") is not True
+        ):
             return 403, None
         row = self.database.execute(
             """SELECT w.state,w.hint,w.accepted FROM call_wakes w

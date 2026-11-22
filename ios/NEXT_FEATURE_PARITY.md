@@ -368,3 +368,21 @@ every suspension or OS resource-pressure failure is resolved. These private
 backend/device checks do not qualify human speech quality, picker gestures,
 fully suspended internet alerts or physical iPhone behavior. The newer durable
 outbox and 0.1.26 source pins remain subject to their own qualification.
+
+## Private call-wake foundation — November 22, 2026
+
+Development source now adds a separate opt-in Reticulum call-wake provider, not
+a replacement for mailbox alerts. Its private HTTP tests cover enrollment,
+approved voice addresses, signed intents, opaque recipient-encrypted payloads,
+cancellation without another VoIP push, replay suppression, short retention and
+revocation. Existing message-alert behavior remains covered. The native decoder
+uses deterministic Python-provider vectors to test address/key/signature binding
+and rejection of forged, stale, cancelled or unapproved wakes on both simulators.
+Those new native cases still require Xcode qualification.
+
+This is unfinished infrastructure, not a working suspended-call capability. No
+installed app registers PushKit or sends call hints through this new path. Native
+call ownership/handoff, explicit opt-in, token registration, sender integration,
+APNs provisioning and locked-device tests remain. SIP needs a compatible proxy
+that holds its incoming call while waking the client; this Reticulum foundation
+does not provide SIP wakeup. Apple enrollment remains on hold.
