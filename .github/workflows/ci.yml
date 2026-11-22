@@ -73,6 +73,10 @@ jobs:
           python ios/NextRuntimeProbe/test-relay-runtime.py \
             --backend-source temp-tests/voice-source/staged --reference-wheel temp-tests/voice-source/backend.whl \
             --work-dir temp-tests/relay-network
+      - name: Verify signed location exchange and silent inbox behavior
+        run: |
+          python ios/NextRuntimeProbe/test-telemetry-runtime.py \
+            --backend-source temp-tests/voice-source/staged --work-dir temp-tests/telemetry-network
       - name: Confirm silence cannot pass the media proof
         run: |
           if python ios/NextRuntimeProbe/test-voice-loopback.py \
@@ -96,5 +100,6 @@ jobs:
             temp-tests/maps-network/proof.json
             temp-tests/relay-network/proof.json
             temp-tests/cbor-security-proof.json
+            temp-tests/telemetry-network/proof.json
           if-no-files-found: error
           retention-days: 14

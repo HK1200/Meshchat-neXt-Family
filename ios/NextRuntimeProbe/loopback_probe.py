@@ -30,9 +30,12 @@ from loopback_listener import ResumableListener
 def record(message, state):
     raw_fields = message.fields if isinstance(message.fields, dict) else {}
     content = message.content_as_string()
+    from telemetry_runtime import incoming_fields
+    telemetry_data = incoming_fields(raw_fields)
     reply, fields = decode_reply_fields(raw_fields)
     fields.update(attachment_fields.incoming(raw_fields))
     return {
+        "_telemetry_data": telemetry_data,
         "hash": message.hash.hex(),
         "source_hash": message.source_hash.hex(),
         "destination_hash": message.destination_hash.hex(),
@@ -54,6 +57,7 @@ def record(message, state):
 
 
 class ConversationHistory:
+    VISIBLE = "COALESCE(json_extract(payload, '$.is_private_telemetry'), 0) = 0"
     def __init__(self, path, *, notification_floor=0):
         if type(notification_floor) is not int or not 0 <= notification_floor <= 9_000_000_000_000_000:
             raise ValueError("Invalid local notification baseline")
@@ -209,7 +213,7 @@ class ConversationHistory:
     def conversation_entries(self):
         entries = {address: {**entry, "is_contact": True}
                    for address, entry in self.contacts().items()}
-        for (address,) in self.db.execute("SELECT DISTINCT peer FROM messages"):
+        for (address,) in self.db.execute("SELECT DISTINCT peer FROM messages WHERE " + self.VISIBLE):
             if re.fullmatch(r"[a-f0-9]{32}", address):
                 entries.setdefault(address, {"name": address, "is_contact": False})
         for address, name in self.db.execute("SELECT address, name FROM destination_names"):
@@ -219,7 +223,7 @@ class ConversationHistory:
 
     def has_conversation(self, address):
         return bool(isinstance(address, str) and re.fullmatch(r"[a-f0-9]{32}", address)
-                    and self.db.execute("SELECT 1 FROM messages WHERE peer = ? LIMIT 1", (address,)).fetchone())
+                    and self.db.execute("SELECT 1 FROM messages WHERE peer = ? AND " + self.VISIBLE + " LIMIT 1", (address,)).fetchone())
 
     def save(self, peer, row):
         with self.db:
@@ -256,7 +260,7 @@ class ConversationHistory:
         after_id = int(query["after_id"]) if "after_id" in query else None
         rows = self.db.execute(f"""
             SELECT id, state, payload FROM messages
-            WHERE peer = ? AND (? IS NULL OR id {operator} ?)
+            WHERE peer = ? AND {self.VISIBLE} AND (? IS NULL OR id {operator} ?)
             ORDER BY id {order} LIMIT ?
         """, (peer, after_id, after_id, count))
         return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
@@ -270,11 +274,11 @@ class ConversationHistory:
             """, (peer, peer))
 
     def summary(self, peer):
-        unread, failed = self.db.execute("""
+        unread, failed = self.db.execute(f"""
             SELECT COUNT(CASE WHEN state = 'received' AND id > COALESCE(
                 (SELECT through_id FROM conversation_reads WHERE peer = ?), 0) THEN 1 END),
                 COUNT(CASE WHEN state = 'failed' THEN 1 END)
-            FROM messages WHERE peer = ?
+            FROM messages WHERE peer = ? AND {self.VISIBLE}
         """, (peer, peer)).fetchone()
         latest = self.page(peer, {"order": "desc", "count": 1})
         row = latest[0] if latest else {}
@@ -313,7 +317,7 @@ class ConversationHistory:
 
     def message_for_reply(self, peer, message_hash):
         row = self.db.execute(
-            "SELECT payload FROM messages WHERE peer = ? AND hash = ?", (peer, message_hash)
+            "SELECT payload FROM messages WHERE peer = ? AND hash = ? AND " + self.VISIBLE, (peer, message_hash)
         ).fetchone()
         return json.loads(row[0]) if row is not None else None
 
@@ -332,13 +336,14 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
     voice = None
     maps = None
     relay = None
+    telemetry = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -349,12 +354,18 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if not row["is_outbound"] and voice is not None and not voice.message_allowed(address):
             # Acknowledge the verified packet without creating history or alerts.
             return None, True
+        if telemetry is not None and not row["is_outbound"]:
+            telemetry.receive(row)
+            if row.get("is_private_telemetry"):
+                return None, True
+        row = {key:value for key,value in row.items() if key != "_telemetry_data"}
         if address not in contacts and not history.has_conversation(address):
             # Deliberately consume unwanted telemetry without creating a chat.
             # A database error is different: it must leave mailbox data unacked.
             if row["is_outbound"] or row.get("is_private_telemetry"):
                 return None, True
-        return history.save(address, row), True
+        saved = history.save(address, row)
+        return (None if row.get("is_private_telemetry") else saved), True
 
     async def notify(kind, row):
         for client in tuple(clients):
@@ -493,6 +504,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         responses["status"]["inbox_error"] = inbox.error
         if request.method == "GET":
             if maps and path == "config": config.update(maps.settings())
+            if telemetry and path == "config": config.update(telemetry.settings())
             if relay and path == "config": config.update(relay.settings())
             if path == "preview/mailbox":
                 return web.json_response(mailbox.snapshot(), headers={"Cache-Control": "no-store"})
@@ -622,6 +634,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method == "PATCH" and path == "config":
             try:
                 payload = await request.json()
+                if telemetry and isinstance(payload, dict) and telemetry.location_keys.intersection(payload):
+                    config.update(telemetry.configure(payload))
+                    await meshcore_broadcast({"type": "config", "config": config})
+                    return web.json_response({"config": config})
                 if isinstance(payload, dict) and "auto_send_failed_messages_to_propagation_node" in payload:
                     if set(payload) != {"auto_send_failed_messages_to_propagation_node"}:
                         raise ValueError("Change one mailbox setting at a time")
@@ -730,7 +746,16 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 if not isinstance(address, str) or (address not in contacts and not history.has_conversation(address)) or not isinstance(content, str):
                     return web.json_response({"message": "Choose an LXMF contact or an existing conversation"}, status=400)
                 try:
-                    fields = attachment_fields.outgoing(draft.get("fields") or {}, content)
+                    raw_fields = draft.get("fields") or {}
+                    telemetry_fields = {}
+                    if telemetry is not None:
+                        from telemetry_runtime import outbound
+                        if isinstance(raw_fields, dict) and isinstance(raw_fields.get("telemetry"), dict) and "location" in raw_fields["telemetry"] and telemetry.settings()["location_source"] == "disabled":
+                            raise ValueError("Enable location sharing in Settings before sending a location")
+                        raw_fields, telemetry_fields = outbound(raw_fields)
+                    location_generation = telemetry.generation if telemetry_fields else None
+                    fields = attachment_fields.outgoing(raw_fields, content)
+                    fields.update(telemetry_fields)
                 except ValueError as error:
                     return web.json_response({"message": str(error)}, status=400)
                 if not content.strip() and not fields:
@@ -744,10 +769,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         return web.json_response({"message": "The quoted message is unavailable in this conversation"}, status=404)
                     fields.update(reply_fields_for(reply, previous["content"]))
                 delivery_method = body.get("delivery_method")
-                selected_node = mailbox.outbound_node()
+                selected_node = None if telemetry_fields or content.startswith("!NFLOC1:") else mailbox.outbound_node()
                 try:
                     message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields,
                         delivery_method=delivery_method, propagation_node=selected_node)
+                    if telemetry_fields and telemetry.generation != location_generation:
+                        raise ValueError("Location settings changed before the update could be sent")
+                    if telemetry_fields:
+                        outbound(draft.get("fields") or {})  # Recheck freshness after pathfinding.
                     if message.desired_method == LXMF.LXMessage.PROPAGATED:
                         if selected_node is None or mailbox.outbound_node() != selected_node:
                             raise ValueError("Mailbox sending was turned off or changed before submission")
@@ -846,6 +875,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         async def stop_maps(_): await maps.close()
         app.on_startup.append(start_maps)
         app.on_cleanup.append(stop_maps)
+    if telemetry_factory:
+        telemetry = telemetry_factory(ready_file.parent, own, lambda event: track(meshcore_broadcast(event)))
+        config.update(telemetry.settings())
+        telemetry.register(app.router)
+        async def stop_telemetry(_): telemetry.close()
+        app.on_cleanup.append(stop_telemetry)
     if relay_factory:
         relay = relay_factory(ready_file.parent, probe.source.identity, probe.reticulum, history.contacts,
                               lambda: config["display_name"], lambda event: track(meshcore_broadcast(event)))
@@ -929,8 +964,9 @@ def run_for_app(ready_file):
         from voice_runtime import ReticulumVoice
         from map_runtime import MapRuntime
         from relay_runtime import RelayRuntime
+        from telemetry_runtime import TelemetryRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

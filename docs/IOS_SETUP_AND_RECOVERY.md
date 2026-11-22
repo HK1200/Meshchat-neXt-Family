@@ -160,3 +160,18 @@ Turning this option off prevents new fallback attempts; it cannot recall a
 message already accepted by a relay. An interrupted unsent message is still
 shown as failed after an app restart; persistent outbound retry is not yet
 implemented in this preview.
+
+### neXt preview: location and map updates
+
+Location sharing starts **Disabled**. In neXt Settings, choose Browser GPS for
+an explicit device fix, or Manual for coordinates you enter yourself. Reviewing
+the permission guide or opening the map does not send your position. To send it,
+open a conversation and choose the location action, then confirm the recipient.
+Current timed sessions run while the interface is active and stop when it is
+hidden; do not rely on locked-screen sharing in the neXt preview yet.
+
+Received signed location updates appear on the map with their timestamp. They
+do not create message alerts, unread chats or empty chat bubbles. Location data
+is not sent through mailbox fallback, where delayed coordinates could become
+misleading. Disabling location sharing while a fix is waiting for a route
+cancels that pending submission.

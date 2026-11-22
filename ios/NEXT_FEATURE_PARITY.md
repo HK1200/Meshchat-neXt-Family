@@ -28,7 +28,7 @@ into the app; physical verification is stated separately.
 | SIP | Native Keychain accounts, registration, CallKit and audio controls are integrated. Both native simulator suites passed; physical iPad foreground calls, answering, test-tone output, bidirectional RTP and clean ending/logout passed | Locked incoming alert failed on the iPad. Complete VoIP push/wake integration and physical phone, speech, route and interruption tests |
 | Reticulum voice | Native CallKit controls, AVAudioEngine PCM, existing neXt telephone actions, contact identities, profiles and duplex/PTT are integrated; codec round trips pass on both simulators | Both simulators and strict encrypted-media CI pass; physical speech, interruptions, echo and locked incoming calls remain unqualified |
 | Maps | The released map backend is integrated: offline tiles, validated imports, selection/removal, drawings, overlays and map-data catalogs. Private HTTP tests prove signed discovery/catalog transfer, exact file hashes, imports above the message-size limit and preservation across invalid uploads and restarts | Native map rendering, download/share pickers and regional downloads need Xcode/device verification |
-| Location and telemetry | Optional map-centering permission is explained; reviewing the guide requests no position | Wire the native location/telemetry backend, sharing sessions and pin updates; verify expiry, stopping and background behavior |
+| Location and telemetry | Actual released telemetry routes, signed location exchange, Family frames, silent map updates, saved location-source settings and fresh outgoing fixes are integrated. Private tests prove both message directions, restart persistence, sender attribution and cancellation when sharing is disabled during pathfinding | Verify browser GPS and timed sharing in the native interface, expiry/stop controls and physical permission behavior; suspended location sharing remains unqualified |
 | Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Native room UI, mentions, reconnect and physical device checks |
 | Other Reticulum tools | Their frontend menus are bundled | Register the remaining real services and test their actions; a visible menu does not establish working functionality |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then add suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
@@ -81,8 +81,9 @@ those require device tests.
 * neXt radio tests must cover both Bluetooth radios, approved incoming messages,
   power cycles and network transitions. Existing Family results remain separate.
 * The map backend is wired and privately tested; its native UI/download checks
-  remain pending. Location sharing and other Reticulum tools still
-  need real backend integration; Relay Chat needs native/device qualification. Bundled menus do not qualify those services.
+  remain pending. Location sharing and Relay Chat
+  now have real backend integrations but need native/device qualification. Other
+  Reticulum tools still need integration. Bundled menus do not qualify those services.
 * Native outbound mailbox controls, suspended mailbox scheduling, push enrollment and complete
   identity/settings recovery need integration and device verification.
 * A physical iPhone is still needed for the final phone-specific reliability

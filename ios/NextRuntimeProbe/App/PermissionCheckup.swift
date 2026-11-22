@@ -136,7 +136,7 @@ struct NextPermissionCheckup: View {
             Text("Make the local connection from TCP connections, RNode or SIP accounts first, then tap Allow when iOS asks. If local access was blocked, enable Local Network for neXt in device settings. The switch may be absent until the first local connection attempt.").foregroundStyle(.secondary)
             settingsButton
         case 6:
-            Text("Location is optional. Allow it to center the map on your current position. Reviewing this guide does not request a position or send your location to a contact.")
+            Text("Location is optional. Allow it when you want to center the map on your position or share a location with a contact. Reviewing this guide does not request a position or send your location.")
             LabeledContent("Location", value: optional.location == .authorizedWhenInUse || optional.location == .authorizedAlways ? "Allowed" : "Not allowed yet")
             if optional.location == .notDetermined {
                 Button("Allow location for maps") { optional.requestMapLocation() }.buttonStyle(.bordered)
