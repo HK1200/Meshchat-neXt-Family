@@ -7,12 +7,13 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The next iOS build pins both the verified 0.1.25 backend and frontend and uses
-0.1.25 as its displayed app version. It carries the same discovery privacy and
-Micron-link fixes as the desktop/Android release. Native call identity, voice
-playback and location bindings retain explicit checksum checks and regression
-coverage. Xcode/device qualification of this updated bundle remains required;
-the separate verified 358.1 device results below describe its earlier bundle.
+The verified separate iPad build 360.1 pins the public 0.1.25 backend and
+frontend and displays 0.1.25 as its app version. It carries the same discovery
+privacy and Micron-link fixes as desktop and Android. Exact source `2cce2d9`
+passed all 98 checks on each simulator and the physical checks documented below.
+Native call identity, voice playback and location bindings retain explicit
+checksum checks and regression coverage. These results do not qualify fully
+suspended internet alerts or every remaining desktop service.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -236,7 +237,7 @@ call policy. This verifies native frame flow, not subjective speech quality,
 locked-screen internet ringing or physical iPhone behavior.
 
 
-## Pending iOS 0.1.25 qualification
+## iOS 0.1.25 host qualification
 
 The exact public 0.1.25 wheel and frontend archives are checksum-pinned. All
 308 backend Python modules are byte-identical to the qualified 0.1.23 runtime;
@@ -248,5 +249,45 @@ from being mistaken for a passing assertion.
 
 All 69 network and MeshCore location checks passed together in five bounded
 repeat runs, and two real private loopback probes received standard Reticulum
-receipt proofs. Native simulator and actual-device qualification of this source
-remain separate gates; these host checks do not qualify suspended alerts.
+receipt proofs. The separate native and actual-device gates below also passed. These host
+checks alone do not qualify suspended alerts.
+
+
+## Verified separate iPad preview: 360.1
+
+Exact source `2cce2d9641e326904d57e150698ccc44c30958c6` passed all 98
+checks on each simulator (92 native and six Messages UI cases) in GitHub run
+`45037586063`. The personal-signed upgrade from 358.1 preserved all 2,212
+current non-cache support files byte for byte, twelve messages, two contacts,
+identity, preferences and four saved TCP peers before first launch. Every
+original native binary (92) and all 5,632 ordinary sealed resources were
+verified. Both regular Family 47.6 and Family Mailbox Test 353.1 retained
+byte-identical state, identity and preferences, including a check after the
+functional tests.
+
+The actual iPad passed read-only status, interface, path and local route-trace
+checks, rejecting five invalid or transmitting GET requests. Two standard
+encrypted RNProbe packets reached a private Mint peer and received valid
+Reticulum proofs. Three private signed message/echo exchanges passed across
+two full TCP connection retirements. Both Reticulum call directions passed
+native microphone and increasing sent/received frame checks without saving a
+recording. A cold process restart retained the conversations and rendered the
+normal interface and composer. Every temporary peer, contact and call policy
+was restored, and synthetic message history was removed.
+
+These are private LAN/backend and native bridge checks. They do not establish
+subjective speech quality, public-provider failover, Wi-Fi/cellular switching,
+locked-screen internet ringing, physical iPhone behavior or camera/picker
+interaction.
+
+## Unsigned neXt production archive
+
+Source `2068078c2a84e69aa9b8897f94d1ebc9eafef40a` passed the unsigned
+production archive job `45039403018` (build 361.1). The retained archive was
+independently digest-verified. It uses `org.meshchat.next.ios`, version 0.1.25,
+with iPhone/iPad support, native Python/audio libraries, privacy and permission
+declarations and upstream notices. It contains no simulator contact/account
+fixtures, personal provisioning profile or main-app signature. The personal
+preview identifier is unchanged. This is packaging verification only; Apple
+enrollment, distribution signing, APNs/VoIP delivery qualification, TestFlight
+and submission remain pending and were not performed.
