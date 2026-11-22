@@ -68,7 +68,9 @@ struct NextMailboxSettings: View {
             .accessibilityIdentifier("next-mailbox-form")
             .navigationTitle("Offline mailbox")
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(busy) }
+                // Background status reads must not swallow a user's Done tap.
+                // Keep an explicit Save protected until its result is known.
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(saving) }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }

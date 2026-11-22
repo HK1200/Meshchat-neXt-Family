@@ -339,8 +339,14 @@ final class ProbeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
         // Dismiss the invalid unsaved draft. It must never select a relay.
         XCTAssertFalse(app.alerts.firstMatch.exists)
-        app.navigationBars["Offline mailbox"].buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["tcp-connections"].exists)
+        let mailboxDone = app.navigationBars["Offline mailbox"].buttons["Done"]
+        XCTAssertTrue(mailboxDone.isEnabled, "A background read must not disable Done")
+        XCTAssertTrue(mailboxDone.isHittable)
+        mailboxDone.tap()
+        let mailboxDismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: form)
+        XCTAssertEqual(XCTWaiter.wait(for: [mailboxDismissed], timeout: 10), .completed, app.debugDescription)
+        XCTAssertTrue(app.buttons["tcp-connections"].isHittable)
+        XCTAssertTrue(app.buttons["next-mailbox-settings"].isHittable)
         app.buttons["next-mailbox-settings"].tap()
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.switches["next-mailbox-fallback"].value as? String, "0")
