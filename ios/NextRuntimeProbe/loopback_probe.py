@@ -103,6 +103,10 @@ class ConversationHistory:
                 COALESCE((SELECT MAX(id) FROM messages), 0),
                 COALESCE((SELECT MAX(through_id) FROM conversation_reads), 0), ?)
                 WHERE name = 'message_id'""", (notification_floor,))
+            # Retain only local packet identifiers, never deleted content.
+            # Delivery/failure callbacks may arrive after the user deletes a chat.
+            self.db.execute("CREATE TABLE IF NOT EXISTS deleted_message_hashes (hash TEXT PRIMARY KEY)")
+            self.db.execute("CREATE TABLE IF NOT EXISTS hidden_conversations (peer TEXT PRIMARY KEY)")
             self.db.execute("CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             self.db.execute("""CREATE TABLE IF NOT EXISTS notification_metadata (
                 hash TEXT PRIMARY KEY, eligible INTEGER NOT NULL
@@ -222,7 +226,8 @@ class ConversationHistory:
         for address, name in self.db.execute("SELECT address, name FROM destination_names"):
             if address in entries:
                 entries[address]["name"] = name
-        return entries
+        hidden = {row[0] for row in self.db.execute("SELECT peer FROM hidden_conversations")}
+        return {address: entry for address, entry in entries.items() if address not in hidden}
 
     def has_conversation(self, address):
         return bool(isinstance(address, str) and re.fullmatch(r"[a-f0-9]{32}", address)
@@ -230,6 +235,9 @@ class ConversationHistory:
 
     def save(self, peer, row):
         with self.db:
+            if self.db.execute("SELECT 1 FROM deleted_message_hashes WHERE hash = ?", (row["hash"],)).fetchone():
+                return None
+            self.db.execute("DELETE FROM hidden_conversations WHERE peer = ?", (peer,))
             self.db.execute("INSERT OR IGNORE INTO conversation_reads VALUES (?, 0)", (peer,))
             payload = json.dumps({k: v for k, v in row.items() if k not in ("id", "state")})
             existing = self.db.execute("SELECT id FROM messages WHERE hash = ?", (row["hash"],)).fetchone()
@@ -338,8 +346,35 @@ class ConversationHistory:
                 raise KeyError(message_hash)
             if row[0] == "sending":
                 raise ValueError("Message is still sending")
+            self.db.execute("INSERT OR IGNORE INTO deleted_message_hashes VALUES (?)", (message_hash,))
             self.db.execute("DELETE FROM messages WHERE hash = ?", (message_hash,))
             self.db.execute("DELETE FROM notification_metadata WHERE hash = ?", (message_hash,))
+
+    def delete_conversations(self, addresses):
+        if (not isinstance(addresses, list) or not 0 < len(addresses) <= 1000
+                or any(not isinstance(address, str) or not re.fullmatch(r"[a-f0-9]{32}", address) for address in addresses)):
+            raise ValueError("Select between 1 and 1000 existing conversations")
+        addresses = list(dict.fromkeys(addresses))
+        contacts = self.contacts()
+        for address in addresses:
+            if (address not in contacts and not self.has_conversation(address)
+                    and not self.db.execute("SELECT 1 FROM hidden_conversations WHERE peer = ?", (address,)).fetchone()):
+                raise ValueError("Select existing conversations")
+        pending = []
+        with self.db:
+            for address in addresses:
+                pending.extend(row[0] for row in self.db.execute(
+                    "SELECT hash FROM messages WHERE peer = ? AND state IN ('sending', 'sent')", (address,)))
+                self.db.execute("INSERT OR IGNORE INTO deleted_message_hashes SELECT hash FROM messages WHERE peer = ?", (address,))
+                self.db.execute("DELETE FROM notification_metadata WHERE hash IN (SELECT hash FROM messages WHERE peer = ?)", (address,))
+                self.db.execute("DELETE FROM messages WHERE peer = ?", (address,))
+                self.db.execute("DELETE FROM conversation_reads WHERE peer = ?", (address,))
+                self.db.execute("INSERT OR IGNORE INTO hidden_conversations VALUES (?)", (address,))
+                if self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lxmf_conversation_folders'").fetchone():
+                    self.db.execute("DELETE FROM lxmf_conversation_folders WHERE peer_hash = ?", (address,))
+                if self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lxmf_conversation_pins'").fetchone():
+                    self.db.execute("DELETE FROM lxmf_conversation_pins WHERE peer_hash = ?", (address,))
+        return pending
 
     def close(self):
         self.db.close()
@@ -856,6 +891,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 message.register_delivery_callback(delivered)
                 message.register_failed_callback(lambda updated: loop.call_soon_threadsafe(failed, updated))
                 row = history.save(address, record(message, "sending"))
+                if row is None:
+                    return web.json_response({"message": "This exact packet was previously deleted. Please try sending again."}, status=409)
                 try:
                     probe.send(message)
                 except Exception:
@@ -899,7 +936,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
-    ConversationOrganization(history).register(app.router)
+    ConversationOrganization(history, cancel_outbound=probe.router.cancel_outbound).register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS

@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--playwright", type=Path)
     parser.add_argument("--server", action="store_true")
+    parser.add_argument("--deletion", action="store_true")
     args = parser.parse_args()
     frontend = args.frontend.resolve()
     folder = args.work_dir.resolve()
@@ -69,6 +70,10 @@ def main():
                 ],
                 check=True,
                 timeout=150,
+                env={
+                    **os.environ,
+                    "NEXT_ORGANIZATION_UI_DELETE": "1" if args.deletion else "0",
+                },
             )
         finally:
             server.terminate()

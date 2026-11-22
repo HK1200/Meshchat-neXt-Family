@@ -237,3 +237,16 @@ location sharing or authorize mailbox push senders.
 
 The private backend and archived-interface browser checks have passed. Native
 folder interaction and real-device sharing/pickers still need qualification.
+
+### neXt local history deletion (development source)
+
+In Conversations, use selection mode to select chats, choose **Delete**, then
+confirm. Contacts remain available, and a fresh signed message creates a new
+conversation. Folder assignments and pins for the deleted chats are cleared;
+the folders themselves remain. Deleting history is a local action: copies
+already received by another device and files exported to Files remain there.
+
+The app retains only local deleted-packet identifiers to ignore late delivery
+callbacks and repeated copies of those packets. Deleted content is removed
+from the message history and attachment endpoints. A failed database write
+preserves the previous chats, notification state and folder assignments.

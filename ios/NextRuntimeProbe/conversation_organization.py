@@ -5,6 +5,7 @@ subscribe a sender to push, or transmit an announce/message.
 """
 
 import json
+import logging
 import re
 import sqlite3
 import time
@@ -42,8 +43,9 @@ def name(value):
 
 
 class ConversationOrganization:
-    def __init__(self, history):
+    def __init__(self, history, *, cancel_outbound=None):
         self.history = history
+        self.cancel_outbound = cancel_outbound
         self.db = history.db
         with self.db:
             self.db.executescript("""
@@ -165,6 +167,20 @@ class ConversationOrganization:
             folder_id = self._folder(folder_id)
         with self.db:
             self._move(addresses, folder_id)
+
+    def delete_conversations(self, addresses):
+        pending = self.history.delete_conversations(addresses)
+        if self.cancel_outbound is not None:
+            for message_hash in pending:
+                try:
+                    if re.fullmatch(r"[a-f0-9]{64}", message_hash):
+                        self.cancel_outbound(bytes.fromhex(message_hash))
+                except Exception:
+                    # History is already committed locally. A transport
+                    # callback cannot restore it even if cancellation fails.
+                    logging.getLogger(__name__).warning(
+                        "A queued message could not be cancelled during local history removal"
+                    )
 
     def export(self):
         return {
@@ -367,6 +383,12 @@ class ConversationOrganization:
                 data = await self._body(request, bulk=True)
                 self.move(data.get("peer_hashes"), data.get("folder_id"))
                 result = "Conversations moved"
+            elif path == "/conversations/bulk-delete" and request.method == "POST":
+                data = await self._body(request, bulk=True)
+                if set(data) != {"destination_hashes"}:
+                    raise ValueError("Select conversations to delete")
+                self.delete_conversations(data["destination_hashes"])
+                result = "Conversations deleted"
             elif re.fullmatch(r"/folders/[1-9][0-9]{0,17}", path):
                 folder_id = int(path.rsplit("/", 1)[1])
                 if request.method == "PATCH":
@@ -405,6 +427,7 @@ class ConversationOrganization:
             "/folders/import",
             "/conversation-pins/toggle",
             "/conversations/move-to-folder",
+            "/conversations/bulk-delete",
         ):
             router.add_post(PREFIX + path, self.handle)
         for method in ("PATCH", "DELETE"):

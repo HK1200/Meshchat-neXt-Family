@@ -94,6 +94,68 @@ final class ProbeUITests: XCTestCase {
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
     }
 
+    func testConversationDeletionKeepsContactAndAllowsFreshSignedReply() throws {
+        executionTimeAllowance = 600
+        continueAfterFailure = false
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: file))
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        let ownAddress = app.staticTexts["my-lxmf-address"].label
+        let web = app.webViews.firstMatch
+        func sendPrivateMessage(_ text: String) -> String {
+            let composer = web.textViews.firstMatch
+            XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)
+            composer.tap()
+            composer.typeText(text)
+            let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
+            XCTAssertTrue(send.waitForExistence(timeout: 10) && send.isEnabled, app.debugDescription)
+            send.tap()
+            let reply = "Echo: " + text
+            XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 105), app.debugDescription)
+            return reply
+        }
+        let deletedReply = sendPrivateMessage("Delete proof: " + fixture.message)
+        let messages = web.buttons["Messages"].firstMatch
+        XCTAssertTrue(messages.waitForExistence(timeout: 15), app.debugDescription)
+        messages.tap()
+        let contact = web.staticTexts["Simulator Echo"].firstMatch
+        XCTAssertTrue(contact.waitForExistence(timeout: 15), app.debugDescription)
+        // Use the real selection control on both layouts. A phone long press
+        // selects a row; the same explicit control is available on iPad.
+        let selection = web.buttons.matching(NSPredicate(format: "label == %@ OR label == %@",
+            "Selection mode", "checkbox-multiple-marked-outline")).firstMatch
+        XCTAssertTrue(selection.waitForExistence(timeout: 10), app.debugDescription)
+        selection.tap()
+        contact.tap()
+        XCTAssertTrue(web.staticTexts["1 selected"].waitForExistence(timeout: 10), app.debugDescription)
+        let delete = web.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 10), app.debugDescription)
+        delete.tap()
+        XCTAssertTrue(web.staticTexts["Delete these conversations? All messages will be lost."].waitForExistence(timeout: 10), app.debugDescription)
+        web.buttons["Confirm"].firstMatch.tap()
+        XCTAssertTrue(contact.waitForNonExistence(timeout: 15), app.debugDescription)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
+        XCTAssertTrue(web.textViews.firstMatch.waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
+        // The actual send API requires the saved contact after history was
+        // removed. A fresh signed reply proves the contact remains usable.
+        let freshReply = sendPrivateMessage("Fresh after delete: " + fixture.message)
+        XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
+        XCTAssertTrue(web.staticTexts[freshReply].waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
+    }
+
     private func verifyReticulumCallingOff(_ app: XCUIApplication) {
         app.buttons["next-calling-menu"].tap()
         XCTAssertTrue(app.buttons["next-sip-settings"].waitForExistence(timeout: 10))

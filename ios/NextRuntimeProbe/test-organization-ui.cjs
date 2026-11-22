@@ -7,12 +7,14 @@ const { chromium, expect } = require(process.argv[3]);
 const runtime = JSON.parse(fs.readFileSync(path.join(folder, "next-runtime-info.json")));
 const origin = runtime.origin;
 assert.equal(new URL(origin).hostname, "127.0.0.1");
-const address = "a1".repeat(16);
+const verifyDeletion = process.env.NEXT_ORGANIZATION_UI_DELETE === "1";
 (async () => {
     const browser = await chromium.launch();
     const proofs = [];
     try {
         for (const viewport of [{width:1280,height:960,name:"desktop"}, {width:390,height:844,name:"phone-viewport"}]) {
+            const address = (verifyDeletion && proofs.length ? "a2" : "a1").repeat(16);
+            const contactName = verifyDeletion ? "Private UI Contact " + viewport.name : "Private UI Contact";
             const context = await browser.newContext({viewport, acceptDownloads:true});
             let blockedExternal = 0;
             await context.route("**/*", async route => {
@@ -36,7 +38,7 @@ const address = "a1".repeat(16);
                 assert.equal(response.ok(),true,await response.text());
                 return response.json();
             };
-            if (!proofs.length) await post("telephone/contacts",{name:"Private UI Contact",lxmf_address:address});
+            if (verifyDeletion || !proofs.length) await post("telephone/contacts",{name:contactName,lxmf_address:address});
             await page.goto(origin+"/#/messages",{waitUntil:"domcontentloaded"});
             const create = page.getByTitle("Create folder",{exact:true});
             await expect(create).toBeVisible({timeout:30000});
@@ -50,20 +52,20 @@ const address = "a1".repeat(16);
             const list = await (await context.request.get(origin+"/api/v1/lxmf/folders",{headers})).json();
             const saved = list.find(row=>row.name===label);
             assert(saved,"Real UI must save its folder");
-            const contact = page.getByText("Private UI Contact",{exact:true}).first();
+            const contact = page.getByText(contactName,{exact:true}).first();
             await expect(contact).toBeVisible();
             await contact.click({button:"right"});
-            const pin = page.getByText(proofs.length ? "Unpin conversation" : "Pin conversation",{exact:true});
+            const pin = page.getByText(!verifyDeletion && proofs.length ? "Unpin conversation" : "Pin conversation",{exact:true});
             await expect(pin).toBeVisible();
             await pin.click();
             let pinned = await (await context.request.get(origin+"/api/v1/lxmf/conversation-pins",{headers})).json();
-            assert.deepEqual(pinned.peer_hashes,proofs.length ? [] : [address]);
+            assert.deepEqual(pinned.peer_hashes,!verifyDeletion && proofs.length ? [] : [address]);
             await contact.click({button:"right"});
             await page.getByText(label,{exact:true}).last().click();
             await page.reload({waitUntil:"domcontentloaded"});
             await expect(page.getByText(label,{exact:true}).first()).toBeVisible({timeout:30000});
             await page.getByText(label,{exact:true}).first().click();
-            await expect(page.getByText("Private UI Contact",{exact:true}).first()).toBeVisible();
+            await expect(page.getByText(contactName,{exact:true}).first()).toBeVisible();
             const records = await (await context.request.get(origin+"/api/v1/lxmf/conversations?folder_id="+saved.id,{headers})).json();
             assert.equal(records.conversations[0].destination_hash,address);
             const tools = create.locator("..");
@@ -86,9 +88,30 @@ const address = "a1".repeat(16);
             const afterImport = await (await context.request.get(origin+"/api/v1/lxmf/folders/export",{headers})).json();
             assert.deepEqual(afterImport,exported,"Importing the UI export must retain existing names, assignments and metadata");
             await page.screenshot({path:path.join(folder,viewport.name+".png"),fullPage:true});
+            if (verifyDeletion) {
+                const contactsBefore = await (await context.request.get(origin+"/api/v1/telephone/contacts",{headers})).json();
+                await contact.click({button:"right"});
+                await page.getByText("Delete",{exact:true}).click();
+                const confirm = page.getByRole("alertdialog");
+                await expect(confirm).toBeVisible();
+                await expect(confirm).toContainText("Delete these conversations?");
+                await confirm.getByRole("button",{name:"Confirm",exact:true}).click();
+                await expect(contact).toHaveCount(0);
+                await page.reload({waitUntil:"domcontentloaded"});
+                await expect(create).toBeVisible({timeout:30000});
+                await expect(page.getByText(contactName,{exact:true})).toHaveCount(0);
+                const contactsAfter = await (await context.request.get(origin+"/api/v1/telephone/contacts",{headers})).json();
+                assert.deepEqual(contactsAfter,contactsBefore,"Deleting a chat must preserve the phonebook");
+                const remaining = await (await context.request.get(origin+"/api/v1/lxmf/conversations",{headers})).json();
+                assert(!remaining.conversations.some(row=>row.destination_hash===address));
+                const organization = await (await context.request.get(origin+"/api/v1/lxmf/folders/export",{headers})).json();
+                assert(organization.folders.some(row=>row.name===label));
+                assert(!organization.mappings.some(row=>row.peer_hash===address));
+            }
+
             assert.deepEqual(failures,[],"The actual page must not throw during organization");
             proofs.push({viewport:viewport.name,folderCreatedThroughUI:true,pinToggledThroughUI:true,
-                movedThroughUI:true,preservedAfterReload:true,exportedThroughUI:true,importedThroughUI:true,noPageErrors:true,blockedExternal});
+                movedThroughUI:true,preservedAfterReload:true,exportedThroughUI:true,importedThroughUI:true,deletedThroughUI:verifyDeletion,phonebookPreserved:verifyDeletion,noPageErrors:true,blockedExternal});
             await context.close();
         }
         fs.writeFileSync(path.join(folder,"proof.json"),JSON.stringify({browserOnly:true,radioAndTCPPeersOff:true,proofs},null,2)+"\n");
