@@ -369,10 +369,29 @@ final class ProbeUITests: XCTestCase {
 
     private func verifyAttachmentExport(_ app: XCUIApplication) {
         let web = app.webViews.firstMatch
-        let file = web.buttons.matching(NSPredicate(format: "label CONTAINS %@", "next-test.txt")).firstMatch
-        for _ in 0..<6 where !file.isHittable { web.swipeUp() }
-        XCTAssertTrue(file.waitForExistence(timeout: 20) && file.isHittable, app.debugDescription)
-        file.tap()
+        let files = web.buttons.matching(NSPredicate(format: "label CONTAINS %@", "next-test.txt"))
+        let composer = web.textViews.firstMatch
+        let sharing = web.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Share my location once")).firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 20) && sharing.exists, app.debugDescription)
+        var visibleFile: XCUIElement?
+        for _ in 0..<8 {
+            // WebKit exposes overscanned rows as hittable even behind sticky
+            // controls. Require a whole button inside the actual chat viewport.
+            let top = sharing.frame.maxY + 12
+            let bottom = composer.frame.minY - 12
+            visibleFile = files.allElementsBoundByIndex.reversed().first { element in
+                let frame = element.frame
+                return element.isHittable && frame.height > 0 && frame.minY >= top && frame.maxY <= bottom
+            }
+            if visibleFile != nil { break }
+            XCTAssertGreaterThan(bottom - top, 80, app.debugDescription)
+            let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            let start = origin.withOffset(CGVector(dx: composer.frame.midX, dy: bottom - 12))
+            let end = origin.withOffset(CGVector(dx: composer.frame.midX, dy: max(top + 20, bottom - 180)))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertNotNil(visibleFile, app.debugDescription)
+        visibleFile?.tap()
         let name = app.staticTexts["export-attachment-name"]
         XCTAssertTrue(name.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(name.label, "next-test.txt")
