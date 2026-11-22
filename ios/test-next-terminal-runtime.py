@@ -198,3 +198,31 @@ def test_failed_initial_save_never_starts_a_remote_command(tmp_path, monkeypatch
             assert called == [] and not value.sessions
         await request(value, check)
     asyncio.run(run())
+
+
+def test_slow_web_view_bounds_event_tasks_and_resyncs_saved_output(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        release = asyncio.Event(); observed = []
+        async def publish(event):
+            await release.wait()
+            observed.append(event)
+        value.publish = publish
+        session = module.Session(value, 'aa' * 16, module.configuration({'destination': ADDRESS, 'autostart': False}))
+        value.sessions[session.id] = session
+        for index in range(1000): session.append('remote output ' + str(index) + '\r\n')
+        assert len(value.events) == 64 and value.deferred == {session.id}
+        assert session.record()['output_text'].endswith('remote output 999\r\n')
+        release.set()
+        async with asyncio.timeout(3):
+            while value.events or value.deferred: await asyncio.sleep(.01)
+        assert len(observed) == 65
+        assert observed[-1] == {'type': 'rnsh.session.change', 'session_id': session.id}
+        await value.close()
+        assert not value.events and not value.deferred
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('command', [False, [], {}])
+def test_invalid_empty_command_types_do_not_open_a_remote_shell(command):
+    with pytest.raises(ValueError): module.configuration({'destination': ADDRESS, 'remote_command': command})

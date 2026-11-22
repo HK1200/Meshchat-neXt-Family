@@ -46,7 +46,8 @@ def configuration(data):
     name = data.get('name') or 'Session ' + destination[:10]
     if not isinstance(name, str) or not name.strip() or len(name) > 120 or any(ord(c) < 32 for c in name):
         raise ValueError('Choose a session name up to 120 characters')
-    command = data.get('remote_command') or ''
+    command = data.get('remote_command')
+    if command is None: command = ''
     if not isinstance(command, str) or len(command.encode()) > 4096 or '\x00' in command:
         raise ValueError('The remote command is too long')
     argv = shlex.split(command) if command else None
@@ -260,7 +261,7 @@ class TerminalRuntime:
         self.folder = Path(folder); self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.state = self.folder / 'sessions.json'
         self.sessions = {}; self.error = ''; self.dirty = False; self.closed = False
-        self.loop = asyncio.get_running_loop(); self.events = set()
+        self.loop = asyncio.get_running_loop(); self.events = set(); self.deferred = set()
         try:
             if self.state.exists():
                 if self.state.stat().st_size > MAX_STATE: raise ValueError()
@@ -282,9 +283,21 @@ class TerminalRuntime:
 
     def emit(self, value):
         if self.closed: return
-        task = self.loop.create_task(self.publish(value)); self.events.add(task)
-        task.add_done_callback(self.events.discard)
-        task.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+        if len(self.events) >= 64:
+            # A slow web view must not retain unbounded copies of remote output.
+            # Once a slot clears, its session-change event reloads bounded history.
+            self.deferred.add(value['session_id'])
+            return
+        task = self.loop.create_task(asyncio.wait_for(self.publish(value), 5))
+        self.events.add(task)
+        task.add_done_callback(self.delivered)
+
+    def delivered(self, task):
+        self.events.discard(task)
+        if not task.cancelled(): task.exception()
+        if not self.closed and self.deferred:
+            identifier = self.deferred.pop()
+            self.emit({'type': 'rnsh.session.change', 'session_id': identifier})
 
     def register(self, router):
         router.add_get('/api/v1/rnsh/sessions', self.api)
@@ -385,6 +398,7 @@ class TerminalRuntime:
 
     async def close(self):
         self.closed = True
+        self.deferred.clear()
         for session in tuple(self.sessions.values()): await session.stop()
         try: self.save()
         except (OSError, ValueError):
