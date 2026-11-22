@@ -120,6 +120,10 @@ final class ProbeUITests: XCTestCase {
         let fallback = app.switches["next-mailbox-fallback"]
         XCTAssertEqual(fallback.value as? String, "0")
         fallback.tap()
+        let enabledFallback = app.switches.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "next-mailbox-fallback", "1"
+        )).firstMatch
+        XCTAssertTrue(enabledFallback.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertEqual(fallback.value as? String, "1")
         let field = app.textFields["next-mailbox-address"]
         replace(field, with: "not-a-propagation-address", in: app)

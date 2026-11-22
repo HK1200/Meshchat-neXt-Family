@@ -8,6 +8,7 @@ struct NextMailboxSettings: View {
     @State private var sendFallback = false
     @State private var state: NextMailboxState?
     @State private var busy = false
+    @State private var saving = false
     @State private var loaded = false
     @State private var error = ""
     @FocusState private var typing: Bool
@@ -16,13 +17,21 @@ struct NextMailboxSettings: View {
         NavigationStack {
             Form {
                 Section("Offline mailbox") {
+                    Text(statusText).font(.headline).accessibilityIdentifier("next-mailbox-status")
                     Text("An LXMF propagation node can hold encrypted messages while you are offline. Enter its propagation address, not a contact’s messaging address.")
                     TextField("Propagation node address", text: $address)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($typing).accessibilityIdentifier("next-mailbox-address")
-                    Toggle("Use mailbox when a direct message fails", isOn: $sendFallback)
-                        .accessibilityIdentifier("next-mailbox-fallback")
-                    Text("Off by default. When enabled, Automatic delivery may leave an encrypted message at this relay if the recipient is offline. The relay can see delivery metadata. Sent means the relay accepted it, not that the recipient has read or received it.")
+                        .disabled(!loaded || saving)
+                    HStack {
+                        Text("Use mailbox when a direct message fails")
+                        Spacer()
+                        Toggle("Use mailbox when a direct message fails", isOn: $sendFallback)
+                            .labelsHidden().fixedSize()
+                            .accessibilityIdentifier("next-mailbox-fallback")
+                            .disabled(!loaded || saving)
+                    }
+                    Text("Optional. Automatic delivery can leave encrypted messages at this relay if a direct send fails. The relay sees delivery metadata. Sent means relay acceptance, not receipt by the recipient.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Button("Save mailbox") {
                         typing = false
@@ -36,7 +45,6 @@ struct NextMailboxSettings: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Status") {
-                    Text(statusText).accessibilityIdentifier("next-mailbox-status")
                     if let stamp = state?.last_checked_at {
                         LabeledContent("Last completed check", value: Date(timeIntervalSince1970: stamp).formatted(date: .abbreviated, time: .shortened))
                     }
@@ -79,7 +87,8 @@ struct NextMailboxSettings: View {
     @MainActor private func update(initial: Bool = false, save: Bool = false, sync: Bool = false) async {
         guard !busy else { return }
         busy = true
-        defer { busy = false }
+        saving = save
+        defer { busy = false; saving = false }
         do {
             var request = URLRequest(url: URL(string: "/api/v1/preview/mailbox" + (sync ? "/sync" : ""), relativeTo: base)!)
             request.timeoutInterval = 15
