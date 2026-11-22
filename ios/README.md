@@ -174,3 +174,19 @@ is requested only if the user chooses to take a photo. Physical camera/Photos/
 Files picker checks still require device verification.
 
 The neXt preview also integrates native SIP and Reticulum calls, Bluetooth radio bridges, maps, private location sharing and Relay Chat. The [neXt verification audit](NEXT_FEATURE_PARITY.md) distinguishes implemented controls, simulator results and actual device checks. Fully suspended internet alerts, the remaining Reticulum tools and the physical phone/radio reliability matrix still require work before public iOS release.
+
+
+### Unsigned neXt production archive
+
+The workflow's **next_appstore_archive** option archives the checksum-pinned
+neXt runtime in Release configuration for a generic arm64 iOS device. The
+production identifier is `org.meshchat.next.ios`; the separate personal-test
+identifier remains `org.meshchat.next.ios.runtimeprobe` before personal signing.
+This job neither installs an app nor accesses an Apple account.
+
+The retained archive and validation report check iPhone/iPad support, native
+runtime libraries, privacy and permission declarations, upstream notices and
+absence of simulator credentials or a personal provisioning profile. These are
+packaging checks, not App Store approval or a claim that the remaining physical
+and suspended-delivery checks have passed. Apple enrollment, distribution
+signing, push entitlements, TestFlight and submission remain on hold.

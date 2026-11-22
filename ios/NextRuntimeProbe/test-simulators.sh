@@ -3,7 +3,7 @@ set -euo pipefail
 
 family_ios="$(cd -- "${1:?Pass the Family checkout ios directory}" && pwd)"
 mode="${2:-simulators}"
-case "$mode" in simulators|device) ;; *) exit 2 ;; esac
+case "$mode" in simulators|device|appstore) ;; *) exit 2 ;; esac
 # macOS ships Bash 3.2: expanding an empty array under nounset fails.
 # Pass an explicit empty build setting for the normal personal-signing case.
 push_settings=("NEXT_APNS_ENVIRONMENT=")
@@ -111,7 +111,7 @@ cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
 python3 "$probe/verify-runtime-imports.py" "$scratch/staged" "$probe" "$family_ios/../app/src/main/python"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-runtime.py"
-if [[ "$mode" == device ]]; then
+if [[ "$mode" == device || "$mode" == appstore ]]; then
     # The device project excludes the simulator test target and its echo fixture.
     awk '/^  NextRuntimeProbeUnitTests:/ {exit} {print}' project.yml > device.yml
     cat >> device.yml <<'YAML'
@@ -123,10 +123,20 @@ schemes:
 YAML
     python3 "$family_ios/build-sip.py" iphoneos arm64
     xcodegen generate --spec device.yml
-    xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
-        -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
-        CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
-    app=DerivedData/Build/Products/Release-iphoneos/NextRuntimeProbe.app
+    if [[ "$mode" == appstore ]]; then
+        archive="$family_ios/RuntimeBuild/Next.xcarchive"
+        xcodebuild archive -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
+            -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
+            -archivePath "$archive" SKIP_INSTALL=NO CODE_SIGNING_ALLOWED=NO \
+            PRODUCT_BUNDLE_IDENTIFIER=org.meshchat.next.ios \
+            "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
+        app="$archive/Products/Applications/NextRuntimeProbe.app"
+    else
+        xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
+            -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
+        app=DerivedData/Build/Products/Release-iphoneos/NextRuntimeProbe.app
+    fi
     lipo "$app/NextRuntimeProbe" -verify_arch arm64
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
@@ -150,6 +160,14 @@ with open(sys.argv[1], 'rb') as stream:
     value = plistlib.load(stream)
 assert {'audio', 'voip', 'location'}.issubset(value.get('UIBackgroundModes', [])), 'The actual device app must include its call and opt-in location modes'
 PYTHON
+    if [[ "$mode" == appstore ]]; then
+        python3 "$probe/verify-appstore-archive.py" "$archive" "$family_ios/RuntimeBuild/Next-AppStore-proof.json"
+        package="$family_ios/RuntimeBuild/neXt-AppStore-unsigned.xcarchive.zip"
+        ditto -c -k --keepParent "$archive" "$package"
+        unzip -tq "$package"
+        (cd "$family_ios/RuntimeBuild" && shasum -a 256 "$(basename "$package")" > Next-AppStore-SHA256SUMS.txt)
+        exit
+    fi
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
     mkdir Payload
     ditto "$app" Payload/NextRuntimeProbe.app

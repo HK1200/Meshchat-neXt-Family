@@ -15,6 +15,10 @@ on:
         description: Build the unsigned Meshchat neXt preview for a physical iPhone or iPad
         type: boolean
         default: false
+      next_appstore_archive:
+        description: Validate the unsigned neXt production archive without signing or uploading to Apple
+        type: boolean
+        default: false
       next_unit_tests:
         description: Run neXt native lifecycle, permissions, credential and routing tests without the Messages UI
         type: boolean
@@ -87,7 +91,7 @@ jobs:
           subprocess.run(["python3", "ios/test-sip-registration.py", max(candidates)[1]], check=True)
           PYTHON
   simulator:
-    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device }}
+    if: ${{ !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device && !inputs.next_appstore_archive }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     runs-on: macos-15
     timeout-minutes: 35
@@ -187,6 +191,30 @@ jobs:
           name: next-ios-unsigned
           path: ios/RuntimeBuild/neXt-iOS-unsigned.ipa
           if-no-files-found: error
+
+  next-appstore-archive:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_appstore_archive }}
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build and validate unsigned neXt production archive
+        run: bash ios/NextRuntimeProbe/test-simulators.sh ios appstore
+      - name: Keep unsigned neXt archive and validation proof
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: next-appstore-unsigned-archive
+          path: |
+            ios/RuntimeBuild/neXt-AppStore-unsigned.xcarchive.zip
+            ios/RuntimeBuild/Next-AppStore-proof.json
+            ios/RuntimeBuild/Next-AppStore-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   store-screenshots:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.store_screenshots }}

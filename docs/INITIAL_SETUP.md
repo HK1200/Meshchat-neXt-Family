@@ -8,7 +8,7 @@
 4. If you want to try Reticulum over the internet, select **Enable Reticulum internet peers**. Otherwise leave it unchecked. Choose **Create guardian access**.
 5. Allow notifications when prompted if you want incoming message alerts and call controls. Grant microphone access when you make or answer your first call. Android may request additional permissions for Bluetooth, camera scanning, or location when you use those features.
 
-[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/tag/v0.6.28)
+[Current Family Android release](https://github.com/HK1200/Meshchat-neXt-Family/releases/latest)
 
 ## Transfer from Family v0.6.19 or earlier
 
