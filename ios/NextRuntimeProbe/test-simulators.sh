@@ -92,6 +92,8 @@ cp "$probe/push_receiving.py" staged/push_receiving.py
 cp "$probe/telemetry_runtime.py" staged/telemetry_runtime.py
 cp "$probe/conversation_organization.py" staged/conversation_organization.py
 cp "$family_ios/../app/src/main/python/family_location.py" "$family_ios/../app/src/main/python/family_meshcore_location.py" staged/
+cp "$family_ios/../app/src/main/python/family_cards.py" staged/
+test -s staged/family_cards.py
 cp "$family_ios/../app/src/main/python/family_maps.py" staged/family_maps.py
 cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py
 cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
@@ -116,6 +118,7 @@ YAML
     lipo "$app/NextRuntimeProbe" -verify_arch arm64
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
+    test -s "$app/staged/family_cards.py"
     test -s "$app/SIP-NOTICES.txt"
     lipo "$app/Frameworks/FamilyVoiceCodecs.framework/FamilyVoiceCodecs" -verify_arch arm64
     test -s "$app/staged/LXST/Codecs/Opus.py"
