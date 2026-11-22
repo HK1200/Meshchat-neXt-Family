@@ -114,12 +114,18 @@ private struct ProbeScreen: View {
                     if let address {
                         HStack {
                             Button { panel = .mailbox } label: {
-                                Label("Offline mailbox", systemImage: "tray.and.arrow.down").labelStyle(.iconOnly)
+                                Label("Offline mailbox", systemImage: "tray.and.arrow.down")
+                                    .labelStyle(.iconOnly)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }.accessibilityIdentifier("next-mailbox-settings")
                             Text("My LXMF address")
                             Spacer()
                             Button { panel = .myContact } label: {
-                                Label("Show my contact QR code", systemImage: "qrcode").labelStyle(.iconOnly)
+                                Label("Show my contact QR code", systemImage: "qrcode")
+                                    .labelStyle(.iconOnly)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
                             .accessibilityIdentifier("show-my-contact-qr")
                             ShareLink(item: address)

@@ -112,7 +112,14 @@ final class ProbeUITests: XCTestCase {
     }
 
     private func verifyMailboxSettings(_ app: XCUIApplication) {
-        app.buttons["next-mailbox-settings"].tap()
+        let mailbox = app.buttons["next-mailbox-settings"]
+        XCTAssertTrue(mailbox.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertGreaterThanOrEqual(mailbox.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(mailbox.frame.height, 44)
+        let qr = app.buttons["show-my-contact-qr"]
+        XCTAssertGreaterThanOrEqual(qr.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(qr.frame.height, 44)
+        mailbox.tap()
         let form = app.collectionViews["next-mailbox-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
         let off = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@", "next-mailbox-status", "Off")).firstMatch
