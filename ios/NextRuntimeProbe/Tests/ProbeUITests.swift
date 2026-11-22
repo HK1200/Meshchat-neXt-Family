@@ -652,14 +652,25 @@ final class ProbeUITests: XCTestCase {
 
     private func reveal(_ element: XCUIElement, in form: XCUIElement, up: Bool = true) {
         XCTAssertTrue(form.waitForExistence(timeout: 10), XCUIApplication().debugDescription)
-        for _ in 0..<12 where !element.isHittable {
-            // A full-height downward swipe can pull the sheet itself closed.
-            // Keep the gesture short and inside the form's content area.
+        let bounds = form.frame
+        let top = bounds.minY + 12
+        let bottom = min(bounds.maxY - 16, XCUIApplication().frame.maxY - 52)
+        func fullyVisible() -> Bool {
+            guard element.exists, element.isHittable else { return false }
+            let frame = element.frame
+            return frame.height > 0 && frame.minY >= top && frame.maxY <= bottom
+        }
+        for _ in 0..<12 {
+            if fullyVisible() { break }
+            // AX can report a cell below the form's visible bottom as hittable.
+            // Require the whole control above the home indicator before tapping.
+            // Keep gestures short and inside the form so they cannot pull the
+            // sheet itself closed.
             let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.7 : 0.4))
             let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.4 : 0.7))
             start.press(forDuration: 0.05, thenDragTo: end)
         }
-        XCTAssertTrue(element.waitForExistence(timeout: 10) && element.isHittable, XCUIApplication().debugDescription)
+        XCTAssertTrue(element.waitForExistence(timeout: 10) && element.isHittable && fullyVisible(), XCUIApplication().debugDescription)
     }
 
     private func replace(_ field: XCUIElement, with value: String, in app: XCUIApplication) {
