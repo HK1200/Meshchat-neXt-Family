@@ -265,7 +265,7 @@ class TerminalRuntime:
         try:
             if self.state.exists():
                 if self.state.stat().st_size > MAX_STATE: raise ValueError()
-                rows = json.loads(self.state.read_text())
+                rows = json.loads(self.state.read_text(encoding='utf-8'))
                 if not isinstance(rows, list) or len(rows) > 16: raise ValueError()
                 for row in rows:
                     identifier = row['id']

@@ -226,3 +226,31 @@ def test_slow_web_view_bounds_event_tasks_and_resyncs_saved_output(tmp_path):
 @pytest.mark.parametrize('command', [False, [], {}])
 def test_invalid_empty_command_types_do_not_open_a_remote_shell(command):
     with pytest.raises(ValueError): module.configuration({'destination': ADDRESS, 'remote_command': command})
+
+
+def test_unicode_history_reopens_with_ascii_default_locale(tmp_path):
+    import json
+    import subprocess
+    row = dict(id='aa' * 16, config=dict(destination=ADDRESS, autostart=False),
+               created_at=1, updated_at=2, output_text='Unicode \u2603 retained\r\n')
+    (tmp_path / 'sessions.json').write_bytes(json.dumps([row], ensure_ascii=False).encode('utf-8'))
+    code = r"""
+import asyncio, sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from terminal_runtime import TerminalRuntime
+async def run():
+    value = TerminalRuntime(SimpleNamespace(), Path(sys.argv[1]), lambda address: False, AsyncMock())
+    assert not value.error, value.error
+    session = value.sessions['aa' * 16]
+    assert session.status == 'stopped' and session.worker is None
+    assert session.record()['output_text'] == 'Unicode \u2603 retained\r\n'
+    await value.close()
+asyncio.run(run())
+"""
+    result = subprocess.run([sys.executable, '-c', code, str(tmp_path)],
+        env={**os.environ, 'LC_ALL': 'C', 'PYTHONUTF8': '0', 'PYTHONCOERCECLOCALE': '0',
+             'PYTHONPATH': os.pathsep.join([str(ROOT / 'ios/NextRuntimeProbe'), str(BACKEND)])},
+        capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr.decode('utf-8', errors='replace')
