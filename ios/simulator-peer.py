@@ -69,6 +69,12 @@ def main(folder, public, drop_test=False, attachment_echo=False):
                         except OSError:
                             pass
 
+    def diagnostic(event, message):
+        if not public:
+            kind = {challenge: "initial", reconnect_message: "reconnect",
+                    delete_message: "delete", fresh_message: "fresh"}.get(message.content_as_string(), "unknown")
+            print(json.dumps({"event": event, "fixture": kind}), flush=True)
+
     def reply(message):
         deadline = time.monotonic() + 45
         next_request = 0
@@ -86,10 +92,13 @@ def main(folder, public, drop_test=False, attachment_echo=False):
                     response = LXMF.LXMessage(
                         reply_to, destination, "Echo: " + text, fields=fields, desired_method=LXMF.LXMessage.DIRECT
                     )
-                    if reconnect_message and text == challenge:
-                        response.register_delivery_callback(drop_client)
-                    response.register_failed_callback(lambda _: print("Simulator echo delivery failed", flush=True))
+                    def delivered(_):
+                        diagnostic("echo_delivered", message)
+                        if reconnect_message and text == challenge: drop_client(_)
+                    response.register_delivery_callback(delivered)
+                    response.register_failed_callback(lambda _: diagnostic("echo_failed", message))
                     router.handle_outbound(response)
+                    diagnostic("echo_queued", message)
                 return
             now = time.monotonic()
             if now >= next_request:
@@ -102,6 +111,7 @@ def main(folder, public, drop_test=False, attachment_echo=False):
         if message.content_as_string() not in (challenge, reconnect_message, delete_message, fresh_message):
             return
         if message.signature_validated or message.unverified_reason == LXMF.LXMessage.SOURCE_UNKNOWN:
+            diagnostic("message_received", message)
             threading.Thread(target=reply, args=(message,), daemon=True).start()
 
     router.register_delivery_callback(echo)

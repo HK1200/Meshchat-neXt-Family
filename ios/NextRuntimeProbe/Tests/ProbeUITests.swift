@@ -87,7 +87,11 @@ final class ProbeUITests: XCTestCase {
         composer.tap()
         if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { composer.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-        composer.typeText(fixture.message)
+        // Keep typing attached to the keyboard focus already established.
+        // Retargeting a WebKit field can move focus during viewport updates.
+        app.typeText(fixture.message)
+        let typed = web.textViews.matching(NSPredicate(format: "value == %@", fixture.message)).firstMatch
+        XCTAssertTrue(typed.waitForExistence(timeout: 15), app.debugDescription)
         let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
         XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(send.isEnabled, app.debugDescription)
@@ -116,7 +120,9 @@ final class ProbeUITests: XCTestCase {
             composer.tap()
             if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { composer.tap() }
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-            composer.typeText(text)
+            app.typeText(text)
+            let typed = web.textViews.matching(NSPredicate(format: "value == %@", text)).firstMatch
+            XCTAssertTrue(typed.waitForExistence(timeout: 15), app.debugDescription)
             let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
             XCTAssertTrue(send.waitForExistence(timeout: 10) && send.isEnabled, app.debugDescription)
             send.tap()
