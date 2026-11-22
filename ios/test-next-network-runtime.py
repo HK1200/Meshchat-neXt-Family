@@ -157,3 +157,69 @@ def test_radio_stats_do_not_invent_a_battery_reading(monkeypatch):
             assert row['bluetooth_connected'] is True and 'battery_percent' not in row
             assert raw['interfaces'][0]['battery_percent']==0
     asyncio.run(run())
+
+
+def test_chat_header_path_actions_use_released_routes_and_block_guard(monkeypatch):
+    sent=[]
+    monkeypatch.setattr(RNS.Transport, 'request_path', lambda address:sent.append(address))
+    async def run():
+        runtime=fixture();app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/destination/'+'cd'*16+'/request-path',json={})
+            assert response.status==200 and sent==[bytes.fromhex('cd'*16)]
+            response=await client.post('/api/v1/destination/'+'ab'*16+'/request-path',json={})
+            assert response.status==400 and len(sent)==1
+            for body in ({'timeout':0},{'timeout':601},{'destination_hash':'ef'*16}):
+                response=await client.post('/api/v1/destination/'+'cd'*16+'/path',json=body)
+                assert response.status==400 and len(sent)==1
+    asyncio.run(run())
+
+
+def test_path_wait_stops_after_a_destination_is_blocked(monkeypatch):
+    monkeypatch.setattr(RNS.Transport, 'has_path', lambda address:False)
+    async def run():
+        runtime=fixture();started=asyncio.Event();sent=[]
+        runtime.path=lambda address:{'path':None,'path_stale':True,'path_unresponsive':False}
+        def prepare(address):sent.append(address);started.set()
+        runtime.prepare_request=prepare
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            task=asyncio.create_task(client.post('/api/v1/destination/'+'cd'*16+'/path',json={'timeout':5}))
+            await asyncio.wait_for(started.wait(),1)
+            runtime.blocked=lambda address:True
+            response=await asyncio.wait_for(task,1)
+            assert response.status==400 and sent==[bytes.fromhex('cd'*16)]
+            assert runtime.waits._value==2
+    asyncio.run(run())
+
+
+def test_path_wait_returns_new_route_without_duplicate_requests(monkeypatch):
+    known=False
+    monkeypatch.setattr(RNS.Transport, 'has_path', lambda address:known)
+    async def run():
+        runtime=fixture();sent=[]
+        def snapshot(address):return {'path':{'hops':2,'next_hop':'ef'*16,'next_hop_interface':'Fixture'} if known else None,'path_stale':not known,'path_unresponsive':False}
+        runtime.path=snapshot
+        def prepare(address):
+            nonlocal known
+            known=True;sent.append(address)
+        runtime.prepare_request=prepare
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/destination/'+'cd'*16+'/path?timeout=2',json={})
+            assert response.status==200 and (await response.json())['path']['hops']==2
+            response=await client.post('/api/v1/destination/'+'cd'*16+'/path',json={})
+            assert response.status==200 and len(sent)==1
+            assert runtime.waits._value==2
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('timeout',[True,1.5,float('inf'),float('nan')])
+def test_malformed_body_timeout_cannot_transmit(timeout,monkeypatch):
+    monkeypatch.setattr(RNS.Transport,'request_path',lambda *args:pytest.fail('Invalid timeout transmitted'))
+    async def run():
+        runtime=fixture();app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.post('/api/v1/destination/'+'cd'*16+'/path',json={'timeout':timeout})
+            assert response.status==400
+    asyncio.run(run())

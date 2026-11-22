@@ -8,7 +8,8 @@ from aiohttp import web
 import RNS
 from meshchatnext.src.backend.rnpath_handler import RNPathHandler
 from meshchatnext.src.backend.rnstatus_handler import RNStatusHandler
-from meshchatnext.src.backend.reticulum_pathfinding import path_metadata_for_api
+from meshchatnext.src.backend.reticulum_pathfinding import path_metadata_for_api, prepare_fresh_path_request
+from meshchatnext.src.backend.path_utils import path_response_window
 
 
 def jsonable(value):
@@ -24,11 +25,14 @@ class NetworkRuntime:
         self.paths = RNPathHandler(probe.reticulum)
         self.status = RNStatusHandler(probe.reticulum)
         self.reads = asyncio.Semaphore(2)
+        self.waits = asyncio.Semaphore(2)
+        self.prepare_request = lambda destination: prepare_fresh_path_request(probe.reticulum, destination)
 
     def register(self, router):
         for path in ('rnstatus', 'interface-stats', 'reticulum/interfaces', 'rnpath/table', 'rnpath/rates'):
             router.add_get('/api/v1/' + path, self.api)
         router.add_get('/api/v1/destination/{destination_hash}/path', self.api)
+        router.add_post('/api/v1/destination/{destination_hash}/{action:path|request-path|drop-path}', self.api)
         for action in ('request', 'drop', 'drop-via', 'drop-queues'):
             router.add_post('/api/v1/rnpath/' + action, self.api)
 
@@ -53,6 +57,8 @@ class NetworkRuntime:
     def number(query, name, default=None, minimum=0, maximum=128):
         raw = query.get(name)
         if raw in (None, ''): return default
+        if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+            raise ValueError('Invalid ' + name)
         value = int(raw)
         if not minimum <= value <= maximum: raise ValueError('Invalid ' + name)
         return value
@@ -92,6 +98,30 @@ class NetworkRuntime:
                           'next_hop_interface': self.probe.reticulum.get_next_hop_if_name(destination)}
         return {'path': result, **metadata}
 
+    async def wait_for_path(self, address, timeout):
+        # Bound concurrent waits, and recheck a ban after every asynchronous boundary.
+        await asyncio.wait_for(self.waits.acquire(), 1)
+        try:
+            if self.blocked(address): raise ValueError('This destination is blocked')
+            snapshot = await self.read(self.path, address=address)
+            if self.blocked(address): raise ValueError('This destination is blocked')
+            if snapshot['path'] and not snapshot.get('path_stale') and not snapshot.get('path_unresponsive'):
+                return snapshot
+            destination = bytes.fromhex(address)
+            if timeout is None:
+                timeout = await self.read(lambda: path_response_window(destination, self.probe.reticulum))
+                timeout = min(600, max(1, float(timeout)))
+            if self.blocked(address): raise ValueError('This destination is blocked')
+            self.prepare_request(destination)
+            deadline = asyncio.get_running_loop().time() + timeout
+            while not RNS.Transport.has_path(destination) and asyncio.get_running_loop().time() < deadline:
+                if self.blocked(address): raise ValueError('This destination is blocked')
+                await asyncio.sleep(0.1)
+            if self.blocked(address): raise ValueError('This destination is blocked')
+            return await self.read(self.path, address=address)
+        finally:
+            self.waits.release()
+
     async def api(self, request):
         try:
             # Do not silently perform a local query when the user requested a remote node.
@@ -104,6 +134,23 @@ class NetworkRuntime:
                     body.extend(part)
                     if len(body) > 4096: raise ValueError('Request is too large')
                 data = json.loads(body) if body else {}
+                if path.startswith('destination/'):
+                    action = request.match_info['action']
+                    address = self.address(request.match_info['destination_hash'])
+                    allowed = {'timeout'} if action == 'path' else set()
+                    if not isinstance(data, dict) or not set(data) <= allowed:
+                        raise ValueError('Invalid path action')
+                    if action == 'path':
+                        raw = request.query.get('timeout', data.get('timeout'))
+                        if isinstance(raw, bool): raise ValueError('Invalid timeout')
+                        timeout = self.number({'timeout': raw}, 'timeout', None, 1, 600)
+                        result = await self.wait_for_path(address, timeout)
+                    else:
+                        if action == 'request-path' and self.blocked(address):
+                            raise ValueError('This destination is blocked')
+                        function = self.paths.request_path if action == 'request-path' else self.paths.drop_path
+                        result = {'success': function(address)}
+                    return web.json_response(jsonable(result), headers={'Cache-Control': 'no-store'})
                 action = path.removeprefix('rnpath/')
                 field = 'transport_instance_hash' if action == 'drop-via' else 'destination_hash'
                 if not isinstance(data, dict) or set(data) != (set() if action == 'drop-queues' else {field}):
