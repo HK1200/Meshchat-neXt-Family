@@ -1,6 +1,7 @@
 """The neXt own-card endpoint stays private and imports into Family offline."""
 
 from contextlib import ExitStack
+from pathlib import Path
 import json
 from urllib.error import HTTPError
 from urllib.parse import urljoin
@@ -10,7 +11,8 @@ import pytest
 from test_next_ios_tcp_integration import api, backend, run_server, start, wait
 
 
-def test_private_own_card_uses_saved_name_and_public_identity_only(tmp_path):
+def test_private_own_card_uses_saved_name_and_public_identity_only(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "app/src/main/python"))
     from family_cards import parse
 
     app = tmp_path / "app"
