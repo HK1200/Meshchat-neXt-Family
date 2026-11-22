@@ -312,15 +312,14 @@ PYTHON
     else
         next_probe_exit=$?
         # These bundles use only fresh synthetic simulator profiles. Export
-        # this failed test's recording as well as its issue text, preserving
+        # every synthetic test's recording as well as its issue text, preserving
         # the actual test exit code even if diagnostic extraction fails.
         if [[ -d "$failed_result_bundle" ]]; then
             xcrun xcresulttool export attachments --path "$failed_result_bundle" \
                 --output-path "$result_set/activity-$device" \
-                --test-id 'ProbeUITests/testConversationSendsAndReceivesSignedLXMF()' \
                 || echo "Synthetic activity export unavailable; the original test failure is retained"
         fi
-        xcrun simctl spawn "$destination" log show --style compact --last 5m \
+        xcrun simctl spawn "$destination" log show --style compact --last 45m \
             --predicate 'process == "NextRuntimeProbe" OR process == "SpringBoard" OR process == "runningboardd"' \
             > "$result_set/$device-launch-system.log" 2>&1 || true
         mkdir -p "$result_set/crashes-$device"
