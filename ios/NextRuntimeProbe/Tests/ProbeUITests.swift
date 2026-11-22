@@ -114,11 +114,14 @@ final class ProbeUITests: XCTestCase {
     private func verifyMailboxSettings(_ app: XCUIApplication) {
         let mailbox = app.buttons["next-mailbox-settings"]
         XCTAssertTrue(mailbox.waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertGreaterThanOrEqual(mailbox.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(mailbox.frame.height, 44)
+        // XCTest can subtract fractional screen coordinates as
+        // 43.99999999999997 for an exact 44-point frame.
+        let minimumTouch = 44.0 - 0.001
+        XCTAssertGreaterThanOrEqual(mailbox.frame.width, minimumTouch)
+        XCTAssertGreaterThanOrEqual(mailbox.frame.height, minimumTouch)
         let qr = app.buttons["show-my-contact-qr"]
-        XCTAssertGreaterThanOrEqual(qr.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(qr.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(qr.frame.width, minimumTouch)
+        XCTAssertGreaterThanOrEqual(qr.frame.height, minimumTouch)
         mailbox.tap()
         let form = app.collectionViews["next-mailbox-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
