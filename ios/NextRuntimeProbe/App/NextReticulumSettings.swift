@@ -120,7 +120,7 @@ struct NextReticulumSettings: View {
             .navigationTitle("Reticulum calling")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done typing") { typing = false } }
+                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done typing") { typing = false; FamilyKeyboard.dismiss() } }
             }
             .task {
                 do {

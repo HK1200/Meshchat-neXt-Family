@@ -93,4 +93,7 @@ def slim(row):
     if "image" in fields: fields["image"] = dict(fields["image"], image_bytes=None)
     if "file_attachments" in fields:
         fields["file_attachments"] = [dict(item, file_bytes=None) for item in fields["file_attachments"]]
-    return dict(row, fields=fields)
+    result = {key: value for key, value in row.items() if key != "_telemetry_data"}
+    if "fields" in row:
+        result["fields"] = fields
+    return result

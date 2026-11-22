@@ -60,7 +60,7 @@ struct NextMailboxSettings: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(busy) }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done typing") { typing = false }
+                    Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }
                 }
             }
             .task {

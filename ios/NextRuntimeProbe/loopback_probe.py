@@ -57,7 +57,8 @@ def record(message, state):
 
 
 class ConversationHistory:
-    VISIBLE = "COALESCE(json_extract(payload, '$.is_private_telemetry'), 0) = 0"
+    VISIBLE = ("COALESCE(json_extract(payload, '$.is_private_telemetry'), 0) = 0 "
+               "AND COALESCE(substr(json_extract(payload, '$.content'), 1, 8), '') != '!NFLOC1:'")
     def __init__(self, path, *, notification_floor=0):
         if type(notification_floor) is not int or not 0 <= notification_floor <= 9_000_000_000_000_000:
             raise ValueError("Invalid local notification baseline")
@@ -263,7 +264,13 @@ class ConversationHistory:
             WHERE peer = ? AND {self.VISIBLE} AND (? IS NULL OR id {operator} ?)
             ORDER BY id {order} LIMIT ?
         """, (peer, after_id, after_id, count))
-        return [{**json.loads(payload), "id": message_id, "state": state} for message_id, state, payload in rows]
+        # Decode and discard each attachment blob before retaining the next
+        # UI row. Downloads use message(), which preserves the original bytes.
+        result = []
+        for message_id, state, payload in rows:
+            row = json.loads(payload)
+            result.append(attachment_fields.slim({**row, "id": message_id, "state": state}))
+        return result
 
     def mark_read(self, peer):
         with self.db:

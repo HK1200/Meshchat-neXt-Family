@@ -34,7 +34,7 @@ def test_saved_legacy_telemetry_stays_private_and_does_not_make_chat_unread(tmp_
     peer='02'*16;history=ConversationHistory(tmp_path/'history.sqlite3')
     message=SimpleNamespace(fields={},hash=b't'*32,source_hash=bytes.fromhex(peer),destination_hash=b'o'*16,
         timestamp=time.time(),method=LXMF.LXMessage.DIRECT,content_as_string=lambda:'!NFLOC1:old synthetic location')
-    row=record(message,'received');history.save(peer,row)
+    row=record(message,'received');row.pop('is_private_telemetry');history.save(peer,row)
     assert history.page(peer,{})==[] and not history.has_conversation(peer)
     assert history.conversation_entries()=={} and not history.summary(peer)['is_unread']
     assert history.notification_candidates()==[]
