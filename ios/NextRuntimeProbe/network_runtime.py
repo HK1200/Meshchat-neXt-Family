@@ -34,7 +34,7 @@ class NetworkRuntime:
 
     def register(self, router):
         router.add_post('/api/v1/rnprobe', self.probe_api)
-        for path in ('rnstatus', 'interface-stats', 'reticulum/interfaces', 'rnpath/table', 'rnpath/rates'):
+        for path in ('rnstatus', 'interface-stats', 'reticulum/interfaces', 'reticulum/blackhole', 'rnpath/table', 'rnpath/rates'):
             router.add_get('/api/v1/' + path, self.api)
         router.add_get('/api/v1/rnpath/trace/{destination_hash}', self.api)
         router.add_get('/api/v1/destination/{destination_hash}/path', self.api)
@@ -310,6 +310,23 @@ class NetworkRuntime:
                     search=request.query.get('search'), interface=request.query.get('interface'))
             elif path == 'rnpath/rates':
                 result = {'rates': await self.read(self.paths.get_rate_table)}
+            elif path == 'reticulum/blackhole':
+                getter = getattr(self.probe.reticulum, 'get_blackholed_identities', None)
+                if not callable(getter):
+                    return web.json_response({'message': 'Transport blackhole information is unavailable in this Reticulum runtime'}, status=501)
+                identities = await self.read(getter)
+                if not isinstance(identities, dict):
+                    raise RuntimeError('Invalid transport blackhole snapshot')
+                formatted = {}
+                for identity_hash, info in identities.items():
+                    if not isinstance(identity_hash, bytes) or len(identity_hash) != 16 or not isinstance(info, dict):
+                        raise RuntimeError('Invalid transport blackhole entry')
+                    source = info.get('source')
+                    if source is not None and not isinstance(source, bytes):
+                        raise RuntimeError('Invalid transport blackhole source')
+                    formatted[identity_hash.hex()] = {'source': source.hex() if source else None,
+                        'until': info.get('until'), 'reason': info.get('reason')}
+                result = {'blackholed_identities': formatted}
             elif path == 'reticulum/interfaces':
                 result = self.interfaces()
             elif path.startswith('destination/'):

@@ -424,3 +424,29 @@ def test_probe_rejects_nonfinite_adaptive_timeout(monkeypatch):
             response=await client.post('/api/v1/rnprobe',json=body)
             assert response.status==400 and not sent and runtime.probe_slots._value==1
     asyncio.run(run())
+
+
+def test_transport_blackhole_snapshot_matches_desktop_without_fetching_or_mutation(monkeypatch):
+    entries={bytes.fromhex('ab'*16): {'source':bytes.fromhex('cd'*16),'until':1234567890,'reason':'Private fixture'},
+             bytes.fromhex('ef'*16): {'source':None,'until':None,'reason':None}}
+    monkeypatch.setattr(RNS.Transport, 'blackholed_identities', entries)
+    monkeypatch.setattr(RNS.Transport, 'request_path', lambda *args,**kwargs:pytest.fail('Snapshot transmitted'))
+    async def run():
+        runtime=fixture()
+        # Exercise the actual standard local-instance getter, not a fabricated
+        # empty list. This does not start or mutate any real Reticulum instance.
+        local=SimpleNamespace(is_connected_to_shared_instance=False)
+        runtime.probe.reticulum.get_blackholed_identities=lambda:RNS.Reticulum.get_blackholed_identities(local)
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.get('/api/v1/reticulum/blackhole')
+            assert response.status==200
+            assert response.headers['Cache-Control']=='no-store'
+            assert await response.json()=={'blackholed_identities':{
+                'ab'*16:{'source':'cd'*16,'until':1234567890,'reason':'Private fixture'},
+                'ef'*16:{'source':None,'until':None,'reason':None}}}
+            assert RNS.Transport.blackholed_identities is entries
+            del runtime.probe.reticulum.get_blackholed_identities
+            response=await client.get('/api/v1/reticulum/blackhole')
+            assert response.status==501 and 'unavailable' in (await response.json())['message']
+    asyncio.run(run())
