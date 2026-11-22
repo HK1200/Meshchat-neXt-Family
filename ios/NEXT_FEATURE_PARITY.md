@@ -10,8 +10,8 @@ alerts and release verification still need work before a complete neXt release. 
 The next iOS build pins both the verified 0.1.23 backend and frontend and uses
 0.1.23 as its displayed app version. The hostless audio and SIP platform repairs
 are now upstream; native call identity, voice playback and location bindings
-retain explicit checksum checks and regression coverage. Native qualification
-of this updated bundle remains required.
+retain explicit checksum checks and regression coverage. The exact bundle passed all 98 native/UI checks on each simulator and the
+separate iPad preview was upgraded to build 358.1 without changing regular Family.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -41,7 +41,7 @@ into the app; physical verification is stated separately.
 | Maps | The released map backend is integrated: offline tiles, validated imports, selection/removal, drawings, overlays and map-data catalogs. Private HTTP tests prove signed discovery/catalog transfer, exact file hashes, imports above the message-size limit and preservation across invalid uploads and restarts | Actual iPad backend import, 50 exact tile reads, malformed-input rejection and restoration passed. Visual rendering, download/share pickers and regional downloads remain unqualified |
 | Location and telemetry | Actual released telemetry routes, signed location exchange, Family frames, silent map updates, saved location-source settings and fresh outgoing fixes are integrated. Private tests prove both message directions, restart persistence, sender attribution and cancellation when sharing is disabled during pathfinding | Both simulators passed actual native GPS → signed private LXMF → verified receipt → chat Stop. Physical permission, lock/expiry and MeshCore background sharing remain unqualified |
 | Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Actual iPad backend passed bidirectional open/password-room messages, hub receipts and saved-key rejoin against the standard desktop hub. Native room UI, mentions and prolonged network-loss recovery remain |
-| Reticulum diagnostics | Local RNStatus, RNPath tables/rates, interface statistics and saved interface metadata are wired to the actual desktop handlers. Conversation path snapshots and explicit path request/drop controls use the released HTTP contracts. Twenty tests against the checksum-pinned iOS backend verify filtering, bounds, blocked requests, read-only GETs, cancellation, truthful radio battery state and the conversation header’s explicit path request/drop/wait actions | The unsigned device build and full native/UI suite are under qualification. Remote management, RNProbe, RNPath trace, RNSH and the remaining tool services still need integration; bundled menus do not qualify them |
+| Reticulum diagnostics | Local RNStatus, RNPath tables/rates, interface statistics and saved interface metadata are wired to the actual desktop handlers. Conversation path snapshots and explicit path request/drop controls use the released HTTP contracts. Twenty tests against the checksum-pinned iOS backend verify filtering, bounds, blocked requests, read-only GETs, cancellation, truthful radio battery state and the conversation header’s explicit path request/drop/wait actions | Both simulators passed all 98 native/UI checks. Actual iPad build 358.1 passed read-only status/path/interface checks, local zero-hop lookup and rejection of five invalid or transmitting GETs. Remote management, RNProbe, RNPath trace, RNSH and the remaining tool services still need integration; bundled menus do not qualify them |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then qualify the new native recipient-route editor and signed sender hints. Native receiving-side enrollment, token rotation, explicit sender approvals and alert-tap retrieval are integrated in development source and await Xcode qualification. Personal-signed previews leave Apple enrollment disabled. Real suspended APNs delivery needs Apple signing entitlements, a deployed provider and device tests |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
@@ -202,3 +202,26 @@ passed in neXt CI. This is not proof of independent public-provider failover,
 Wi-Fi/cellular transitions, persistence of an unsent queue across termination,
 or fully suspended iPad delivery. The following app archives remain separately
 subject to their complete native test gates before installation.
+
+
+## Verified separate iPad preview: 358.1
+
+Exact source `cae043c` passed all 98 required checks on each simulator (92
+native and six Messages UI cases) in run `45027761400`. The bundled desktop
+backend and frontend are checksum-pinned to the public neXt 0.1.23 release.
+The same-key upgrade from 350.1 preserved all 3,261 current non-cache support
+files, twelve messages, two contacts, Reticulum identity and native preferences
+before first launch. Regular Family 47.6 and Family Mailbox Test 353.1 remained
+byte-identical in their state, identity and preferences.
+
+On the actual iPad, three private signed message/echo round trips passed,
+including exchanges after two complete TCP connection retirements. The test
+restored the four original peers and both contacts and removed its synthetic
+history. This was a private LAN reconnect test, not an independent public
+provider, operating-system Wi-Fi change or prolonged suspension test.
+
+The running app's RNStatus, RNPath tables/rates, interface statistics and saved
+peer metadata returned the expected released contracts. Its local destination
+reported zero hops, and five malformed, remote or transmitting GET requests
+were rejected. These backend checks do not qualify radio reception, physical
+camera/picker gestures, subjective call quality or suspended internet alerts.
