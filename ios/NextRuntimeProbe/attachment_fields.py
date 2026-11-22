@@ -3,6 +3,7 @@ import base64
 import binascii
 
 import LXMF
+import voice_notes
 
 # Match neXt's 10 MB direct-delivery default, leaving room for LXMF metadata.
 MAX_BYTES = 9_950_000
@@ -36,8 +37,8 @@ def _decode(value):
 
 
 def outgoing(fields, content=""):
-    if not isinstance(fields, dict) or set(fields) - {"image", "file_attachments"}:
-        raise ValueError("Only file and photo attachment fields are supported here")
+    if not isinstance(fields, dict) or set(fields) - {"image", "file_attachments", "audio"}:
+        raise ValueError("Only file, photo and voice attachment fields are supported here")
     result, total, count = {}, len(content.encode("utf-8")), 0
     if "image" in fields:
         image = fields["image"]
@@ -46,6 +47,12 @@ def outgoing(fields, content=""):
         detected = image_type(data)
         if not detected: raise ValueError("Unsupported photo format; use PNG, JPEG, GIF, WebP, BMP or AVIF")
         result[LXMF.FIELD_IMAGE] = ["jpg" if detected == "jpeg" else detected, data]
+        total += len(data); count += 1
+    if "audio" in fields:
+        audio = fields["audio"]
+        if not isinstance(audio, dict): raise ValueError("Invalid voice attachment")
+        mode, data = voice_notes.encode(audio.get("audio_mode"), _decode(audio.get("audio_bytes")))
+        result[LXMF.FIELD_AUDIO] = [mode, data]
         total += len(data); count += 1
     if "file_attachments" in fields:
         files = fields["file_attachments"]
@@ -74,10 +81,16 @@ def incoming(fields):
             total = len(data)
             result["image"] = dict(image_type="jpg" if detected == "jpeg" else detected,
                                    image_size=len(data), image_bytes=base64.b64encode(data).decode("ascii"))
+    audio = fields.get(LXMF.FIELD_AUDIO)
+    if isinstance(audio, (list, tuple)) and len(audio) == 2 and voice_notes.valid(audio[0], audio[1]):
+        mode, data = audio
+        if total + len(data) <= MAX_BYTES:
+            total += len(data)
+            result["audio"] = dict(audio_mode=mode, audio_size=len(data), audio_bytes=base64.b64encode(data).decode("ascii"))
     files = fields.get(LXMF.FIELD_FILE_ATTACHMENTS)
     if isinstance(files, (list, tuple)):
         items = []
-        for item in files[:MAX_ITEMS - bool(result)]:
+        for item in files[:MAX_ITEMS - len(result)]:
             if not isinstance(item, (list, tuple)) or len(item) != 2 or not isinstance(item[1], bytes): continue
             name, data = item
             if total + len(data) > MAX_BYTES: continue
@@ -91,6 +104,7 @@ def slim(row):
     """Conversation pages/events carry metadata, never many MB of inline blobs."""
     fields = dict(row.get("fields") or {})
     if "image" in fields: fields["image"] = dict(fields["image"], image_bytes=None)
+    if "audio" in fields: fields["audio"] = dict(fields["audio"], audio_bytes=None)
     if "file_attachments" in fields:
         fields["file_attachments"] = [dict(item, file_bytes=None) for item in fields["file_attachments"]]
     result = {key: value for key, value in row.items() if key != "_telemetry_data"}

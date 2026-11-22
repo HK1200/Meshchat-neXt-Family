@@ -301,10 +301,10 @@ class ConversationHistory:
         row = latest[0] if latest else {}
         fields = row.get("fields") or {}
         files = fields.get("file_attachments") or []
-        count = len(files) + bool(fields.get("image"))
+        count = len(files) + bool(fields.get("image")) + bool(fields.get("audio"))
         preview = row.get("content")
         if not preview and count:
-            preview = f"{count} attachments" if count > 1 else files[0]["file_name"] if files else "Photo"
+            preview = f"{count} attachments" if count > 1 else files[0]["file_name"] if files else "Photo" if fields.get("image") else "Voice message"
         return {
             "has_attachments": bool(count),
             "is_unread": bool(unread), "unread_count": unread, "failed_messages_count": failed,
@@ -640,6 +640,18 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         if not detected: raise ValueError("Unsupported image")
                         content_type = "image/" + detected
                         disposition = "inline"
+                    elif parts[3] == "audio":
+                        import voice_notes
+                        item = fields["audio"]
+                        data = base64.b64decode(item["audio_bytes"], validate=True)
+                        if not voice_notes.valid(item["audio_mode"], data): raise ValueError("Invalid recording")
+                        if item["audio_mode"] == voice_notes.OPUS and request.query.get("raw") != "1":
+                            data = await asyncio.to_thread(voice_notes.playable_wav, data)
+                            content_type = "audio/wav"
+                            disposition = "inline"
+                        else:
+                            content_type = "audio/ogg" if item["audio_mode"] == voice_notes.OPUS else "application/octet-stream"
+                            disposition = "attachment; filename=voice-recording." + ("opus" if item["audio_mode"] == voice_notes.OPUS else "codec2")
                     elif parts[3] == "file":
                         index = int(request.query.get("file_index", "0"))
                         if index < 0: raise ValueError("Invalid file index")
@@ -834,7 +846,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                             raise ValueError("Enable location sharing in Settings before sending a location")
                         raw_fields, telemetry_fields = outbound(raw_fields)
                     location_generation = telemetry.generation if telemetry_fields else None
-                    fields = attachment_fields.outgoing(raw_fields, content)
+                    fields = await asyncio.to_thread(attachment_fields.outgoing, raw_fields, content)
                     fields.update(telemetry_fields)
                 except ValueError as error:
                     return web.json_response({"message": str(error)}, status=400)

@@ -68,6 +68,7 @@ printf '%s\n' '1b1e8a9b77c64c780bc748167f22d879e739de58f861994612826612d92a950d 
 unzip -q frontend.zip -d staged/frontend
 python3 "$probe/sip_frontend.py" staged/frontend
 python3 "$probe/voice_frontend.py" staged/frontend
+python3 "$probe/audio_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
     --output next-backend.whl
@@ -77,7 +78,7 @@ wheels-env/bin/python -m pip install --disable-pip-version-check --target staged
     --only-binary=:all: --platform any --python-version 3.14 \
     --require-hashes --requirement "$probe/requirements.lock"
 cp -R "$family_ios/RuntimeBuild/staged/RNS" "$family_ios/RuntimeBuild/staged/LXMF" staged/
-cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/discovery.py" staged/
+cp "$probe/loopback_probe.py" "$probe/messaging_probe.py" "$probe/tcp_peers.py" "$probe/attachment_fields.py" "$probe/voice_notes.py" "$probe/discovery.py" staged/
 cp "$probe/meshcore_runtime.py" "$probe/meshcore_keychain.py" "$probe/meshcore_notices.py" "$probe/meshcore_repeat_crypto.py" "$probe/sip_native.py" "$probe/sip_runtime.py" "$probe/runtime_access.py" "$probe/durable_inbox.py" "$probe/offline_mailbox.py" "$probe/loopback_listener.py" staged/
 cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.py" "$family_ios/../app/src/main/python/family_ios_bluetooth.py" staged/
 cp "$family_ios/../app/src/main/python/family_tcp.py" staged/

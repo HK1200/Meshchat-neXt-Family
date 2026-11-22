@@ -34,7 +34,8 @@ def check_voice_codecs():
                 raise ValueError("Voice decoder returned silence for the synthetic tone")
             results.append({"codec": kind, "setting": setting, "samples": samples,
                             "sample_rate": rate, "rms": energy})
-    return {"ok": True, "checks": results, "microphone_used": False, "network_used": False}
+    from voice_notes import diagnostic
+    return {"ok": True, "checks": results, "voice_note": diagnostic(), "microphone_used": False, "network_used": False}
 
 
 def run_json():

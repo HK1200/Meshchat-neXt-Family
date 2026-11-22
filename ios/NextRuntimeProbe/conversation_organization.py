@@ -316,7 +316,7 @@ class ConversationOrganization:
                 and not self.db.execute(
                     "SELECT 1 FROM messages WHERE peer = ? AND "
                     + self.history.VISIBLE
-                    + " AND (json_type(payload, '$.fields.image') = 'object' OR json_array_length(payload, '$.fields.file_attachments') > 0) LIMIT 1",
+                    + " AND (json_type(payload, '$.fields.image') = 'object' OR json_type(payload, '$.fields.audio') = 'object' OR json_array_length(payload, '$.fields.file_attachments') > 0) LIMIT 1",
                     (address,),
                 ).fetchone()
             ):

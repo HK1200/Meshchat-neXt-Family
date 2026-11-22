@@ -9,3 +9,11 @@ Reticulum’s low-bandwidth call profiles use Codec2 1.2.0 and pycodec2 4.1.1. T
 The Android binaries also include USB Serial for Android 3.8.1, libffi 3.3, the Android NDK's shared C++ runtime, and the neXt SIP engine with Opus 1.5.2, Baresip and re 4.12.0, and Mbed TLS 3.6.7. The package includes their upstream license texts in `app/src/main/assets/notices`. See [Android binary sources and verification](BUILDING.md#bundled-android-binaries).
 
 The Android Python runtime’s XML parser uses the checksum-pinned Expat 2.10.0 security backport also used by neXt. Its upstream license is included as `assets/notices/expat-2.10.0-COPYING.txt`; other Python target archive entries remain unchanged. See the build instructions for reproduction and packaged-byte verification.
+
+The native iOS voice-note runtime compiles Ogg 1.3.6 and Opusfile 0.12 from
+checksum-pinned upstream source with the existing Opus 1.6.1 codec. Their original
+COPYING texts are included under the app's `staged/voice-notices`. Only the four
+Opusfile decoding files are linked; its URL/HTTP helper is excluded. The upstream
+release checksums are published by [Xiph](https://github.com/xiph/ogg/releases/tag/v1.3.6)
+and [Opus](https://www.opus-codec.org/downloads/). Android's existing native
+libraries and signing identity are unchanged.

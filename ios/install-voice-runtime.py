@@ -74,6 +74,8 @@ def install(sdk, arch, app, signer):
     notices = resources / "voice-notices"
     notices.mkdir(exist_ok=True)
     shutil.copyfile(build / "opus-1.6.1/COPYING", notices / "Opus-COPYING")
+    shutil.copyfile(build / "libogg-1.3.6/COPYING", notices / "Ogg-COPYING")
+    shutil.copyfile(build / "opusfile-0.12/COPYING", notices / "Opusfile-COPYING")
     shutil.copyfile(build / "codec2-25014a290752fb830390ff24a612a9694319a47a/COPYING", notices / "Codec2-COPYING")
     shutil.copyfile(build / "audioop_lts-0.2.2/LICENSE", notices / "audioop-LICENSE")
     framework = app / "Frameworks/FamilyVoiceCodecs.framework"

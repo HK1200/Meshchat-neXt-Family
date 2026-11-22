@@ -24,6 +24,10 @@ fetch_source "https://codeload.github.com/drowe67/codec2/tar.gz/$codec2_commit" 
     05d08f69108a216bb894adbfa432f737081395eb653d133610441b50c5d8f1cd "$build/codec2.tar.gz"
 fetch_source https://downloads.xiph.org/releases/opus/opus-1.6.1.tar.gz \
     6ffcb593207be92584df15b32466ed64bbec99109f007c82205f0194572411a1 "$build/opus.tar.gz"
+fetch_source https://downloads.xiph.org/releases/ogg/libogg-1.3.6.tar.gz \
+    83e6704730683d004d20e21b8f7f55dcb3383cdf84c0daedf30bde175f774638 "$build/ogg.tar.gz"
+fetch_source https://downloads.xiph.org/releases/opus/opusfile-0.12.tar.gz \
+    118d8601c12dd6a44f52423e68ca9083cc9f2bfe72da7a8c1acb22a80ae3550b "$build/opusfile.tar.gz"
 
 fetch_source https://files.pythonhosted.org/packages/a6/28/956b52132ca2f3569f1784a2f1a0354489f74ef6b930b04586798ec54985/lxst-0.5.4-py3-none-any.whl \
     feadeb244d12378c27c35dbe48a251ff4db03faf3c8f55b769f9d7656d0adeb7 "$build/lxst.whl"
@@ -35,6 +39,8 @@ unzip -p "$build/lxst.whl" LXST/Filters.h > "$build/Filters.h"
 tar -xzf "$build/audioop.tar.gz" -C "$build"
 tar -xzf "$build/codec2.tar.gz" -C "$build"
 tar -xzf "$build/opus.tar.gz" -C "$build"
+tar -xzf "$build/ogg.tar.gz" -C "$build"
+tar -xzf "$build/opusfile.tar.gz" -C "$build"
 
 # Codec2's native codebook generator uses a nested CMake build. Apply the
 # compatibility policy to both that host build and the iOS target build.
@@ -56,10 +62,17 @@ build_slice() {
     cmake -S "$build/opus-1.6.1" -B "$output/opus" "${args[@]}" \
         -DOPUS_BUILD_TESTING=OFF -DOPUS_BUILD_PROGRAMS=OFF
     cmake --build "$output/opus" --target opus --parallel 2
+    cmake -S "$build/libogg-1.3.6" -B "$output/ogg" "${args[@]}" -DBUILD_TESTING=OFF
+    cmake --build "$output/ogg" --target ogg --parallel 2
+    cmake -S "$PWD/VoiceRuntime/opusfile" -B "$output/opusfile" "${args[@]}" \
+        -DOPUSFILE_SOURCE="$build/opusfile-0.12" -DOPUS_SOURCE="$build/opus-1.6.1" \
+        -DOGG_SOURCE="$build/libogg-1.3.6" -DOGG_BUILD="$output/ogg"
+    cmake --build "$output/opusfile" --target opusfile --parallel 2
     cmake -S "$build/codec2-$codec2_commit" -B "$output/codec2" "${args[@]}" -DUNITTEST=OFF
     cmake --build "$output/codec2" --target codec2 --parallel 2
     xcrun libtool -static -o "$output/libFamilyVoiceCodecs.a" \
-        "$output/opus/libopus.a" "$output/codec2/src/libcodec2.a"
+        "$output/opus/libopus.a" "$output/codec2/src/libcodec2.a" \
+        "$output/ogg/libogg.a" "$output/opusfile/libopusfile.a"
     local target="$arch-apple-ios17.0" python_variant=ios-arm64
     if [[ "$sdk" == iphonesimulator ]]; then
         target+=-simulator
@@ -81,7 +94,7 @@ build_slice() {
     grep -Eq ' [Tt] _PyInit__audioop$' "$output/audioop-symbols.txt"
     xcrun lipo "$output/libFamilyVoiceCodecs.a" -verify_arch "$arch"
     xcrun nm -gU "$output/libFamilyVoiceCodecs.a" > "$output/symbols.txt"
-    for symbol in opus_encode opus_decode codec2_encode codec2_decode; do
+    for symbol in opus_encode opus_decode codec2_encode codec2_decode ogg_stream_init op_open_memory op_read_stereo op_free; do
         grep -Eq " [Tt] _$symbol\$" "$output/symbols.txt"
     done
 }

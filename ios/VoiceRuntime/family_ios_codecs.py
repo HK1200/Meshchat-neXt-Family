@@ -14,7 +14,7 @@ def library():
 
 
 def load_pyogg_library(name, tests):
-    if name != "opus":
+    if name not in ("opus", "ogg", "opusfile"):
         return None
     native = library()
     return native if all(test(native) for test in tests) else None
