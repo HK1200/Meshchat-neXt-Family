@@ -24,6 +24,7 @@ import attachment_fields
 from runtime_access import RuntimeAccess, COOKIE, CSP
 from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
+import mailbox_push
 from loopback_listener import ResumableListener
 
 
@@ -509,6 +510,46 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def api(request):
         path = request.match_info["path"]
         responses["status"]["inbox_error"] = inbox.error
+        alert_route = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})/mailbox-alert-route", path)
+        if alert_route:
+            contact_id = int(alert_route[1])
+            entry = next((item for item in history.contacts().values() if item["id"] == contact_id), None)
+            if entry is None:
+                raise web.HTTPNotFound()
+            recipient = entry["lxmf_address"]
+            try:
+                if request.method == "GET":
+                    route = mailbox_push.route_for(ready_file.parent, recipient)
+                elif request.method in ("POST", "DELETE"):
+                    if request.method == "POST":
+                        if request.content_length is not None and request.content_length > 4096:
+                            raise ValueError("Recipient alert settings are too large")
+                        encoded = bytearray()
+                        async for chunk in request.content.iter_chunked(4096):
+                            encoded.extend(chunk)
+                            if len(encoded) > 4096:
+                                raise ValueError("Recipient alert settings are too large")
+                        body = json.loads(encoded)
+                        if not isinstance(body, dict) or set(body) != {"route"} or not isinstance(body["route"], dict):
+                            raise ValueError("Enter the provider, audience and mailbox relay only")
+                        proposed = body["route"]
+                    else:
+                        proposed = None
+                    # A contact removed while the request body was arriving
+                    # cannot regain a saved route after its consent is gone.
+                    current = history.contacts().get(recipient)
+                    if current is None or current["id"] != contact_id:
+                        raise web.HTTPNotFound()
+                    route = mailbox_push.save_route(ready_file.parent, recipient, proposed)
+                else:
+                    raise web.HTTPMethodNotAllowed(request.method, ["GET", "POST", "DELETE"])
+                return web.json_response({"route": None if route is None else {
+                    "provider": route.provider, "audience": route.audience, "relay": route.relay}},
+                    headers={"Cache-Control": "no-store"})
+            except (ValueError, TypeError) as error:
+                return web.json_response({"message": str(error)}, status=400)
+            except OSError:
+                return web.json_response({"message": "Recipient alert settings could not be saved. Previous settings are preserved."}, status=503)
         if request.method == "GET":
             if maps and path == "config": config.update(maps.settings())
             if telemetry and path == "config": config.update(telemetry.settings())
@@ -615,9 +656,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         raise ValueError("This contact operation changes the name only")
                     history.rename_contact(int(contact_path[1]), body["name"])
                 else:
+                    entry = next((item for item in history.contacts().values() if item["id"] == int(contact_path[1])), None)
+                    if entry is None: raise KeyError(contact_path[1])
+                    mailbox_push.save_route(ready_file.parent, entry["lxmf_address"], None)
                     history.remove_contact(int(contact_path[1]))
             except KeyError:
                 raise web.HTTPNotFound() from None
+            except OSError:
+                return web.json_response({"message": "Recipient alerts could not be revoked; the contact was preserved."}, status=503)
             except ValueError as error:
                 return web.json_response({"message": str(error)}, status=400)
             contacts.clear()
@@ -794,8 +840,17 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 except TimeoutError as exc:
                     return web.json_response({"message": str(exc)}, status=504)
 
+                expected_alert_route = mailbox_push.route_for(ready_file.parent, address) if address in history.contacts() else None
+
                 def state_changed(updated, state):
                     loop.call_soon_threadsafe(schedule, "lxmf_message_state_updated", record(updated, state))
+
+                def delivered(updated):
+                    state_changed(updated, "sent" if updated.method == LXMF.LXMessage.PROPAGATED else "delivered")
+                    # No hint for direct delivery, a changed/revoked route, or
+                    # acceptance by any relay except the one explicitly saved.
+                    if expected_alert_route is not None:
+                        mailbox_push.queue_accepted_hint(ready_file.parent, updated, expected_alert_route)
 
                 def failed(updated):
                     # Run on the app loop: a callback must recheck the current
@@ -806,8 +861,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     state_changed(updated, "sending" if retried else "failed")
                     return retried
 
-                message.register_delivery_callback(lambda updated: state_changed(updated,
-                    "sent" if updated.method == LXMF.LXMessage.PROPAGATED else "delivered"))
+                message.register_delivery_callback(delivered)
                 message.register_failed_callback(lambda updated: loop.call_soon_threadsafe(failed, updated))
                 row = history.save(address, record(message, "sending"))
                 try:

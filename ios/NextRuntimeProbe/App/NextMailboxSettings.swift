@@ -8,6 +8,7 @@ struct NextMailboxSettings: View {
     @State private var sendFallback = false
     @State private var state: NextMailboxState?
     @State private var busy = false
+    @State private var showRecipientAlerts = false
     @State private var saving = false
     @State private var loaded = false
     @State private var error = ""
@@ -44,6 +45,10 @@ struct NextMailboxSettings: View {
                     Text("Leave the address blank and save to turn mailbox checks off. This does not delete saved messages.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                Section("Sending alerts") {
+                    Button("Recipient mailbox alerts") { showRecipientAlerts = true }
+                        .accessibilityIdentifier("next-recipient-alerts")
+                }
                 Section("Status") {
                     if let stamp = state?.last_checked_at {
                         LabeledContent("Last completed check", value: Date(timeIntervalSince1970: stamp).formatted(date: .abbreviated, time: .shortened))
@@ -63,6 +68,7 @@ struct NextMailboxSettings: View {
                     Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }
                 }
             }
+            .sheet(isPresented: $showRecipientAlerts) { NextRecipientAlerts(base: base).interactiveDismissDisabled() }
             .task {
                 await update(initial: true)
                 while !Task.isCancelled {

@@ -23,3 +23,7 @@ size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
                                      uint8_t *output, size_t capacity);
 
 void next_probe_set_voice_muted(bool muted);
+
+/* Used only by bounded signed-hint worker threads, never the main/audio queue. */
+typedef int32_t (*NextHTTPSPost)(const char *, const uint8_t *, size_t);
+void next_probe_set_https_post(NextHTTPSPost post);

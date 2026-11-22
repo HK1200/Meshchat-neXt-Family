@@ -386,6 +386,10 @@ private struct ProbeScreen: View {
         let home = resources.appendingPathComponent("python").path
         let modulePath = modules.path
         let readyPath = ready.path
+        next_probe_set_https_post { url, body, length in
+            guard let url, let body else { return 400 }
+            return FamilyNativeHTTPS.post(String(cString: url), body: Data(bytes: body, count: length))
+        }
         next_probe_set_credentials { request in
             guard let request else { return nil }
             return strdup(NextCredentials.shared.request(String(cString: request)))

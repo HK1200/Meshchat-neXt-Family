@@ -36,7 +36,12 @@ static PyObject *test_mute(PyObject *self, PyObject *args) {
     next_probe_set_voice_muted(muted != 0);
     Py_RETURN_NONE;
 }
+static int32_t test_https(const char *url, const uint8_t *body, size_t count) {
+    return !PyGILState_Check() && strcmp(url, "https://example.invalid/v1/mailbox-alert") == 0 &&
+        count == 2 && memcmp(body, "{}", 2) == 0 ? 204 : 500;
+}
 static PyMethodDef test_methods[] = {
+    {"post", post_hint, METH_VARARGS, NULL},
     {"bind", voice_bind, METH_VARARGS, NULL},
     {"exchange", test_exchange, METH_VARARGS, NULL},
     {"mute", test_mute, METH_VARARGS, NULL},
@@ -44,6 +49,7 @@ static PyMethodDef test_methods[] = {
 };
 static struct PyModuleDef test_module = {PyModuleDef_HEAD_INIT,"_next_voice_pcm_test",NULL,-1,test_methods};
 PyMODINIT_FUNC PyInit__next_voice_pcm_test(void) {
+    https_post = test_https;
     atomic_store_explicit(&runtime_initialized, 1, memory_order_release);
     return PyModule_Create(&test_module);
 }
@@ -88,3 +94,10 @@ def test_invalid_ids_sizes_and_oversized_output_never_cross_the_boundary(pcm):
     assert not pushed
     assert pcm.exchange('c'*32,b'',1920)==b''
     with pytest.raises(TypeError):pcm.bind(None,lambda _:b'')
+
+
+def test_native_hint_boundary_releases_interpreter_and_rejects_unbounded_requests(pcm):
+    assert pcm.post('https://example.invalid/v1/mailbox-alert', b'{}') == 204
+    for address, body in [('http://example.invalid', b'{}'), ('https://example.invalid', b''),
+                          ('https://example.invalid', b'x' * 2049)]:
+        assert pcm.post(address, body) == 400

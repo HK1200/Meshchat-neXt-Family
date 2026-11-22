@@ -175,3 +175,24 @@ do not create message alerts, unread chats or empty chat bubbles. Location data
 is not sent through mailbox fallback, where delayed coordinates could become
 misleading. Disabling location sharing while a fix is waiting for a route
 cancels that pending submission.
+
+### neXt recipient mailbox alerts (development preview)
+
+In neXt, open **Offline mailbox → Recipient mailbox alerts**. Choose a saved
+Reticulum contact, then enter the HTTPS alert provider, audience and propagation
+address supplied by that recipient. Save explicitly; leaving this form does not
+enable a draft route. **Remove recipient alerts**, or deleting the contact,
+revokes the route. Unsaved drafts stay separate for each contact while the
+editor is open. No provider request is made by opening or saving this form.
+
+Use the same propagation relay for sending and for the recipient's mailbox. A
+signed hint is sent only after that exact relay accepts an encrypted message.
+Direct delivery sends no hint. The hint contains public routing metadata and an
+encrypted packet identifier, without text or attachments. Enrollment secrets
+and Apple device tokens are receiving-side credentials; never enter or share
+them in this sender form.
+
+This sender integration does not make the current personal-signed neXt preview
+receive Apple push alerts. Receiving-side enrollment, Apple push entitlements
+and a functioning provider remain separate requirements. Ordinary TCP or SIP
+traffic cannot guarantee that a fully suspended iPhone or iPad wakes.

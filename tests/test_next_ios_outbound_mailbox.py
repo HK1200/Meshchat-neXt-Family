@@ -109,6 +109,28 @@ def run_outbound_http(folder, ready, settings, recipient_public, pipe):
             (folder/'pause-next-compose').unlink()
         return original_compose(self,*args,**kwargs)
     MessagingProbe.compose=compose
+    # Exercise the actual signature verifier and actual relay spool. Only the
+    # APNs delivery and HTTPS transport are mocked; no Apple credentials exist.
+    import mailbox_push
+    sys.path.insert(0, str(ROOT / 'ios/push-provider'))
+    from provider import Provider
+    sender = RNS.Identity.from_file(str(folder/'reticulum/identity'))
+    identity = RNS.Identity(create_keys=False); identity.load_public_key(recipient_public)
+    destination = RNS.Destination.hash_from_name_and_identity('lxmf.delivery',identity).hex()
+    def alert(token, packet):
+        with (folder/'mock-alerts.jsonl').open('a') as output:
+            output.write(json.dumps({'token':token,'packet':packet})+'\n')
+    def post(route,payload):
+        assert route.provider == 'https://alerts.example.invalid'
+        hint = json.loads(payload)
+        assert set(hint) == {'recipient','message','sender','issued','signature'}
+        # Like the real single-threaded HTTP provider, own its SQLite connection
+        # on the thread that verifies the request rather than borrowing the app loop's.
+        provider = Provider('private outbound test', folder.parent/'relay/lxmf/messagestore',
+            {destination: {'token':'mock-device','senders':[sender.get_public_key().hex()]}}, folder/'mock-provider.sqlite3', alert)
+        try: return provider.notify(hint)
+        finally: provider.database.close()
+    mailbox_push._post = post
     frontend=folder/'frontend';frontend.mkdir(exist_ok=True)
     (frontend/'index.html').write_text('<html>Private outbound mailbox fixture</html>')
     asyncio.run(serve(ready,frontend,settings,device=True))
@@ -153,6 +175,10 @@ def test_real_http_message_and_attachment_are_relayed_while_recipient_offline(tm
         assert api(base,'lxmf-messages/send',body={**draft,'delivery_method':'propagated'},token=token)[0]==400
         assert api(base,'lxmf-messages/conversation/'+recipient_address)[1]['lxmf_messages']==[]
         assert api(base,'preview/mailbox',body={'address':mailbox,'send_fallback':True},token=token)[0]==200
+        contact_id=api(base,'telephone/contacts')[1]['contacts'][0]['id']
+        route_path=f'telephone/contacts/{contact_id}/mailbox-alert-route'
+        assert api(base,route_path,body={'route':{'provider':'https://alerts.example.invalid','audience':'private outbound test','relay':mailbox}},token=token)[0]==200
+        assert not (sender_folder/'mock-alerts.jsonl').exists()
         draft['delivery_method']=delivery_method
         response=api(base,'lxmf-messages/send',body=draft,token=token)
         assert response[0]==200,response
@@ -162,6 +188,9 @@ def test_real_http_message_and_attachment_are_relayed_while_recipient_offline(tm
             return next((row for row in rows if row['hash']==message_hash and row['state']=='sent'),None)
         sent=wait(accepted,timeout=60)
         assert sent['method']=='propagated' and sent['state']!='delivered'
+        wait(lambda:(sender_folder/'mock-alerts.jsonl').exists())
+        hints=[json.loads(line) for line in (sender_folder/'mock-alerts.jsonl').read_text().splitlines()]
+        assert len(hints)==1 and hints[0]['token']=='mock-device'
         stored=list((tmp_path/'relay/lxmf/messagestore').iterdir())
         assert stored and all(b'Offline neXt relay proof' not in p.read_bytes() and file_bytes not in p.read_bytes() for p in stored if p.is_file())
         with ExitStack() as online:

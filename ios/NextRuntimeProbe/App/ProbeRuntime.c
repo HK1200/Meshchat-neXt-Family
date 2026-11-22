@@ -30,6 +30,30 @@ static struct PyModuleDef lifecycle_module = {
 };
 static PyObject *init_lifecycle(void) { return PyModule_Create(&lifecycle_module); }
 
+static NextHTTPSPost https_post;
+void next_probe_set_https_post(NextHTTPSPost post) {
+    if (!Py_IsInitialized()) https_post = post;
+}
+static PyObject *post_hint(PyObject *self, PyObject *args) {
+    const char *url; const uint8_t *body; Py_ssize_t size;
+    if (!PyArg_ParseTuple(args, "sy#", &url, &body, &size)) return NULL;
+    if (size < 1 || size > 2048 || strncmp(url, "https://", 8) != 0) return PyLong_FromLong(400);
+    if (!https_post) return PyLong_FromLong(503);
+    int32_t status;
+    Py_BEGIN_ALLOW_THREADS
+    status = https_post(url, body, (size_t)size);
+    Py_END_ALLOW_THREADS
+    return PyLong_FromLong(status);
+}
+static PyMethodDef https_methods[] = {
+    {"post", post_hint, METH_VARARGS, NULL}, {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef https_module = {
+    PyModuleDef_HEAD_INIT, "_family_native_https", NULL, -1, https_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_https(void) { return PyModule_Create(&https_module); }
+
 static NextBluetoothRequest bluetooth_request;
 static NextBluetoothRequest credentials_request;
 static NextBluetoothRequest sip_request;
@@ -208,6 +232,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
         fprintf(stderr, "Could not configure safe TCP write handling\n");
         return;
     }
+    if (PyImport_AppendInittab("_family_native_https", init_https) != 0) return;
     if (PyImport_AppendInittab("_family_bluetooth", init_bluetooth) != 0) return;
     if (PyImport_AppendInittab("_next_credentials", init_credentials) != 0) return;
     if (PyImport_AppendInittab("_next_sip", init_sip) != 0) return;

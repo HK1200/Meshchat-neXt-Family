@@ -137,6 +137,41 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.switches["next-mailbox-fallback"].value as? String, "0")
         XCTAssertFalse(app.buttons["next-mailbox-sync"].isEnabled)
+        let recipients = app.buttons["next-recipient-alerts"]
+        reveal(recipients, in: form)
+        recipients.tap()
+        let recipientForm = app.collectionViews["next-recipient-alert-form"]
+        XCTAssertTrue(recipientForm.waitForExistence(timeout: 15), app.debugDescription)
+        let routeOff = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "next-recipient-alert-status", "Off"
+        )).firstMatch
+        XCTAssertTrue(routeOff.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertFalse(app.buttons["next-recipient-alert-save"].isEnabled)
+        for (identifier, value) in [
+            ("next-recipient-alert-provider", "https://alerts.example.invalid"),
+            ("next-recipient-alert-audience", "private simulator test"),
+            ("next-recipient-alert-relay", String(repeating: "b", count: 32))
+        ] {
+            let field = app.textFields[identifier]
+            reveal(field, in: recipientForm)
+            replace(field, with: value, in: app)
+        }
+        let save = app.buttons["next-recipient-alert-save"]
+        reveal(save, in: recipientForm)
+        XCTAssertTrue(save.isEnabled, app.debugDescription)
+        save.tap()
+        let saved = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", "next-recipient-alert-status", "Recipient alerts saved"
+        )).firstMatch
+        reveal(saved, in: recipientForm, up: false)
+        XCTAssertTrue(saved.waitForExistence(timeout: 15), app.debugDescription)
+        let remove = app.buttons["next-recipient-alert-remove"]
+        reveal(remove, in: recipientForm)
+        XCTAssertTrue(remove.isEnabled, app.debugDescription)
+        remove.tap()
+        reveal(routeOff, in: recipientForm, up: false)
+        XCTAssertTrue(routeOff.waitForExistence(timeout: 15), app.debugDescription)
+        app.navigationBars["Recipient alerts"].buttons["Done"].tap()
         app.navigationBars["Offline mailbox"].buttons["Done"].tap()
     }
 

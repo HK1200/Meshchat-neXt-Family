@@ -3,8 +3,9 @@
 neXt for iPhone and iPad is a development preview. Reticulum messaging works in
 the released neXt interface, including signed replies and attachments. Native
 SIP calling and optional mailbox receiving are integrated and under verification.
-Reticulum voice is integrated and undergoing device qualification; location and
-remaining desktop services still need integration before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
+Reticulum voice, offline maps, location and Relay Chat are integrated and
+undergoing native/device qualification. Remaining desktop services, suspended
+alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
 This checkpoint is dated November 21, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -31,7 +32,7 @@ into the app; physical verification is stated separately.
 | Location and telemetry | Actual released telemetry routes, signed location exchange, Family frames, silent map updates, saved location-source settings and fresh outgoing fixes are integrated. Private tests prove both message directions, restart persistence, sender attribution and cancellation when sharing is disabled during pathfinding | Verify browser GPS and timed sharing in the native interface, expiry/stop controls and physical permission behavior; suspended location sharing remains unqualified |
 | Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Native room UI, mentions, reconnect and physical device checks |
 | Other Reticulum tools | Their frontend menus are bundled | Register the remaining real services and test their actions; a visible menu does not establish working functionality |
-| Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then add suspended scheduling and neXt push enrollment. Real APNs needs Apple signing entitlements and a deployed provider |
+| Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then qualify the new native recipient-route editor and signed sender hints. Suspended scheduling and neXt receiving-side push enrollment remain work. Real APNs needs Apple signing entitlements and a deployed provider |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
 ## Verified checkpoints
@@ -84,7 +85,7 @@ those require device tests.
   remain pending. Location sharing and Relay Chat
   now have real backend integrations but need native/device qualification. Other
   Reticulum tools still need integration. Bundled menus do not qualify those services.
-* Native outbound mailbox controls, suspended mailbox scheduling, push enrollment and complete
+* Native recipient alert routes and signed hints are integrated with explicit consent, atomic private storage and revocation; their new native UI tests still need to pass on both simulators. Suspended mailbox scheduling, receiving-side push enrollment and complete
   identity/settings recovery need integration and device verification.
 * A physical iPhone is still needed for the final phone-specific reliability
   matrix. Simulator success does not replace this.
