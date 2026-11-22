@@ -7,15 +7,13 @@ import types
 from meshchatnext.src.backend import rncp_handler
 
 SEND_SHA256 = 'd423eee45ed9c6440aa65b3b0dbd1519f5b00354fcbfa59a5a967ae10e868636'
-FETCH_SHA256 = '4c7c20d0cc0e5ced7d0faeaca122b4fcf646cd61af9dbb9448b0e7a15911a50c'
+FETCH_SHA256 = 'cf5306cd204c62412bf244ecccf13386b606e1ed74548a0a26ddd3e9fba29c9e'
 
 
 def guarded_source(source):
     if hashlib.sha256(source.encode()).hexdigest() != FETCH_SHA256:
         raise ValueError('Review the changed RNCP fetch engine before packaging iOS')
     changes = [
-        ('            if asyncio.get_running_loop().time() > resolve_deadline:',
-         '            if current_resource is None and asyncio.get_running_loop().time() > resolve_deadline:'),
         ('        listener_identity = RNS.Identity.recall(destination_hash)',
          '        if not self._mobile_fetch_destination_allowed(destination_hash): raise PermissionError("This destination is blocked")\n        listener_identity = RNS.Identity.recall(destination_hash)'),
         ('        link = RNS.Link(listener_destination)',

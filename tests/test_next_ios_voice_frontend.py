@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parent
 
 @pytest.mark.parametrize('page',[False,True])
 def test_answer_keeps_the_displayed_call_id_across_the_real_async_permission_handler(page,tmp_path):
-    source=(ROOT/'fixtures'/('next-025-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
+    source=(ROOT/'fixtures'/('next-026-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
     rewritten=voice_frontend.rewrite(source,page=page)
     script=tmp_path/'handler.js'
     script.write_text('''const assert=require('node:assert/strict');
@@ -40,7 +40,7 @@ const deadline=setTimeout(()=>{console.error('Call-handler regression made no pr
 
 @pytest.mark.parametrize('page',[False,True])
 def test_handler_boundary_changes_fail_closed(page):
-    source=(ROOT/'fixtures'/('next-025-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
+    source=(ROOT/'fixtures'/('next-026-voice-'+('page' if page else 'bar')+'.js.txt')).read_text()
     with pytest.raises(ValueError):voice_frontend.rewrite(source.replace('async answerCall(){','async changedAnswer(){'),page=page)
 
 

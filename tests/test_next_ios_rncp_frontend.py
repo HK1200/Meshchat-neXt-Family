@@ -8,7 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('rncp_frontend', ROOT / 'ios/NextRuntimeProbe/rncp_frontend.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-FIXTURE = ROOT / 'tests/fixtures/next-025-rncp-methods.js.txt'
+FIXTURE = ROOT / 'tests/fixtures/next-026-rncp-methods.js.txt'
 
 
 def execute(tmp_path, body, *, patched=True):
@@ -105,3 +105,11 @@ for(const call of calls){assert.equal(call.options.timeout,0);assert.equal(call.
 assert.equal(state.sendResult.success,true);assert.equal(state.fetchResult.success,true);
 assert.equal(state.sendInProgress,false);assert.equal(state.fetchInProgress,false);
 ''')
+
+
+def test_upstream_transfer_lifetime_guards_must_remain_present():
+    source = FIXTURE.read_text()
+    for marker in (module.SEND_AFTER, module.FETCH_AFTER):
+        assert source.count(marker) == 1
+        with pytest.raises(ValueError, match="transfer-lifetime protection"):
+            module.rewrite(source.replace(marker, marker.replace("timeout:0", "timeout:120000")))

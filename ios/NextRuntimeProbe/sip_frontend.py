@@ -1,4 +1,4 @@
-"""Verify the native iOS SIP platform already present in the pinned 0.1.25 bundle.
+"""Verify the native iOS SIP platform already present in the pinned 0.1.26 bundle.
 
 The upstream SIP feature synchronization includes iOS, and commands carry the
 displayed call ID so delayed controls cannot end a replacement call. Preserve
@@ -8,8 +8,8 @@ from pathlib import Path
 import hashlib
 import re
 
-CHUNK = 'assets/shared-async-BNOcm_YS.js'
-SOURCE_SHA256 = '354819b0138a5d60a3e2eec43b8a05e6ded8a33b8fb5919506e19a3f3f74ad0f'
+CHUNK = 'assets/shared-async-CTgMST9W.js'
+SOURCE_SHA256 = '1ce2c089b8ad7b6c88444fa12f4ac0272f5bead5e9e7afcaa14a7ca96ee0b867'
 # Whole source bytes are already covered by the pinned frontend ZIP checksum;
 # the small exact expressions additionally fail closed when that bundle changes.
 PLATFORM = re.compile(r'\["linux","windows","ios"\]\.includes\((?:ws|e)\.platform\)')

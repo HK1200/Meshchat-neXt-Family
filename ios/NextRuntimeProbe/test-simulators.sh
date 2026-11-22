@@ -65,9 +65,9 @@ ln -s "$family_ios/RuntimeBuild/Python.xcframework" Python.xcframework
 ln -s "$family_ios" VoiceBuild
 mkdir staged
 curl --fail --silent --show-error --location --retry 3 \
-    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.25/meshchatnext-frontend.zip \
+    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.26/meshchatnext-frontend.zip \
     --output frontend.zip
-printf '%s\n' 'db821d12178ec077ebbff15fb4b6b19e834bfe1efffdd9e5e5b301121574b9fd  frontend.zip' \
+printf '%s\n' 'bef5b1b8cfa4209d25bc23f598f2d90f112a5d51159f6735e12192ec94919cd0  frontend.zip' \
     | shasum -a 256 -c -
 unzip -q frontend.zip -d staged/frontend
 python3 "$probe/sip_frontend.py" staged/frontend
@@ -78,7 +78,7 @@ python3 "$probe/location_frontend.py" staged/frontend
 python3 "$probe/rncp_frontend.py" staged/frontend
 python3 "$probe/terminal_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
-    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.25/meshchat_next-0.1.25-py3-none-any.whl \
+    https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.26/meshchat_next-0.1.26-py3-none-any.whl \
     --output next-backend.whl
 python3 "$probe/stage-backend.py" next-backend.whl staged "$family_ios"
 python3 -m venv wheels-env
