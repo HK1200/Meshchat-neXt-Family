@@ -250,7 +250,7 @@ private struct ProbeScreen: View {
                     savedPeers = (try? NextTCPPeer.encodeSettings(peers)) ?? savedPeers
                 }.interactiveDismissDisabled()
             case .myContact:
-                NextMyContactQR(address: address ?? "")
+                NextMyContactQR(address: address ?? "", base: url)
             }
         }
         .sheet(item: $exportItem, onDismiss: {

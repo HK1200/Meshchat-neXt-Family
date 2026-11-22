@@ -588,6 +588,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if maps and path == "config": config.update(maps.settings())
             if telemetry and path == "config": config.update(telemetry.settings())
             if relay and path == "config": config.update(relay.settings())
+            if path == "preview/contact-card":
+                from family_cards import export_contact
+                card = export_contact(config["display_name"], probe.source.identity,
+                    bool(voice and voice.config.telephone_enabled.get()))
+                return web.json_response({"contact_card": card}, headers={"Cache-Control": "no-store"})
             if path == "preview/push-enrollment-state":
                 from push_receiving import snapshot
                 return web.json_response(snapshot(history, probe.source, mailbox), headers={"Cache-Control": "no-store"})

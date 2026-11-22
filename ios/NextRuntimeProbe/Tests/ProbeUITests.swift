@@ -500,6 +500,22 @@ final class ProbeUITests: XCTestCase {
         }
         let payloads = detector.features(in: captured).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
         XCTAssertEqual(payloads, [expected], "The displayed QR must contain this device's actual messaging address")
+        app.buttons["Family contact"].tap()
+        let familyImage = app.images["my-family-qr-image"]
+        XCTAssertTrue(familyImage.waitForExistence(timeout: 20), app.debugDescription)
+        guard let familyScreenshot = CIImage(data: familyImage.screenshot().pngRepresentation) else {
+            XCTFail("Could not read the displayed Family contact QR"); return
+        }
+        let familyPayloads = detector.features(in: familyScreenshot).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+        XCTAssertEqual(familyPayloads.count, 1)
+        if let text = familyPayloads.first, let data = text.data(using: .utf8),
+           let card = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            XCTAssertEqual(card["format"] as? String, "next-family-contact")
+            XCTAssertEqual((card["addresses"] as? [String: String])?["lxmf"], address.label.lowercased())
+            XCTAssertEqual((card["identityPublicKey"] as? String)?.count, 128)
+            XCTAssertNil(card["identityPrivateKey"])
+            XCTAssertNil(card["password"])
+        } else { XCTFail("The displayed Family QR must decode to a contact card") }
         app.navigationBars["My contact QR"].buttons["Done"].tap()
         XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
