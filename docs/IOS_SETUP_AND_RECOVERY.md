@@ -158,9 +158,15 @@ offline first message.
 **Sent** means the relay accepted the message. It does not prove the recipient
 received or read it. **Delivered** is reserved for a recipient delivery proof.
 Turning this option off prevents new fallback attempts; it cannot recall a
-message already accepted by a relay. An interrupted unsent message is still
-shown as failed after an app restart; persistent outbound retry is not yet
-implemented in this preview.
+message already accepted by a relay. Development builds keep a private signed restart record for an ordinary
+message once it has entered Sending. When neXt runs again with a connected
+interface, it can retry that original message identifier, including its files
+and photos. Deleting the conversation cancels its saved send. Blocking is checked
+again, a changed or disabled mailbox cannot receive a pending propagated send,
+and location updates are never replayed. Old unsent messages created before
+this journal existed remain failed; they cannot be safely reconstructed from
+preview text alone. This recovery runs while the app executes and does not
+wake a fully suspended device.
 
 ### neXt preview: location and map updates
 

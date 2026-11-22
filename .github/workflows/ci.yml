@@ -65,6 +65,10 @@ jobs:
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
             python -m pytest -q ios/test-next-meshcore-location.py \
             --basetemp=temp-tests/meshcore-location
+      - name: Verify signed restart journal and atomic history writes
+        run: |
+          python -m pytest -q ios/test-next-durable-outbox.py \
+            --basetemp=temp-tests/durable-outbox
       - name: Verify local network diagnostics and blocked path requests
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \

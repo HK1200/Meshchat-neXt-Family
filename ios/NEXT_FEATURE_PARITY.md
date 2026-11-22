@@ -7,10 +7,13 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The verified separate iPad build 360.1 pins the public 0.1.25 backend and
-frontend and displays 0.1.25 as its app version. It carries the same discovery
-privacy and Micron-link fixes as desktop and Android. Exact source `2cce2d9`
-passed all 98 checks on each simulator and the physical checks documented below.
+The verified separate iPad build 367.1 pins the public 0.1.25 backend and
+frontend and displays 0.1.25 as its app version. Exact source `842f20e`
+passed all 99 checks on each simulator. Its same-key physical upgrade retained
+all 1,502 current non-cache support files, twelve messages, two contacts,
+identity, native preferences and four peers before first launch. Regular Family
+and Family Mailbox Test were unchanged. The physical slow-transfer check below
+qualifies the bounded RNCP backport, not every remaining file-picker gesture.
 Native call identity, voice playback and location bindings retain explicit
 checksum checks and regression coverage. These results do not qualify fully
 suspended internet alerts or every remaining desktop service.
@@ -292,3 +295,32 @@ fixtures, personal provisioning profile or main-app signature. The personal
 preview identifier is unchanged. This is packaging verification only; Apple
 enrollment, distribution signing, APNs/VoIP delivery qualification, TestFlight
 and submission remain pending and were not performed.
+
+
+## Slow transfer and pending-message recovery follow-up
+
+The separate physical iPad build 367.1 fetched an exact 60,000-byte fixture
+through a standard RNCP peer paced at 400 bytes per second over private TCP.
+The transfer was still active after 125 seconds and completed after 154.8
+seconds with a matching SHA-256. The received synthetic file was removed after
+verification, and the original peers were restored. This proves the active
+transfer is no longer stopped by the former two-minute request timer; it is
+not a LoRa file-transfer or physical Files/share-sheet result.
+
+Development source adds a bounded SQLite restart journal for ordinary outgoing
+Reticulum messages. Its write commits with the visible Sending record. Cold
+recovery verifies the original signature and preserves the message identifier,
+timestamp, file/photo bytes and delivery choice. Current block and mailbox
+policy are checked again before handing anything to LXMF. Deleted conversations
+remove their restart packets; old legacy sends without a packet stay failed.
+Location and telemetry are never replayed. Recovery handles one packet per
+recipient at a time while neXt executes; it does not wake a suspended device.
+
+Private real-network tests passed after a forced process exit before transport
+handoff and after the recipient's delivery proof but before the local Delivered
+commit. The original signed resource and echo arrived with matching bytes.
+Deletion, corrupted signatures and disabled-mailbox recovery transmitted no
+pending message. All five cases passed on Python 3.11 and 3.14. Seventeen
+focused checks also cover signature/identity changes, queue bounds, rollback
+and history migration. These results still need native archive, simulator and
+actual iPad qualification before being treated as a device release feature.

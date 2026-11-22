@@ -25,6 +25,7 @@ from runtime_access import RuntimeAccess, COOKIE, CSP
 from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
 import mailbox_push
+import durable_outbox
 from loopback_listener import ResumableListener
 from conversation_organization import ConversationOrganization
 from blocked_destinations import PeerBlocks
@@ -118,10 +119,12 @@ class ConversationHistory:
             # read state intact without retroactively alerting historical messages.
             self.db.execute("""INSERT OR IGNORE INTO notification_metadata
                 SELECT hash, 0 FROM messages""")
-            # The preview has no persistent outbound queue. A send interrupted
-            # by app termination is left visible as failed.
+            durable_outbox.schema(self.db)
+            # Old previews did not retain a signed restart packet. Preserve
+            # that truthful failure state; new journaled sends remain pending.
             self.db.execute("""
                 UPDATE messages SET state = 'failed' WHERE state = 'sending'
+                AND hash NOT IN (SELECT hash FROM next_pending_messages)
             """)
 
     def preferences(self, default_name="neXt iOS"):
@@ -236,10 +239,14 @@ class ConversationHistory:
         return bool(isinstance(address, str) and re.fullmatch(r"[a-f0-9]{32}", address)
                     and self.db.execute("SELECT 1 FROM messages WHERE peer = ? AND " + self.VISIBLE + " LIMIT 1", (address,)).fetchone())
 
-    def save(self, peer, row):
+    def save(self, peer, row, *, pending=None):
         with self.db:
             if self.db.execute("SELECT 1 FROM deleted_message_hashes WHERE hash = ?", (row["hash"],)).fetchone():
                 return None
+            if pending is not None:
+                durable_outbox.enqueue(self.db, row, *pending)
+            elif row["state"] in ("failed", "sent", "delivered"):
+                durable_outbox.remove(self.db, row["hash"])
             self.db.execute("DELETE FROM hidden_conversations WHERE peer = ?", (peer,))
             self.db.execute("INSERT OR IGNORE INTO conversation_reads VALUES (?, 0)", (peer,))
             payload = json.dumps({k: v for k, v in row.items() if k not in ("id", "state")})
@@ -350,6 +357,7 @@ class ConversationHistory:
             if row[0] == "sending":
                 raise ValueError("Message is still sending")
             self.db.execute("INSERT OR IGNORE INTO deleted_message_hashes VALUES (?)", (message_hash,))
+            durable_outbox.remove(self.db, message_hash)
             self.db.execute("DELETE FROM messages WHERE hash = ?", (message_hash,))
             self.db.execute("DELETE FROM notification_metadata WHERE hash = ?", (message_hash,))
 
@@ -370,6 +378,7 @@ class ConversationHistory:
                     "SELECT hash FROM messages WHERE peer = ? AND state IN ('sending', 'sent')", (address,)))
                 self.db.execute("INSERT OR IGNORE INTO deleted_message_hashes SELECT hash FROM messages WHERE peer = ?", (address,))
                 self.db.execute("DELETE FROM notification_metadata WHERE hash IN (SELECT hash FROM messages WHERE peer = ?)", (address,))
+                self.db.execute("DELETE FROM next_pending_messages WHERE peer = ?", (address,))
                 self.db.execute("DELETE FROM messages WHERE peer = ?", (address,))
                 self.db.execute("DELETE FROM conversation_reads WHERE peer = ?", (address,))
                 self.db.execute("INSERT OR IGNORE INTO hidden_conversations VALUES (?)", (address,))
@@ -394,6 +403,9 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     location = None
     files = None
     terminal = None
+    closing = False
+    pending_active = set()
+    pending_retry_at = {}
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -907,31 +919,21 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
 
                 expected_alert_route = mailbox_push.route_for(ready_file.parent, address) if address in history.contacts() else None
 
-                def state_changed(updated, state):
-                    loop.call_soon_threadsafe(schedule, "lxmf_message_state_updated", record(updated, state))
-
-                def delivered(updated):
-                    state_changed(updated, "sent" if updated.method == LXMF.LXMessage.PROPAGATED else "delivered")
-                    # No hint for direct delivery, a changed/revoked route, or
-                    # acceptance by any relay except the one explicitly saved.
-                    if expected_alert_route is not None:
-                        mailbox_push.queue_accepted_hint(ready_file.parent, updated, expected_alert_route)
-
-                def failed(updated):
-                    # Run on the app loop: a callback must recheck the current
-                    # explicit opt-in before a relay receives any message.
-                    from outbound_mailbox import retry_via_mailbox
-                    if blocks.denies(address): return False
-                    retried = retry_via_mailbox(updated, probe.router, selected_node,
-                        mailbox.outbound_node(), automatic=delivery_method is None)
-                    state_changed(updated, "sending" if retried else "failed")
-                    return retried
-
-                message.register_delivery_callback(delivered)
-                message.register_failed_callback(lambda updated: loop.call_soon_threadsafe(failed, updated))
-                row = history.save(address, record(message, "sending"))
+                failed = attach_delivery_callbacks(message, address, delivery_method is None, selected_node, expected_alert_route)
+                pending = None
+                outgoing = record(message, "sending")
+                if not outgoing["is_private_telemetry"] and not telemetry_fields:
+                    choices = durable_outbox.policy(message.desired_method, delivery_method is None, selected_node, expected_alert_route)
+                    pending = (message.packed, choices)
+                try:
+                    row = history.save(address, outgoing, pending=pending)
+                except ValueError as error:
+                    return web.json_response({"message": str(error)}, status=400)
+                except sqlite3.Error:
+                    return web.json_response({"message": "The message could not be saved. Free some storage before trying again."}, status=503)
                 if row is None:
                     return web.json_response({"message": "This exact packet was previously deleted. Please try sending again."}, status=409)
+                if pending is not None: pending_active.add(message.hash.hex())
                 try:
                     probe.send(message)
                 except Exception:
@@ -941,6 +943,88 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         return web.json_response({"message": "Could not queue the message"}, status=502)
                 return web.json_response({"lxmf_message": attachment_fields.slim(row)})
         raise web.HTTPNotFound()
+
+    def attach_delivery_callbacks(message, address, automatic, selected_node, expected_alert_route):
+        def state_changed(updated, state):
+            async def committed_state():
+                if closing: return
+                await publish("lxmf_message_state_updated", record(updated, state))
+                if state in ("failed", "sent", "delivered"):
+                    pending_active.discard(updated.hash.hex())
+            def on_loop():
+                if not closing: track(committed_state())
+            if not closing and not loop.is_closed(): loop.call_soon_threadsafe(on_loop)
+
+        def delivered(updated):
+            if closing: return
+            state_changed(updated, "sent" if updated.method == LXMF.LXMessage.PROPAGATED else "delivered")
+            if expected_alert_route is not None:
+                mailbox_push.queue_accepted_hint(ready_file.parent, updated, expected_alert_route)
+
+        def failed(updated):
+            if closing: return False
+            from outbound_mailbox import retry_via_mailbox
+            if blocks.denies(address):
+                pending_active.discard(updated.hash.hex())
+                return False
+            retried = retry_via_mailbox(updated, probe.router, selected_node,
+                mailbox.outbound_node(), automatic=automatic)
+            state_changed(updated, "sending" if retried else "failed")
+            return retried
+
+        message.register_delivery_callback(delivered)
+        message.register_failed_callback(lambda updated: loop.call_soon_threadsafe(failed, updated) if not closing and not loop.is_closed() else None)
+        return failed
+
+    async def resume_pending_messages():
+        if closing or mailbox_session() is None: return
+        now = time.monotonic()
+        with history.db:
+            history.db.execute("DELETE FROM next_pending_messages WHERE hash NOT IN (SELECT hash FROM messages WHERE state='sending')")
+        rows = history.db.execute("""SELECT p.hash, p.peer, p.policy
+            FROM next_pending_messages p JOIN messages m ON m.hash=p.hash
+            WHERE m.state='sending' ORDER BY m.id LIMIT 100""").fetchall()
+        pending_active.intersection_update(row[0] for row in rows)
+        active_peers = {row[1] for row in rows if row[0] in pending_active}
+        remaining_peers = {row[1] for row in rows}
+        for address in tuple(pending_retry_at):
+            if address not in remaining_peers: pending_retry_at.pop(address, None)
+        for key, address, raw_policy in rows:
+            if key in pending_active or address in active_peers or now < pending_retry_at.get(address, 0): continue
+            if blocks.denies(address) or history.db.execute("SELECT 1 FROM deleted_message_hashes WHERE hash=?", (key,)).fetchone():
+                with history.db:
+                    history.db.execute("UPDATE messages SET state='failed' WHERE hash=? AND state='sending'", (key,))
+                    durable_outbox.remove(history.db, key)
+                continue
+            try:
+                choices = durable_outbox.selected_policy(raw_policy)
+                selected = bytes.fromhex(choices['relay']) if choices['relay'] else None
+                if choices['method'] == LXMF.LXMessage.PROPAGATED and (selected is None or selected != mailbox.outbound_node()):
+                    raise ValueError('Mailbox permission changed before restart recovery')
+                packet = history.db.execute("SELECT packet FROM next_pending_messages WHERE hash=?", (key,)).fetchone()[0]
+                message = durable_outbox.recreate(packet, key, address, probe, choices)
+            except LookupError:
+                # A restart may precede the recipient's next signed announce.
+                pending_retry_at[address] = now + 30
+                import RNS
+                RNS.Transport.request_path(bytes.fromhex(address))
+                return
+            except Exception:
+                previous = history.message(key)
+                if previous is not None: await publish("lxmf_message_state_updated", {**previous, "state":"failed"})
+                continue
+            route = mailbox_push.route_for(ready_file.parent, address) if address in history.contacts() else None
+            if durable_outbox.route_fingerprint(route) != choices['route']: route = None
+            failed = attach_delivery_callbacks(message, address, choices['automatic'], selected, route)
+            pending_active.add(key)
+            if message.desired_method == LXMF.LXMessage.PROPAGATED:
+                probe.router.set_outbound_propagation_node(selected)
+            try: probe.send(message)
+            except Exception:
+                message.state = LXMF.LXMessage.FAILED
+                failed(message)
+            # Resume at most one packet per loop pass to avoid a startup burst.
+            return
 
     async def websocket(request):
         client = web.WebSocketResponse()
@@ -1112,10 +1196,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await announce_routes()
             if relay: relay.refresh_contacts()
             mailbox.tick()
+            await resume_pending_messages()
             if location: await location.tick()
             if terminal: await terminal.tick()
             await asyncio.sleep(1)
     finally:
+        closing = True
         inbox.close()
         mailbox.close()
         access.clear_info()

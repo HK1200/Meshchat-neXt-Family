@@ -101,6 +101,7 @@ test -s staged/location_sessions.py && test -s staged/location_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py
 cp "$probe/relay_runtime.py" staged/relay_runtime.py
 cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
+cp "$probe/durable_outbox.py" staged/durable_outbox.py
 cp "$probe/push_receiving.py" staged/push_receiving.py
 cp "$probe/telemetry_runtime.py" staged/telemetry_runtime.py
 cp "$probe/conversation_organization.py" staged/conversation_organization.py
