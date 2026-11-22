@@ -544,7 +544,7 @@ final class ProbeUITests: XCTestCase {
         let web = app.webViews.firstMatch
         let settings = web.buttons["Settings"].firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 15), app.debugDescription)
-        settings.tap()
+        tapSettledWebButton(settings, in: web, app: app)
         let name = web.textFields["Display Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15), app.debugDescription)
         name.tap()
@@ -583,7 +583,7 @@ final class ProbeUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(completeName.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(name.value as? String, "Simulator profile", app.debugDescription)
-        settings.tap()
+        tapSettledWebButton(settings, in: web, app: app)
         // Allow the released UI's 600 ms debounce to finish. The saved name
         // is asserted after terminating and reopening the app below, rather
         // than depending on a short-lived toast being exposed to XCTest.
@@ -601,7 +601,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
         XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 60), app.debugDescription)
         waitForNativeTheme("dark", in: app)
-        settings.tap()
+        tapSettledWebButton(settings, in: web, app: app)
         XCTAssertTrue(name.waitForExistence(timeout: 15))
         let restoredName = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Simulator profile"), object: name)
         XCTAssertEqual(XCTWaiter.wait(for: [restoredName], timeout: 15), .completed, app.debugDescription)
@@ -609,6 +609,33 @@ final class ProbeUITests: XCTestCase {
         revealWebButton(light, in: web)
         light.tap()
         waitForNativeTheme("light", in: app)
+    }
+
+    private func tapSettledWebButton(_ button: XCUIElement, in web: XCUIElement, app: XCUIApplication) {
+        XCTAssertTrue(button.waitForExistence(timeout: 15), app.debugDescription)
+        // A cold WebKit page can expose the button before the native header's
+        // final geometry settles. Keep the real one-tap navigation assertion,
+        // but use a stable, wholly visible frame rather than a stale AX point.
+        var previous = CGRect.zero
+        var stableSamples = 0
+        var target: CGRect?
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            let frame = button.frame.integral
+            if button.isHittable && frame.width > 0 && frame.height > 0 &&
+                web.frame.contains(frame) && app.frame.contains(frame) {
+                stableSamples = frame == previous ? stableSamples + 1 : 0
+                previous = frame
+                if stableSamples >= 3 { target = frame; break }
+            } else { stableSamples = 0 }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        XCTAssertNotNil(target, app.debugDescription)
+        guard let frame = target else { return }
+        let origin = app.frame.origin
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
+            dx: frame.midX - origin.x, dy: frame.midY - origin.y
+        )).tap()
     }
 
     private func revealWebButton(_ button: XCUIElement, in web: XCUIElement) {
