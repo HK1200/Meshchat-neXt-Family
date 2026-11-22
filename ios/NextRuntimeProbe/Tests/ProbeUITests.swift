@@ -7,6 +7,7 @@ final class ProbeUITests: XCTestCase {
         let port: Int
         let deleteMessage: String?
         let freshMessage: String?
+        let locationReceipt: String?
     }
 
     func testConversationSendsAndReceivesSignedLXMF() throws {
@@ -123,6 +124,56 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, address)
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20), app.debugDescription)
+    }
+
+    func testZNativeLocationUsesPrivateReticulumAndStops() throws {
+        executionTimeAllowance = 240
+        continueAfterFailure = false
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: file))
+        let receipt = try XCTUnwrap(fixture.locationReceipt)
+        let app = XCUIApplication()
+        app.terminate()
+        app.resetAuthorizationStatus(for: .location)
+        app.launchArguments = []
+        app.launchEnvironment["NEXT_PROBE_LOCATION_FIXTURE"] = "1"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        app.buttons["next-location-settings"].tap()
+        let form = app.collectionViews["next-location-form"]
+        let recipient = app.switches["next-location-recipient"].firstMatch
+        XCTAssertTrue(recipient.waitForExistence(timeout: 20), app.debugDescription)
+        reveal(recipient, in: form)
+        XCTAssertEqual(recipient.value as? String, "0")
+        recipient.tap()
+        let start = app.buttons["next-location-start"]
+        reveal(start, in: form)
+        XCTAssertTrue(start.isEnabled, app.debugDescription)
+        start.tap()
+        // Approve only the expected location request, after explicit Start.
+        // Other permission explanations remain unapproved and fully tested.
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = system.alerts.buttons["Allow While Using App"]
+        XCTAssertTrue(allow.waitForExistence(timeout: 15), system.debugDescription)
+        allow.tap()
+        let current = app.buttons["Stop all sharing"]
+        XCTAssertTrue(current.waitForExistence(timeout: 20), app.debugDescription)
+        app.buttons["next-location-done"].tap()
+        let web = app.webViews.firstMatch
+        // Receipt is created only after the private peer verifies the real
+        // LXMF signature and the exact fresh synthetic CoreLocation telemetry.
+        XCTAssertTrue(web.staticTexts[receipt].waitForExistence(timeout: 105), app.debugDescription)
+        let stop = web.buttons["Stop sharing"].firstMatch
+        XCTAssertTrue(stop.waitForExistence(timeout: 20), app.debugDescription)
+        stop.tap()
+        XCTAssertTrue(stop.waitForNonExistence(timeout: 20), app.debugDescription)
+        app.buttons["next-location-settings"].tap()
+        XCTAssertTrue(app.navigationBars["Location sharing"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.switches["next-location-recipient"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertFalse(app.buttons["Stop all sharing"].exists, app.debugDescription)
+        app.buttons["next-location-done"].tap()
+        app.terminate()
+        app.resetAuthorizationStatus(for: .location)
     }
 
     func testConversationDeletionKeepsContactAndAllowsFreshSignedReply() throws {
@@ -383,6 +434,7 @@ final class ProbeUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.terminate()
+        app.resetAuthorizationStatus(for: .location)
         app.launchArguments = ["--review-setup-permissions"]
         app.launch()
         let review = app.buttons["next-setup-permission-checkup"]

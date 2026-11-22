@@ -80,11 +80,30 @@ def test_http_controls_are_bounded_and_get_never_starts_location(tmp_path):
                     assert response.status==400 and commands==[]
                 target=next(iter(await runtime.catalog()))
                 response=await client.post('/api/v1/preview/location-sessions',json={
+                    'action':'start','targets':[target],'duration':'15'})
+                assert response.status==400 and commands==[]
+                response=await client.post('/api/v1/preview/location-sessions',json={
                     'action':'start','targets':[target],'duration':'15','request_id':'a'*32,'consent_epoch':0})
                 assert response.status==200 and (await response.json())['active']
                 assert commands[-1]['op']=='start' and commands[-1]['background'] is False
                 response=await client.post('/api/v1/preview/location-sessions',json={'action':'stop'})
                 assert response.status==200 and not (await response.json())['active']
                 assert commands[-1]['op']=='stop' and commands[-1]['revisions']==[]
+        finally:await runtime.close()
+    asyncio.run(run())
+
+
+def test_deleting_a_contact_stops_its_session_even_if_the_conversation_remains(tmp_path):
+    async def run():
+        runtime=fixture(tmp_path);commands=[]
+        async def native(request):commands.append(request);return {'ok':True}
+        runtime.manager.native=native
+        try:
+            key=next(iter(await runtime.catalog()))
+            await runtime.manager.start([key],'15')
+            assert runtime.manager.sessions
+            await runtime.contact_removed('ab'*16)
+            assert not runtime.manager.sessions and commands[-1]['op']=='stop'
+            assert key in await runtime.catalog()  # History alone no longer restores the stopped consent.
         finally:await runtime.close()
     asyncio.run(run())

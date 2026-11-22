@@ -26,6 +26,12 @@ class Session:
     until: float
     duration: str
     revision: str
+    background: bool = False
+
+    def grant_id(self, target):
+        data = json.dumps([target, self.revision, float(self.until), self.background],
+                          separators=(',', ':'), allow_nan=False).encode()
+        return hashlib.sha256(data).hexdigest()[:32]
 
     def active(self, now):
         return self.until == -1 or self.until > now
@@ -38,6 +44,7 @@ class LocationSessions:
         self.token = uuid.uuid4().hex
         self.lock = asyncio.Lock()
         self.sessions = {}
+        self.catalog_cache = {}
         self.workers = {}
         self._all_workers = set()
         self.sent = {}
@@ -53,12 +60,14 @@ class LocationSessions:
         self.consent_epoch = 0
         self.cancelled_requests = {}
         with database:
-            database.execute('CREATE TABLE IF NOT EXISTS next_location_sessions (target TEXT PRIMARY KEY, until REAL NOT NULL, duration TEXT NOT NULL, revision TEXT NOT NULL)')
+            database.execute('CREATE TABLE IF NOT EXISTS next_location_sessions (target TEXT PRIMARY KEY, until REAL NOT NULL, duration TEXT NOT NULL, revision TEXT NOT NULL, background INTEGER NOT NULL DEFAULT 0)')
+            if 'background' not in {row[1] for row in database.execute('PRAGMA table_info(next_location_sessions)')}:
+                database.execute('ALTER TABLE next_location_sessions ADD COLUMN background INTEGER NOT NULL DEFAULT 0')
             database.execute('CREATE TABLE IF NOT EXISTS next_location_options (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         try:
-            rows = database.execute('SELECT target, until, duration, revision FROM next_location_sessions').fetchall()
+            rows = database.execute('SELECT target, until, duration, revision, background FROM next_location_sessions').fetchall()
             if len(rows) > MAX_TARGETS: raise ValueError('Too many saved recipients')
-            for target, until, duration, revision in rows:
+            for target, until, duration, revision, locked in rows:
                 self._target_key(target)
                 if duration not in DURATIONS or type(until) not in (int, float) or not math.isfinite(until):
                     raise ValueError('Invalid saved sharing duration')
@@ -67,7 +76,8 @@ class LocationSessions:
                     raise ValueError('Invalid saved sharing expiry')
                 if not isinstance(revision, str) or len(revision) != 32 or any(c not in '0123456789abcdef' for c in revision):
                     raise ValueError('Invalid saved sharing generation')
-                session = Session(until, duration, revision)
+                if type(locked) is not int or locked not in (0, 1): raise ValueError('Invalid saved background consent')
+                session = Session(until, duration, revision, bool(locked))
                 if session.active(clock()): self.sessions[target] = session
             options = dict(database.execute('SELECT key,value FROM next_location_options'))
             background = json.loads(options.get('background', 'false'))
@@ -78,6 +88,11 @@ class LocationSessions:
             self.sessions = {}
             self.background = False
             self.error = 'Saved location sessions could not be read. Sharing is stopped.'
+
+    async def _catalog(self):
+        available = await self.catalog()
+        self.catalog_cache = available
+        return available
 
     @staticmethod
     def _target_key(target):
@@ -95,25 +110,31 @@ class LocationSessions:
 
     async def _native(self, op, rows=None, **values):
         rows = self._active() if rows is None else rows
+        locked = {key: row for key, row in rows.items() if row.background}
+        # A foreground-only ongoing session cannot extend another recipient's
+        # finite permission to keep GPS running while locked.
         result = await self.native(dict(op=op, session=self.token, active=bool(rows),
-                                        until=self._until(rows), revisions=sorted(hashlib.sha256((key + ':' + row.revision).encode()).hexdigest()[:32]
-                                                     for key, row in rows.items()),
-                                        background=self.background, **values))
+                                        until=self._until(locked or rows),
+                                        revisions=sorted(row.grant_id(key) for key, row in rows.items()),
+                                        background=bool(locked), **values))
         if not isinstance(result, dict) or result.get('ok') is not True:
             raise RuntimeError('The native location service could not complete this action')
         return result
 
     def _sensor_status(self, native):
         message = native.get('error')
+        ready = False
+        if native.get('can_submit') is True:
+            try: ready = valid_fix(native.get('fix'), self.clock())['last_update'] >= self.clock() - 120
+            except ValueError: pass
         self.location_status = (message[:256] if isinstance(message, str) and message
-                                else '' if native.get('can_submit') is True
-                                else 'Waiting for permission or a fresh device location.')
+                                else '' if ready else 'Waiting for permission or a fresh device location.')
 
     def _persist(self, rows):
         with self.db:
             self.db.execute('DELETE FROM next_location_sessions')
-            self.db.executemany('INSERT INTO next_location_sessions VALUES(?,?,?,?)',
-                                [(key, row.until, row.duration, row.revision) for key, row in rows.items()])
+            self.db.executemany('INSERT INTO next_location_sessions(target,until,duration,revision,background) VALUES(?,?,?,?,?)',
+                                [(key, row.until, row.duration, row.revision, int(row.background)) for key, row in rows.items()])
             self.db.execute('INSERT OR REPLACE INTO next_location_options VALUES(?,?)',
                             ('background', json.dumps(self.background)))
 
@@ -131,7 +152,7 @@ class LocationSessions:
                 or any(c not in '0123456789abcdef' for c in request_id)):
             raise ValueError('Invalid sharing request')
         epoch = self.consent_epoch if consent_epoch is None else consent_epoch
-        if type(epoch) is not int or epoch != self.consent_epoch: raise ValueError('Sharing controls changed; review the recipients again')
+        if type(epoch) is not int: raise ValueError('Sharing controls changed; review the recipients again')
         if (not isinstance(targets, list) or not 1 <= len(targets) <= MAX_TARGETS
                 or not isinstance(duration, str) or duration not in DURATIONS or type(background) is not bool):
             raise ValueError('Choose up to 16 recipients and a sharing duration')
@@ -143,17 +164,24 @@ class LocationSessions:
         if len(set(targets)) != len(targets): raise ValueError('Choose each recipient once')
         async with self.lock:
             if self.closed: raise RuntimeError('Location sharing is closed')
-            if epoch != self.consent_epoch: raise ValueError('This sharing request was cancelled')
             if any((key, request_id) in self.cancelled_requests for key in targets):
                 raise ValueError('This sharing request was cancelled')
-            available = await self.catalog()
+            available = await self._catalog()
             if any(key not in available for key in targets):
                 raise ValueError('A selected contact or radio is no longer available')
+            current = [self.sessions.get(key) for key in targets]
+            if self.armed and all(row is not None and row.active(self.clock()) and row.revision == request_id for row in current):
+                if any(row.duration != duration or row.background != background
+                       or deadline is not None and row.until != deadline for row in current):
+                    raise ValueError('Use a new request to change sharing controls')
+                return await self.snapshot()
+            if epoch != self.consent_epoch:
+                raise ValueError('Sharing controls changed; review the recipients again')
             # Starting a new selection is not consent to resume other saved
             # recipients. Those need the explicit Resume path and native grants.
             proposed = self._active() if self.armed else {}
             until = deadline if deadline is not None else (-1 if duration == 'ongoing' else self.clock() + DURATIONS[duration])
-            for key in targets: proposed[key] = Session(until, duration, request_id)
+            for key in targets: proposed[key] = Session(until, duration, request_id, background)
             if len(proposed) > MAX_TARGETS: raise ValueError('Share with at most 16 recipients')
             previous_background = self.background
             self.background = background
@@ -175,13 +203,14 @@ class LocationSessions:
             self.native_generation = None
             self.generation += 1
             self.error = ''
+            self.consent_epoch += 1
         return await self.snapshot()
 
     async def resume(self):
         """Called only when the user returns to the app, never by a push wake."""
         async with self.lock:
             if self.closed or self.armed or not self._active(): return
-            available = await self.catalog()
+            available = await self._catalog()
             rows = {key: row for key, row in self._active().items() if key in available}
             if not rows:
                 await self._stop_locked(None)
@@ -195,6 +224,7 @@ class LocationSessions:
                 raise
             self.armed = True
             self.sessions = rows
+            self.consent_epoch += 1
 
     async def _stop_locked(self, target):
         proposed = self._active()
@@ -234,19 +264,20 @@ class LocationSessions:
                 current = self.sessions.get(target)
                 if current is None or current.revision != request_id:
                     return await self.snapshot()
+            if target is not None: self.consent_epoch += 1
             await self._stop_locked(target)
         return await self.snapshot()
 
-    async def snapshot(self):
-        available = await self.catalog()
+    async def snapshot(self, *, include_recipients=True):
+        available = await self._catalog() if include_recipients else self.catalog_cache
         return dict(consent_epoch=self.consent_epoch, active=bool(self._active()) and self.armed, paused=bool(self._active()) and not self.armed,
                     background=self.background, error=self.error, location_status=self.location_status,
                     sessions=[dict(target=key, name=available.get(key, {}).get('name', 'Unavailable contact'),
-                                   until=row.until, duration=row.duration, request_id=row.revision)
+                                   until=row.until, duration=row.duration, request_id=row.revision, background=row.background)
                               for key, row in sorted(self._active().items())],
                     recipients=[dict(id=key, name=value.get('name', 'Contact'),
                                      service=value.get('service'), online=value.get('online') is True)
-                                for key, value in sorted(available.items())])
+                                for key, value in sorted(available.items())] if include_recipients else [])
 
     async def _guard(self, key, revision, native_generation, fix=None):
         def current():
@@ -255,13 +286,14 @@ class LocationSessions:
                     and row.revision == revision and row.active(self.clock())
                     and (fix is None or self.clock() - 120 <= fix['last_update'] <= self.clock() + 300))
         if not current(): return False
-        if key not in await self.catalog() or not current(): return False
+        if key not in await self._catalog() or not current(): return False
         try: native = await self._native('status')
         except (RuntimeError, OSError): return False
         # Both lookups can yield to a stop, replacement, expiry or permission
         # change. Never use consent sampled before that asynchronous boundary.
-        return (key in await self.catalog() and current() and native.get('can_submit') is True
-                and native.get('generation') == native_generation)
+        return (key in await self._catalog() and current() and native.get('can_submit') is True
+                and native.get('generation') == native_generation
+                and (self.sessions[key].background or native.get('foreground') is True))
 
     async def _deliver(self, key, target, session, fix, native_generation):
         try:
@@ -287,13 +319,14 @@ class LocationSessions:
             if self.workers.get(key) is asyncio.current_task(): self.workers.pop(key, None)
 
     async def tick(self):
-        if self.closed: return
+        if self.closed or not self.sessions: return
         async with self.lock:
             if self.closed: return
-            available = await self.catalog()
+            available = await self._catalog()
             active = self._active()
             removed = set(self.sessions) - {key for key in active if key in available}
             if removed:
+                self.consent_epoch += 1
                 self._cancel(removed)
                 self.sessions = {key: row for key, row in active.items() if key in available}
                 if not self.sessions:
@@ -316,6 +349,7 @@ class LocationSessions:
             self.fix, self.native_generation = fix, generation
             now = self.monotonic()
             for key, session in self._active().items():
+                if not session.background and native.get('foreground') is not True: continue
                 if key in self.workers or available[key].get('online') is not True: continue
                 if self.retries.get(key, (0, 0))[1] > now: continue
                 previous = self.sent.get(key)

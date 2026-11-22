@@ -4,7 +4,7 @@ import SwiftUI
 private struct NextLocationState: Decodable {
     struct Recipient: Decodable, Identifiable { let id: String; let name: String; let service: String; let online: Bool }
     struct Session: Decodable, Identifiable {
-        let target: String; let name: String; let until: TimeInterval; let duration: String; let request_id: String
+        let target: String; let name: String; let until: TimeInterval; let duration: String; let request_id: String; let background: Bool
         var id: String { target }
     }
     let active: Bool; let paused: Bool; let background: Bool; let error: String; let location_status: String
@@ -31,6 +31,7 @@ struct NextLocationSettings: View {
                             ForEach(state.sessions) { session in
                                 VStack(alignment: .leading) {
                                     Text(session.name).font(.headline)
+                                    Text(session.background ? "Continues while locked" : "Pauses while locked").font(.caption)
                                     if session.until == -1 { Text("Until you stop sharing") }
                                     else { Text("Until \(Date(timeIntervalSince1970: session.until), style: .time)") }
                                     Button("Stop sharing with \(session.name)", role: .destructive) {
@@ -53,7 +54,7 @@ struct NextLocationSettings: View {
                                     Text(recipient.name)
                                     Text(recipient.online ? "Reticulum" : "Reticulum · waiting for a connection").font(.caption)
                                 }
-                            }
+                            }.accessibilityIdentifier("next-location-recipient")
                         }
                         if state.recipients.isEmpty {
                             Text("Choose Browser GPS in Settings → Telemetry & Location and add a Reticulum contact or conversation first.")
@@ -69,12 +70,13 @@ struct NextLocationSettings: View {
                             let request: [String: Any] = ["action": "start", "targets": Array(selected).sorted(),
                                 "duration": duration, "background": background,
                                 "request_id": UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
-                                "consent_epoch": state.consent_epoch]
+                                "consent_epoch": state.consent_epoch,
+                                "deadline": duration == "ongoing" ? -1.0 : Date().timeIntervalSince1970 + (duration == "60" ? 3600 : 900)]
                             Task { await action(request) }
                         }.disabled(busy || selected.isEmpty || selected.count > 16)
                         .accessibilityIdentifier("next-location-start")
                     } header: { Text("Share device location") } footer: {
-                        Text("Locked-screen sharing is optional and uses more battery. Start it while neXt is open. iOS shows a location indicator. Force-quitting neXt ends the session. Updates use private Reticulum messages, never a public room or offline mailbox.")
+                        Text("Locked-screen sharing is optional and uses more battery. Start it while neXt is open. iOS shows a location indicator. Force-quitting neXt ends the session. Updates use private Reticulum messages, never a public room or offline mailbox. Existing sessions keep their own locked-screen setting until you restart or stop them.")
                     }
                     if !state.location_status.isEmpty && !state.sessions.isEmpty { Text(state.location_status).font(.caption) }
                     if !state.error.isEmpty { Text(state.error).foregroundStyle(.red) }

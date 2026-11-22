@@ -27,8 +27,10 @@ peer_pid=
 sip_pid=
 sip_incoming_pid=
 sip_outgoing_pid=
+location_pid=
 owned_ui_simulators=("")
 cleanup() {
+    if [[ -n "$location_pid" ]]; then kill "$location_pid" 2>/dev/null || true; wait "$location_pid" 2>/dev/null || true; fi
     for call_pid in "$sip_incoming_pid" "$sip_outgoing_pid"; do
         if [[ -n "$call_pid" ]]; then
             kill "$call_pid" 2>/dev/null || true; wait "$call_pid" 2>/dev/null || true
@@ -70,6 +72,8 @@ unzip -q frontend.zip -d staged/frontend
 python3 "$probe/sip_frontend.py" staged/frontend
 python3 "$probe/voice_frontend.py" staged/frontend
 python3 "$probe/audio_frontend.py" staged/frontend
+node --test "$probe/test-native-location-client.mjs"
+python3 "$probe/location_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.21/meshchat_next-0.1.21-py3-none-any.whl \
     --output next-backend.whl
@@ -162,7 +166,7 @@ test "$(defaults read com.apple.iphonesimulator ConnectHardwareKeyboard)" = 0
 cp -R "$probe/Tests" .
 # The shared wake type is compiled into this test target; do not import the Family app.
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo > "$scratch/echo.log" 2>&1 &
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do
     [[ ! -f "$scratch/echo/peer.json" ]] || break
@@ -248,6 +252,18 @@ run_device_tests() {
     xcrun simctl shutdown "$destination" || return $?
     destination="$ui_destination"
     xcrun simctl bootstatus "$destination" -b || return $?
+    # GPS is synthetic only inside this disposable simulator. The UI test
+    # explicitly approves the first-use prompt; the checkup never grants it.
+    # Keep its timestamp fresh even when the preceding message UI checks are long.
+    xcrun simctl install "$destination" DerivedData/Build/Products/Debug-iphonesimulator/NextRuntimeProbe.app || return $?
+    xcrun simctl location "$destination" set 48.7500000,-122.4800000 || return $?
+    (
+        while true; do
+            xcrun simctl location "$destination" set 48.7500000,-122.4800000 || exit $?
+            sleep 15
+        done
+    ) > "$result_set/$device-synthetic-location.log" 2>&1 &
+    location_pid=$!
     failed_result_bundle="$ui_result"
     if xcodebuild test-without-building "${test_arguments[@]}" \
         -only-testing:NextRuntimeProbeUITests \

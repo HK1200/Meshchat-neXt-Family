@@ -143,7 +143,8 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.next_runtime_probe || inputs.next_unit_tests) }}
     name: ${{ matrix.device }} neXt native and Messages
     runs-on: macos-26
-    timeout-minutes: 35
+    # Full native tests, five cold-start UI cases and retained diagnostics.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

@@ -22,7 +22,7 @@ class Fixture:
     async def catalog(self):return dict(self.contacts)
     async def native(self,request):
         self.requests.append(request)
-        return {'ok':True,'can_submit':self.can_submit,'generation':self.native_generation,'fix':dict(self.fix)}
+        return {'ok':True,'can_submit':self.can_submit,'generation':self.native_generation,'foreground':True,'fix':dict(self.fix)}
     async def transmit(self,target,fix,guard):
         if not await guard():return False
         self.delivered.append((target,fix));return True
@@ -234,8 +234,7 @@ def test_saved_deadline_is_not_extended_by_a_delayed_start_or_restart():
             await f.manager.start(['rns:one'],'15',deadline=1800)
             assert f.manager.sessions['rns:one'].until==1800
             assert f.requests[0]['until']==1800
-            import hashlib
-            expected=hashlib.sha256(('rns:one:'+f.manager.sessions['rns:one'].revision).encode()).hexdigest()[:32]
+            expected=f.manager.sessions['rns:one'].grant_id('rns:one')
             assert f.requests[0]['revisions']==[expected]
             await f.manager.close()
             assert f.requests[-1]['op']=='suspend'
@@ -285,4 +284,95 @@ def test_new_start_never_silently_resumes_other_saved_recipients_after_restart()
         finally:
             if restored:await restored.close()
             await f.close()
+    asyncio.run(run())
+
+
+def test_enabling_locked_sharing_for_one_recipient_does_not_enable_another():
+    async def run():
+        f=Fixture();f.contacts['rns:two']={'name':'Two','service':'reticulum','online':True}
+        original=f.native
+        async def locked(request):return {**await original(request),'foreground':False}
+        f.manager.native=locked
+        try:
+            await f.manager.start(['rns:one'],'ongoing',background=False)
+            await f.manager.start(['rns:two'],'15',background=True)
+            await f.tick()
+            assert [target['name'] for target,_ in f.delivered]==['Two']
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_native_background_expiry_is_not_extended_by_an_ongoing_foreground_session():
+    async def run():
+        f=Fixture();f.contacts['rns:two']={'name':'Two','service':'reticulum','online':True}
+        try:
+            await f.manager.start(['rns:one'],'ongoing',background=False)
+            await f.manager.start(['rns:two'],'15',background=True)
+            assert f.requests[-1]['background'] is True and f.requests[-1]['until']==1900
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_native_grant_binds_recipient_expiry_and_background_permission():
+    from location_sessions import Session
+    base=Session(1900,'15','a'*32,False)
+    assert base.grant_id('rns:one')==Session(1900.0,'15','a'*32,False).grant_id('rns:one')
+    assert len({base.grant_id('rns:one'),base.grant_id('rns:two'),
+                Session(1901,'15','a'*32,False).grant_id('rns:one'),
+                Session(1900,'15','a'*32,True).grant_id('rns:one')})==4
+
+
+def test_old_session_schema_does_not_inherit_the_global_background_preference(tmp_path):
+    path=tmp_path/'legacy.sqlite3'
+    with sqlite3.connect(path) as db:
+        db.execute('CREATE TABLE next_location_sessions(target TEXT PRIMARY KEY, until REAL, duration TEXT, revision TEXT)')
+        db.execute('INSERT INTO next_location_sessions VALUES(?,?,?,?)',('rns:one',1900,'15','a'*32))
+        db.execute('CREATE TABLE next_location_options(key TEXT PRIMARY KEY, value TEXT)')
+        db.execute('INSERT INTO next_location_options VALUES(?,?)',('background','true'))
+    async def run():
+        f=Fixture(path)
+        try:
+            assert f.requests==[]
+            state=await f.manager.snapshot()
+            assert state['paused'] and state['sessions'][0]['background'] is False
+            await f.manager.resume()
+            assert f.requests[-1]['background'] is False
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_a_late_start_cannot_override_the_newer_recipient_selection():
+    async def run():
+        f=Fixture();f.contacts['rns:two']={'name':'Two','service':'reticulum','online':True}
+        try:
+            await f.manager.start(['rns:two'],'15',request_id='b'*32,consent_epoch=0)
+            with pytest.raises(ValueError,match='controls changed'):
+                await f.manager.start(['rns:one'],'ongoing',background=True,request_id='a'*32,consent_epoch=0)
+            assert set(f.manager.sessions)=={'rns:two'}
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_identical_start_retry_is_idempotent_and_does_not_extend_expiry():
+    async def run():
+        f=Fixture()
+        try:
+            await f.manager.start(['rns:one'],'15',request_id='a'*32,consent_epoch=0,deadline=1900)
+            calls=len(f.requests);f.advance(10)
+            await f.manager.start(['rns:one'],'15',request_id='a'*32,consent_epoch=0,deadline=1900)
+            assert len(f.requests)==calls and f.manager.sessions['rns:one'].until==1900
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_idle_tick_and_summary_do_not_repeatedly_read_the_contact_database():
+    async def run():
+        f=Fixture()
+        async def forbidden():raise AssertionError('An idle UI refresh must not scan contact history')
+        f.manager.catalog=forbidden
+        try:
+            await f.manager.tick()
+            state=await f.manager.snapshot(include_recipients=False)
+            assert not state['active'] and state['sessions']==[] and state['recipients']==[] and f.requests==[]
+        finally:await f.close()
     asyncio.run(run())

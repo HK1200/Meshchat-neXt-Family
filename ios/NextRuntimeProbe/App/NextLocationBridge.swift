@@ -86,7 +86,7 @@ final class NextLocationBridge: NSObject, @preconcurrency CLLocationManagerDeleg
         }
         var result: [String: Any] = ["ok": true, "can_submit": policy.canSubmit,
             "generation": policy.generation, "background_supported": supported,
-            "authorized": authorized, "error": error]
+            "authorized": authorized, "foreground": foreground, "error": error]
         if policy.canSubmit, let lastFix { result["fix"] = lastFix }
         return result
     }

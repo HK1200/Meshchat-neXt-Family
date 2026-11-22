@@ -50,6 +50,10 @@ class LocationRuntime:
         self.probe.send(message)
         return True
 
+    async def contact_removed(self, address):
+        key = f'reticulum:{self.probe.source.identity.hash.hex()}:{address}'
+        if key in self.manager.sessions: await self.manager.stop(key)
+
     async def tick(self):
         try:
             await self.manager.tick()
@@ -68,7 +72,7 @@ class LocationRuntime:
     def register(self, router):
         async def handle(request):
             try:
-                if request.method == 'GET': result = await self.manager.snapshot()
+                if request.method == 'GET': result = await self.manager.snapshot(include_recipients=request.query.get('summary') != '1')
                 else:
                     if request.content_length is not None and request.content_length > 4096:
                         raise ValueError('Location controls are too large')
@@ -80,6 +84,9 @@ class LocationRuntime:
                     if not isinstance(payload, dict): raise ValueError('Choose a location action')
                     action = payload.get('action')
                     if action == 'start':
+                        if (not {'request_id', 'consent_epoch'}.issubset(payload)
+                                or not isinstance(payload['request_id'], str) or type(payload['consent_epoch']) is not int):
+                            raise ValueError('Review the current sharing controls before starting')
                         if set(payload) - {'action', 'targets', 'duration', 'background', 'request_id', 'consent_epoch', 'deadline'}:
                             raise ValueError('Unsupported sharing controls')
                         result = await self.manager.start(payload.get('targets'), payload.get('duration'),

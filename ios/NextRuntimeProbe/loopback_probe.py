@@ -703,6 +703,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 else:
                     entry = next((item for item in history.contacts().values() if item["id"] == int(contact_path[1])), None)
                     if entry is None: raise KeyError(contact_path[1])
+                    if location:
+                        try: await location.contact_removed(entry["lxmf_address"])
+                        except (RuntimeError, OSError, sqlite3.Error):
+                            return web.json_response({"message": "Location sharing could not be revoked; the contact was preserved."}, status=503)
                     mailbox_push.save_route(ready_file.parent, entry["lxmf_address"], None)
                     history.remove_contact(int(contact_path[1]))
             except KeyError:
@@ -992,6 +996,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         async def stop_telemetry(_): telemetry.close()
         app.on_cleanup.append(stop_telemetry)
     if location_factory and telemetry:
+        # Only the disposable loopback simulator can request this test source.
+        # Device archives have no peer.json, so their normal settings are untouched.
+        if not device and os.environ.get("NEXT_PROBE_LOCATION_FIXTURE") == "1":
+            config.update(telemetry.configure({"location_source": "browser"}))
         location = location_factory(ready_file.parent, probe, history, telemetry)
         location.register(app.router)
         async def stop_location(_): await location.close()

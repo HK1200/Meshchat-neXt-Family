@@ -7,7 +7,7 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-This checkpoint is dated November 21, 2026. “Integrated” means the code is wired
+This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
 ## Features and remaining work
@@ -19,9 +19,9 @@ into the app; physical verification is stated separately.
 | Files and photos | The physical iPad received and returned signed file/photo payloads with matching bytes; simulator file export passes | Real camera/Photos/Files picker and share-sheet checks; larger resource transfers |
 | Voice notes | Development source now streams recorded PCM through the upstream Opus/Ogg writer, preserves standard Codec2/Opus LXMF fields, and serves bounded WAV previews for iOS versions without Ogg playback. Private host tests verify signed audio-only delivery, playback, byte limits, duration, tone energy and corrupt-input handling. Inline WAV previews have an 8 MB decoded-PCM bound; original encoded bytes remain available from the authenticated raw attachment endpoint | Bundled Ogg/Opus encode/decode assertions passed in 83 native tests on both simulators. The actual iPad encoded and decoded a signed synthetic tone; physical microphone recording, audible playback controls and export remain required |
 | Contacts and conversation history | Saved contacts, rename/removal, local conversation labels, new incoming conversations and unread state are integrated; in-place iPad upgrade preserved existing data | Complete additional contact-import methods and physical editor/discovery checks |
-| Conversation organization | Durable folders, pinning, moving, folder import/export, Unicode names and name/unread/failed/attachment filters are wired to the real interface in development source. Private HTTP tests prove restart and identity preservation, atomic failed imports and idempotent reimports. The archived interface passed create/pin/move/reload at desktop and phone browser sizes | The iPhone native UI passed; the actual iPad backend passed pin/move/export/import and process restart. Full iPad UI qualification remains pending |
-| Local conversation deletion | Individual and selected-history removal now fence late delivery callbacks, clear pins/folder assignments atomically and preserve contacts and identity. A real private signed exchange passes before deletion and a new signed message reopens the chat afterward; browser confirmation/removal passes at both sizes | The iPhone UI case passed. Actual iPad backend deletion preserved the contact, fenced old messages and received a fresh signed reply; the full iPad UI restart case is still being retried |
-| Own contact QR | Native scannable LXMF card and sharing; simulator decodes the displayed QR. Development source also adds a Family-compatible public card with nickname and optional voice address | New Family-card native tests and physical sharing between apps |
+| Conversation organization | Durable folders, pinning, moving, folder import/export, Unicode names and name/unread/failed/attachment filters are wired to the real interface in development source. Private HTTP tests prove restart and identity preservation, atomic failed imports and idempotent reimports. The archived interface passed create/pin/move/reload at desktop and phone browser sizes | Both full simulator UI runs passed; the actual iPad backend passed pin/move/export/import and process restart. Physical editor gestures still need review |
+| Local conversation deletion | Individual and selected-history removal now fence late delivery callbacks, clear pins/folder assignments atomically and preserve contacts and identity. A real private signed exchange passes before deletion and a new signed message reopens the chat afterward; browser confirmation/removal passes at both sizes | Both full simulator deletion/reply cases passed. Actual iPad backend deletion preserved the contact, fenced old messages and received a fresh signed reply; physical confirmation gestures still need review |
+| Own contact QR | Native scannable LXMF card and sharing; simulator decodes the displayed QR. Development source also adds a Family-compatible public card with nickname and optional voice address | Both simulator QR checks pass. Actual iPad build 337.1 card was parsed with Family's importer and its identity/LXMF bindings verified; physical camera sharing between apps remains |
 | Client discovery | Signed messaging-client announces, name/address filtering and bounded local cache are integrated | Physical discovery picker and additional service identities |
 | Individual TCP peers | Four editable peers, independent toggles and saved settings; native controls/restart tests and physical saved-state checks pass | Repeat real Wi-Fi changes, offline recovery and route failover; connected sockets alone do not prove message traffic |
 | RNode | Native editor, shared Bluetooth transport, saved settings, batteries and bounded radio wake handling are integrated | Actual neXt pairing, LoRa exchange, locked delivery and radio power-cycle checks |
@@ -51,8 +51,10 @@ from restoring a stopped session. Removing a recipient or disabling Browser GPS
 revokes its session, including a send still finding a path. Live updates use
 standard private LXMF telemetry without an offline-mailbox copy. They send no
 more often than once a minute while moving and every five minutes when still.
-The native panel does not replace manual-coordinate sharing or MeshCore's existing
-foreground location controls; native MeshCore background parity remains pending.
+The released chat controls now follow the native Reticulum sessions, including
+Stop all and reopening the page. Ordinary chat starts remain foreground-only;
+locked-screen sharing needs an explicit setting for that recipient. Manual
+coordinates and MeshCore's existing foreground location controls remain intact; native MeshCore background parity remains pending.
 Host regressions pass; Xcode and physical GPS/lock/expiry verification remain
 required. This is development work, not a public release or a completed device test.
 
@@ -142,3 +144,16 @@ reject pathological nesting and cross-message shared references while preserving
 canonical desktop interoperability. This replaces the older iOS-only dependency
 affected by GHSA-3c37-wwvx-h642 and GHSA-wcj4-jw5j-44wh. Android retains its
 existing pinned CBORx implementation.
+
+## Verified separate iPad preview: 337.1
+
+The same-key upgrade from 331.1 preserved all 1,840 current non-cache support
+files, twelve messages, two contacts, identity and preferences before first
+launch. Regular Family 47.6 and Family Mailbox Test 218.1 remained byte-identical.
+The matching runtime passed both full simulator runs (89 required checks each,
+GitHub run 44996038061; subsequent differences were validation, test and provider
+changes). The actual iPad's Family-compatible contact card passed public-key and
+address validation. Two private Reticulum calls, one in each direction, passed
+native capture/receive frame checks and reported current microphone flow
+correctly. These checks did not record speech or establish subjective audio
+quality, locked internet ringing, or physical iPhone compatibility.
