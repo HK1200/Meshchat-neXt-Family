@@ -21,6 +21,11 @@ final class NextLocationTests: XCTestCase {
         first.revoke()
         XCTAssertFalse(NextLocationGrants(defaults: defaults).permitsResume([revision]))
         XCTAssertFalse(first.permitsResume([]))
+        let other = String(repeating: "c", count: 32)
+        first.replace(with: [revision, other])
+        first.replace(with: [other])
+        XCTAssertTrue(first.permitsResume([other]))
+        XCTAssertFalse(NextLocationGrants(defaults: defaults).permitsResume([revision, other]))
     }
     func testCommandPreservesExplicitExpiryAndBackgroundChoice() throws {
         let value = try NextLocationCommand(raw(), now: 1000)

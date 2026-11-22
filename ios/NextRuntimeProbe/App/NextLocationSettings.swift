@@ -58,6 +58,7 @@ struct NextLocationSettings: View {
                         if state.recipients.isEmpty {
                             Text("Choose Browser GPS in Settings → Telemetry & Location and add a Reticulum contact or conversation first.")
                         }
+                        if selected.count > 16 { Text("Choose up to 16 recipients.").foregroundStyle(.orange) }
                         Picker("Duration", selection: $duration) {
                             Text("15 minutes").tag("15"); Text("1 hour").tag("60")
                             Text("Until I stop sharing").tag("ongoing")

@@ -234,7 +234,9 @@ def test_saved_deadline_is_not_extended_by_a_delayed_start_or_restart():
             await f.manager.start(['rns:one'],'15',deadline=1800)
             assert f.manager.sessions['rns:one'].until==1800
             assert f.requests[0]['until']==1800
-            assert f.requests[0]['revisions']==[f.manager.sessions['rns:one'].revision]
+            import hashlib
+            expected=hashlib.sha256(('rns:one:'+f.manager.sessions['rns:one'].revision).encode()).hexdigest()[:32]
+            assert f.requests[0]['revisions']==[expected]
             await f.manager.close()
             assert f.requests[-1]['op']=='suspend'
         finally:await f.close()
@@ -249,5 +251,20 @@ def test_cancelled_ongoing_request_does_not_revive_after_an_hour():
             f.advance(3601)
             with pytest.raises(ValueError,match='cancelled'):
                 await f.manager.start(['rns:one'],'ongoing',request_id='a'*32,consent_epoch=0)
+        finally:await f.close()
+    asyncio.run(run())
+
+
+def test_native_consent_is_separate_for_each_recipient_in_one_start_request():
+    async def run():
+        f=Fixture()
+        f.contacts['rns:two']={'name':'Two','service':'reticulum','online':True}
+        try:
+            await f.manager.start(['rns:one','rns:two'],'15',request_id='a'*32)
+            approved=set(f.requests[-1]['revisions'])
+            assert len(approved)==2
+            await f.manager.stop('rns:one',request_id='a'*32)
+            retained=set(f.requests[-1]['revisions'])
+            assert len(retained)==1 and retained < approved
         finally:await f.close()
     asyncio.run(run())

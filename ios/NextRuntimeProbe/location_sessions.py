@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 import json
+import hashlib
 import math
 import time
 import uuid
@@ -95,7 +96,8 @@ class LocationSessions:
     async def _native(self, op, rows=None, **values):
         rows = self._active() if rows is None else rows
         result = await self.native(dict(op=op, session=self.token, active=bool(rows),
-                                        until=self._until(rows), revisions=sorted({row.revision for row in rows.values()}),
+                                        until=self._until(rows), revisions=sorted(hashlib.sha256((key + ':' + row.revision).encode()).hexdigest()[:32]
+                                                     for key, row in rows.items()),
                                         background=self.background, **values))
         if not isinstance(result, dict) or result.get('ok') is not True:
             raise RuntimeError('The native location service could not complete this action')

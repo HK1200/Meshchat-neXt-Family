@@ -35,7 +35,10 @@ class LocationRuntime:
 
     async def transmit(self, target, fix, guard):
         from telemetry_runtime import outbound
-        fields = {'telemetry': {'location': fix}}
+        # The shipped neXt location UI converts CoreLocation/browser m/s to
+        # the kilometres-per-hour value used by its standard telemetry.
+        wire_fix = {**fix, 'speed': fix.get('speed', 0) * 3.6}
+        fields = {'telemetry': {'location': wire_fix}}
         _, packed = outbound(fields)
         message = await asyncio.to_thread(self.probe.compose, '', bytes.fromhex(target['address']), packed,
                                           delivery_method='direct', propagation_node=None)

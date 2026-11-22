@@ -49,12 +49,14 @@ def test_direct_telemetry_rechecks_consent_after_pathfinding_and_never_uses_mail
         import LXMF
         runtime=fixture(tmp_path)
         async def guard():return permitted
-        fix={'latitude':48.75,'longitude':-122.48,'accuracy':10,'last_update':time.time()}
+        fix={'latitude':48.75,'longitude':-122.48,'accuracy':10,'speed':2,'last_update':time.time()}
         try:
             accepted=await runtime.transmit({'address':'ab'*16},fix,guard)
             assert accepted is permitted and len(runtime.probe.sent)==int(permitted)
             args,kwargs=runtime.probe.composed[0]
             assert args[0]=='' and set(args[2])=={LXMF.FIELD_TELEMETRY}
+            from meshchatnext.src.backend.telemetry_utils import Telemeter
+            assert Telemeter.from_packed(args[2][LXMF.FIELD_TELEMETRY])['location']['speed']==7.2
             assert kwargs=={'delivery_method':'direct','propagation_node':None}
         finally:await runtime.close()
     asyncio.run(run())

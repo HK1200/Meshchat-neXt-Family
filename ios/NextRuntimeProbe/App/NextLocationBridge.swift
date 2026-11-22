@@ -16,7 +16,7 @@ final class NextLocationBridge: NSObject, @preconcurrency CLLocationManagerDeleg
     private var nextSample = ContinuousClock.now
     private var timer: Timer?
     private let grants = NextLocationGrants()
-    private lazy var policy = FamilyLocationSession(start: {}, stop: {})
+    private lazy var policy = FamilyLocationSession(start: {}, stop: { [weak self] in self?.stopSampling() })
     private var foreground: Bool { UIApplication.shared.applicationState == .active }
     private var supported: Bool {
         (Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String])?.contains("location") == true
@@ -134,8 +134,11 @@ final class NextLocationBridge: NSObject, @preconcurrency CLLocationManagerDeleg
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         policy.expireIfNeeded()
         guard policy.canSubmit, foreground || policy.mode == .continuous,
-              let fix = locations.last, (0...655.35).contains(fix.horizontalAccuracy),
-              abs(fix.timestamp.timeIntervalSinceNow) <= 120 else { return }
+              let fix = locations.last, abs(fix.timestamp.timeIntervalSinceNow) <= 120 else { return }
+        guard (0...655.35).contains(fix.horizontalAccuracy) else {
+            error = "Waiting for an accurate fix. Enable Precise Location for neXt if it is off."
+            lastFix = nil; return
+        }
         lastFix = ["latitude": fix.coordinate.latitude, "longitude": fix.coordinate.longitude,
                    "altitude": fix.verticalAccuracy < 0 ? 0 : fix.altitude,
                    "accuracy": fix.horizontalAccuracy, "speed": max(0, fix.speed),
