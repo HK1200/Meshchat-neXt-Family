@@ -70,6 +70,7 @@ targets:
     sources:
       - path: Tests
         excludes: [peer.json, ProbeUITests.swift]
+      - path: App/NextFamilyCard.swift
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift
       - path: App/NextMeshCoreAlertTarget.swift
