@@ -295,3 +295,32 @@ def test_network_call_accepted_before_ban_cannot_ring_or_attach_audio_afterward(
             assert voice.call_history({})['call_history'] == []
         finally: await voice.close(); db.close()
     asyncio.run(run())
+
+
+def test_outgoing_phone_rechecks_the_resolved_identity_on_its_network_worker():
+    from test_next_ios_voice_runtime import fixture, Engine
+    class BoundaryEngine(Engine):
+        def __init__(self,*args):
+            super().__init__(*args)
+            self.dials = []
+            def call(identity, profile=None, mode=None):
+                self.dials.append((identity.hash,profile,mode)); return 'private-call-fixture'
+            self.manager.telephone.call = call
+    async def run():
+        voice, _, db = fixture()
+        voice.engine_factory = BoundaryEngine
+        voice.config.telephone_enabled.value = True
+        remote = RNS.Identity()
+        voice.destination_blocked = lambda peer:False
+        try:
+            engine = await voice.ensure_engine()
+            assert await asyncio.to_thread(engine.manager.telephone.call,remote,32,0) == 'private-call-fixture'
+            assert engine.dials == [(remote.hash,32,0)]
+            # Discovery has now bound a previously unknown destination to this
+            # already blocked identity. The final worker must check it again.
+            voice.destination_blocked = lambda peer:peer == remote.hash.hex()
+            with pytest.raises(ValueError,match='blocked'):
+                await asyncio.to_thread(engine.manager.telephone.call,remote,16,1)
+            assert engine.dials == [(remote.hash,32,0)]
+        finally: await voice.close(); db.close()
+    asyncio.run(run())

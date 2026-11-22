@@ -248,6 +248,25 @@ class ReticulumVoice:
             raise ValueError("Reticulum calling was turned off")
         self.refresh_call_contacts()
         engine.manager.set_call_policy(allowed_fn=self.caller_allowed)
+        outgoing = getattr(engine.manager.telephone, "call", None)
+        if callable(outgoing):
+            def checked_outgoing(identity, *args, **kwargs):
+                if self.closed or engine is not self.engine or not self.config.telephone_enabled.get():
+                    raise RuntimeError("This Reticulum calling session has ended")
+                import RNS
+                remote = getattr(identity, "hash", None)
+                if not isinstance(remote, bytes) or len(remote) != 16:
+                    raise ValueError("Invalid Reticulum peer identity")
+                peers = (remote.hex(),
+                    RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity).hex(),
+                    RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity).hex())
+                if any(getattr(self, "destination_blocked", lambda peer: False)(peer) for peer in peers):
+                    raise ValueError("This Reticulum identity was blocked before calling")
+                return outgoing(identity, *args, **kwargs)
+            # TelephoneManager resolves identities and paths asynchronously, then
+            # invokes this exact boundary on its network worker. A preflight
+            # address check cannot protect a newly discovered blocked identity.
+            engine.manager.telephone.call = checked_outgoing
         self.engine = engine
         self.config.telephone_audio_profile_id.value = engine.manager.resolve_audio_profile_id()
         self.config.telephone_call_mode_id.value = engine.manager.resolve_call_mode_id()
