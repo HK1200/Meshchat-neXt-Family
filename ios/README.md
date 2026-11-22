@@ -190,3 +190,26 @@ absence of simulator credentials or a personal provisioning profile. These are
 packaging checks, not App Store approval or a claim that the remaining physical
 and suspended-delivery checks have passed. Apple enrollment, distribution
 signing, push entitlements, TestFlight and submission remain on hold.
+
+
+### neXt RNCP files under verification
+
+The native adapter retains the standard RNCP wire protocol. In **RNCP**, Browse
+imports the file you select into the app's own shared-file area; it cannot read
+arbitrary private app paths. **Open received directory** opens a received-file
+chooser whose links use the existing native Share/Save flow. Imported and
+received files are limited to 2 GiB each and retain their original file names.
+This is separate from normal message/photo attachment limits.
+
+The listener starts off. Enter permitted sender identity hashes before starting
+it. Remote fetch access, when explicitly enabled, is restricted to the RNCP
+shared directory. The adapter reserves capacity for incoming resources, keeps a
+128 MiB disk reserve, limits parallel transfers and checks cancellation before
+saving a completed fetch. Its mobile fetch guard requires the exact pinned
+first-party engine source and does not change global Reticulum objects.
+
+Cancel also stops a pending path search. Healthy resource transfers use the
+standard protocol watchdogs rather than an additional fixed data-transfer
+cutoff. These are active-app tools; the App Store archive and physical picker,
+radio and suspension tests are separate qualification steps. They do not enable
+an always-running iOS service.

@@ -75,6 +75,7 @@ python3 "$probe/voice_frontend.py" staged/frontend
 python3 "$probe/audio_frontend.py" staged/frontend
 node --test "$probe/test-native-location-client.mjs"
 python3 "$probe/location_frontend.py" staged/frontend
+python3 "$probe/rncp_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.25/meshchat_next-0.1.25-py3-none-any.whl \
     --output next-backend.whl
@@ -93,7 +94,7 @@ cp "$family_ios/../app/src/main/python/mailbox_push.py" staged/mailbox_push.py
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
 cp "$probe/blocked_destinations.py" "$probe/block_runtime.py" "$probe/contact_import.py" staged/
-cp "$probe/network_runtime.py" staged/
+cp "$probe/network_runtime.py" "$probe/file_runtime.py" "$probe/mobile_rncp_guard.py" staged/
 cp "$probe/location_sessions.py" "$probe/location_runtime.py" staged/
 test -s staged/location_sessions.py && test -s staged/location_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py

@@ -25,6 +25,17 @@ final class AttachmentPolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testRNCPExportsRequireTheExactOwnDownloadRoute() throws {
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:55444/"))
+        let policy = NextAttachmentDownloads(base: base, onComplete: { _ in XCTFail() }, onError: { _ in XCTFail() })
+        let path = "http://127.0.0.1:55444/api/v1/preview/rncp/files/" + String(repeating: "a", count: 32) + "/download"
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: path)), 2 * 1024 * 1024 * 1024)
+        for invalid in [path.replacingOccurrences(of: "55444", with: "55445"), path + "/extra", path.replacingOccurrences(of: "127.0.0.1", with: "example.invalid"), path.replacingOccurrences(of: String(repeating: "a", count: 32), with: "invalid")] {
+            XCTAssertNil(policy.downloadLimit(for: URL(string: invalid)))
+        }
+    }
+
+    @MainActor
     func testMapExportsUseTheirOwnBoundWithoutIncreasingMessageAttachmentLimit() throws {
         let base = try XCTUnwrap(URL(string: "http://127.0.0.1:55444/"))
         let policy = NextAttachmentDownloads(base: base, onComplete: { _ in XCTFail() }, onError: { _ in XCTFail() })

@@ -70,6 +70,15 @@ jobs:
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
             python -m pytest -q ios/test-next-network-runtime.py \
             --basetemp=temp-tests/network-diagnostics
+      - name: Verify native file import, sender approval and cancellation
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python -m pytest -q ios/test-next-file-runtime.py \
+            --basetemp=temp-tests/file-runtime
+      - name: Verify standard RNCP send, fetch and reverse receive over loopback
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python ios/test-next-file-wire.py --folder temp-tests/file-wire
       - name: Verify standard Reticulum probe receipts over private loopback TCP
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \

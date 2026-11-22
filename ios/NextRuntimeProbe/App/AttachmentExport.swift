@@ -53,6 +53,7 @@ final class NextAttachmentDownloads: NSObject, WKDownloadDelegate {
         guard isLocal(url) else { return nil }
         if url.path.range(of: "^/api/v1/lxmf-messages/attachment/[a-f0-9]{64}/(file|image|audio)$", options: .regularExpression) != nil { return 10_000_000 }
         if url.path.range(of: "^/api/v1/map/export/[a-f0-9]{16}/download$", options: .regularExpression) != nil { return 2 * 1024 * 1024 * 1024 }
+        if url.path.range(of: "^/api/v1/preview/rncp/files/[a-f0-9]{32}/download$", options: .regularExpression) != nil { return 2 * 1024 * 1024 * 1024 }
         return nil
     }
 

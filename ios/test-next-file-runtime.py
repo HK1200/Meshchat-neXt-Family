@@ -1,0 +1,348 @@
+"""RNCP uses its own storage, explicit identities and actual cancellation."""
+import asyncio
+import importlib
+import os
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+import sys
+
+import pytest
+from aiohttp import FormData, web
+from aiohttp.test_utils import TestClient, TestServer
+
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND = Path(os.environ['NEXT_TEST_BACKEND_SOURCE']).resolve()
+sys.path[:0] = [str(ROOT / 'ios/NextRuntimeProbe'), str(BACKEND)]
+import file_runtime as module
+
+ADDRESS = 'ab' * 16
+IDENTITY = bytes.fromhex('cd' * 16)
+
+
+def runtime(tmp_path, monkeypatch=None):
+    return module.FileRuntime(SimpleNamespace(reticulum=object(), source=SimpleNamespace(identity=object())),
+                              tmp_path / 'rncp', lambda address: address == 'ff' * 16, AsyncMock())
+
+
+async def with_client(value, operation):
+    app = web.Application()
+    value.register(app.router)
+    async with TestClient(TestServer(app)) as client:
+        try: return await operation(client)
+        finally: await value.close()
+
+
+@pytest.mark.parametrize('bad', [None, '', '../private', 'g' * 32, 'aa' * 15, True])
+def test_invalid_destination_never_starts_a_transfer(tmp_path, bad):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler.send_file = AsyncMock()
+        file = value.shared / 'chosen.txt'; file.write_bytes(b'chosen')
+        async def check(client):
+            response = await client.post('/api/v1/rncp/send', json={'destination_hash': bad, 'file_path': str(file)})
+            assert response.status == 400
+            value.handler.send_file.assert_not_awaited()
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('bad', [True, False, 0, -1, 601, 'nan', 'inf', [], {}])
+def test_invalid_timeout_never_starts_a_transfer(tmp_path, bad):
+    async def run():
+        value = runtime(tmp_path); value.handler.send_file = AsyncMock()
+        file = value.shared / 'chosen.txt'; file.write_bytes(b'chosen')
+        async def check(client):
+            response = await client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(file), 'timeout': bad})
+            assert response.status == 400
+            value.handler.send_file.assert_not_awaited()
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_local_paths_reject_private_data_and_escaping_symlinks(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        private = tmp_path / 'identity'; private.write_bytes(b'private')
+        (value.shared / 'escape').symlink_to(private)
+        value.handler.send_file = AsyncMock()
+        value.handler.fetch_file = AsyncMock()
+        async def check(client):
+            for path in (str(private), str(value.shared / 'escape'), '../identity', str(tmp_path)):
+                response = await client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': path})
+                assert response.status == 400
+            response = await client.post('/api/v1/rncp/fetch', json={'destination_hash': ADDRESS, 'file_path': 'remote.txt', 'save_path': str(tmp_path)})
+            assert response.status == 400
+            value.handler.send_file.assert_not_awaited(); value.handler.fetch_file.assert_not_awaited()
+            assert private.read_bytes() == b'private'
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_selected_upload_keeps_name_bytes_and_does_not_overwrite(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        async def check(client):
+            paths = []
+            for payload in (b'first', b'second'):
+                form = FormData(); form.add_field('file', payload, filename='photo.png', content_type='application/octet-stream')
+                response = await client.post('/api/v1/preview/rncp/upload', data=form)
+                assert response.status == 200
+                result = await response.json(); path = Path(result['file_path'])
+                assert path.name == 'photo.png' and path.read_bytes() == payload
+                assert path.stat().st_mode & 0o777 == 0o600
+                assert path.is_relative_to(value.shared); paths.append(path)
+            assert paths[0] != paths[1] and paths[0].read_bytes() == b'first'
+            value.handler.send_file = AsyncMock(return_value={'status': 'completed', 'transfer_id': 'aa' * 32})
+            response = await client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(paths[0]), 'timeout': 30})
+            assert response.status == 200
+            assert value.handler.send_file.await_args.kwargs['file_path'] == str(paths[0])
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_failed_or_multi_file_upload_does_not_leave_partial_data(tmp_path, monkeypatch):
+    monkeypatch.setattr(module, 'MAX_FILE', 4)
+    async def run():
+        value = runtime(tmp_path)
+        async def check(client):
+            form = FormData(); form.add_field('file', b'12345', filename='large.txt')
+            assert (await client.post('/api/v1/preview/rncp/upload', data=form)).status == 400
+            form = FormData(); form.add_field('file', b'123', filename='one.txt'); form.add_field('file', b'456', filename='two.txt')
+            assert (await client.post('/api/v1/preview/rncp/upload', data=form)).status == 400
+            assert list(value.shared.iterdir()) == []
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_listener_rejects_unapproved_identity_shapes_and_bad_paths(tmp_path):
+    async def run():
+        value = runtime(tmp_path); value.handler.setup_receive_destination = lambda **kwargs: pytest.fail('Listener must not start')
+        async def check(client):
+            for data in ({'allowed_hashes': ['invalid']}, {'allowed_hashes': ['ff' * 16]}, {'allowed_hashes': [ADDRESS] * 101},
+                         {'fetch_allowed': 'true'}, {'fetch_jail': str(tmp_path)}):
+                assert (await client.post('/api/v1/rncp/listen', json=data)).status == 400
+            assert (await client.get('/api/v1/rncp/status')).status == 200
+            assert (await client.get('/api/v1/rncp/listen')).status == 405
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_cancel_stops_the_resource_before_its_reference_is_dropped(tmp_path):
+    async def run():
+        value = runtime(tmp_path); calls = []
+        resource = SimpleNamespace(cancel=lambda: calls.append('cancelled'))
+        value.handler.active_transfers['aa' * 32] = {'status': 'sending', 'resource': resource}
+        assert value.cancel('aa' * 32) == {'cancelled': ['aa' * 32]}
+        assert calls == ['cancelled'] and value.handler.active_transfers['aa' * 32]['status'] == 'cancelled'
+        await value.close()
+    asyncio.run(run())
+
+
+def test_reception_checks_current_approval_capacity_and_cancel_before_saving(tmp_path, monkeypatch):
+    finished = []
+    monkeypatch.setattr(module.RNCPHandler, '_receive_resource_concluded', lambda self, resource: finished.append(resource.hash))
+    monkeypatch.setattr(module.shutil, 'disk_usage', lambda path: SimpleNamespace(free=module.RESERVE + 100))
+    async def run():
+        value = runtime(tmp_path); value.handler.allowed_identity_hashes = [IDENTITY]
+        link = SimpleNamespace(get_remote_identity=lambda: SimpleNamespace(hash=IDENTITY))
+        def advert(key, size=20): return SimpleNamespace(link=link, get_data_size=lambda: size, get_hash=lambda: key)
+        assert value.handler._receive_resource_callback(advert(b'a' * 32))
+        assert value.handler._receive_resource_callback(advert(b'b' * 32))
+        assert not value.handler._receive_resource_callback(advert(b'c' * 32))
+        assert not value.handler._receive_resource_callback(advert(b'a' * 32))
+        value.handler.cancel_transfer((b'a' * 32).hex())
+        value.handler._receive_resource_concluded(SimpleNamespace(link=link, hash=b'a' * 32))
+        assert finished == []
+        value.handler._receive_resource_concluded(SimpleNamespace(link=link, hash=b'b' * 32))
+        assert finished == [b'b' * 32]
+        assert value.reservations == {}
+        await value.close()
+        assert not value.handler._receive_resource_callback(advert(b'c' * 32))
+    asyncio.run(run())
+
+
+def test_export_serves_only_received_files_and_no_external_symlinks(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        private = tmp_path / 'private'; private.write_bytes(b'not shared')
+        (value.received / 'escaped').symlink_to(private)
+        (value.received / 'reply.txt').write_bytes(b'actual received bytes')
+        async def check(client):
+            listing = await (await client.get('/api/v1/preview/rncp/files')).json()
+            assert [row['name'] for row in listing['files']] == ['reply.txt']
+            response = await client.get('/api/v1/preview/rncp/files/' + listing['files'][0]['id'] + '/download')
+            assert response.status == 200 and await response.read() == b'actual received bytes'
+            assert 'attachment' in response.headers['Content-Disposition']
+            assert (await client.get('/api/v1/preview/rncp/files/' + '0' * 32 + '/download')).status == 404
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_cancel_all_stops_path_waits_and_preserves_completed_records(tmp_path):
+    async def run():
+        value = runtime(tmp_path); entered = asyncio.Event(); stopped = asyncio.Event()
+        file = value.shared / 'chosen'; file.write_bytes(b'data')
+        async def waiting(**kwargs):
+            entered.set()
+            try: await asyncio.Future()
+            finally: stopped.set()
+        value.handler.send_file = waiting
+        value.handler.active_transfers['bb' * 32] = {'status': 'completed'}
+        async def check(client):
+            operation = asyncio.create_task(client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(file)}))
+            await asyncio.wait_for(entered.wait(), 2)
+            response = await client.post('/api/v1/rncp/cancel', json={})
+            result = await response.json()
+            assert response.status == 200 and result['pending_cancelled'] == 1
+            response = await asyncio.wait_for(operation, 2)
+            assert response.status == 409
+            assert stopped.is_set() and value.slots._value == 2 and not value.transfers
+            assert value.handler.active_transfers['bb' * 32]['status'] == 'completed'
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_shutdown_cancels_and_releases_in_flight_requests(tmp_path):
+    async def run():
+        from aiohttp import ClientConnectionError
+        value = runtime(tmp_path); entered = asyncio.Event(); stopped = asyncio.Event()
+        file = value.shared / 'chosen'; file.write_bytes(b'data')
+        async def waiting(**kwargs):
+            entered.set()
+            try: await asyncio.Future()
+            finally: stopped.set()
+        value.handler.send_file = waiting
+        app = web.Application(); value.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            operation = asyncio.create_task(client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(file)}))
+            await asyncio.wait_for(entered.wait(), 2)
+            await asyncio.wait_for(value.close(), 2)
+            with pytest.raises(ClientConnectionError): await asyncio.wait_for(operation, 2)
+            assert stopped.is_set() and value.slots._value == 2 and not value.pending and not value.transfers
+            assert (await client.post('/api/v1/rncp/listen', json={})).status == 503
+    asyncio.run(run())
+
+
+def test_fetch_guard_rejects_changed_engine_and_keeps_private_namespaces(tmp_path):
+    import inspect
+    import mobile_rncp_guard
+    async def run():
+        first = runtime(tmp_path / 'one'); second = runtime(tmp_path / 'two')
+        assert first.handler.fetch_file.__func__.__globals__ is not second.handler.fetch_file.__func__.__globals__
+        source = inspect.getsource(module.RNCPHandler.fetch_file)
+        for changed in (source + '\n', source.replace('ACCEPT_ALL', 'ACCEPT_APP')):
+            with pytest.raises(ValueError): mobile_rncp_guard.guarded_source(changed)
+        with pytest.raises(ValueError): mobile_rncp_guard.guarded_send_source(inspect.getsource(module.RNCPHandler.send_file) + '\n')
+        assert not first.handler._mobile_fetch_accept(SimpleNamespace(get_data_size=lambda: module.MAX_FILE + 1, get_hash=lambda: b'a' * 32), bytes.fromhex(ADDRESS))
+        assert not first.handler._mobile_fetch_accept(SimpleNamespace(get_data_size=lambda: 1, get_hash=lambda: b'a' * 32), bytes.fromhex('ff' * 16))
+        await first.close(); await second.close()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_guarded_fetch_never_saves_a_cancelled_complete_resource(tmp_path, cancelled):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler._path_wait_seconds = lambda *args: 2
+        namespace = value.handler.fetch_file.__func__.__globals__
+        source = tmp_path / 'rns-temp'; source.write_bytes(b'exact received bytes')
+        key = b'a' * 32
+        resource = SimpleNamespace(hash=key, status=9, metadata={'name': b'chosen.bin'}, data=SimpleNamespace(name=str(source)), progress_callback=lambda callback: None, get_progress=lambda: 1.0, cancel=lambda: None)
+        links = []
+        class Link:
+            ACTIVE = 1
+            ACCEPT_APP = 2
+            def __init__(self, destination): self.status = 1; self.callbacks = {}; self.ended = False; links.append(self)
+            def identify(self, identity): pass
+            def set_resource_strategy(self, strategy): assert strategy == self.ACCEPT_APP
+            def set_resource_callback(self, callback): self.callbacks['accept'] = callback
+            def set_resource_started_callback(self, callback): self.callbacks['start'] = callback
+            def set_resource_concluded_callback(self, callback): self.callbacks['finish'] = callback
+            def teardown(self): self.ended = True
+            def request(self, *args, **kwargs):
+                kwargs['response_callback'](SimpleNamespace(response=True))
+                assert self.callbacks['accept'](SimpleNamespace(get_data_size=lambda: 20, get_hash=lambda: key))
+                self.callbacks['start'](resource)
+                if cancelled: value.cancel(key.hex())
+                self.callbacks['finish'](resource)
+        namespace['link_establishment_window'] = lambda *args: 2
+        namespace['RNS'] = SimpleNamespace(Transport=SimpleNamespace(has_path=lambda destination: True), Identity=SimpleNamespace(recall=lambda destination: object()),
+            Destination=lambda *args: object(), Link=Link, Resource=SimpleNamespace(COMPLETE=9))
+        namespace['RNS'].Destination = type('Destination', (), {'OUT': 1, 'SINGLE': 1, '__init__': lambda self, *args: None})
+        if cancelled:
+            with pytest.raises(InterruptedError): await value.handler.fetch_file(bytes.fromhex(ADDRESS), 'chosen.bin', timeout=2)
+            assert source.read_bytes() == b'exact received bytes' and not list(value.received.iterdir())
+        else:
+            result = await value.handler.fetch_file(bytes.fromhex(ADDRESS), 'chosen.bin', timeout=2)
+            assert Path(result['file_path']).read_bytes() == b'exact received bytes'
+        assert links[0].ended and not value.reservations
+        await value.close()
+    asyncio.run(run())
+
+
+def test_cancel_during_link_setup_tears_down_only_its_own_link(tmp_path):
+    async def run():
+        value = runtime(tmp_path); entered = asyncio.Event(); links = []
+        value.handler._path_wait_seconds = lambda *args: 2
+        namespace = value.handler.fetch_file.__func__.__globals__
+        class Link:
+            ACTIVE = 1
+            def __init__(self, destination): self.status = 0; self.ended = False; links.append(self); entered.set()
+            def teardown(self): self.ended = True
+        namespace['link_establishment_window'] = lambda *args: 60
+        namespace['RNS'] = SimpleNamespace(Transport=SimpleNamespace(has_path=lambda destination: True), Identity=SimpleNamespace(recall=lambda destination: object()),
+            Destination=type('Destination', (), {'OUT': 1, 'SINGLE': 1, '__init__': lambda self, *args: None}), Link=Link)
+        async def check(client):
+            operation = asyncio.create_task(client.post('/api/v1/rncp/fetch', json={'destination_hash': ADDRESS, 'file_path': 'remote.bin'}))
+            await asyncio.wait_for(entered.wait(), 2)
+            assert (await client.post('/api/v1/rncp/cancel', json={})).status == 200
+            assert (await asyncio.wait_for(operation, 2)).status == 409
+            assert links[0].ended and not value.links and not value.transfers and value.slots._value == 2
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_resource_constructor_failure_closes_the_selected_file_and_link(tmp_path):
+    async def run():
+        value = runtime(tmp_path); handles = []; links = []
+        chosen = value.shared / 'chosen.bin'; chosen.write_bytes(b'not leaked')
+        value.handler._path_wait_seconds = lambda *args: 2
+        namespace = value.handler.send_file.__func__.__globals__
+        class Link:
+            ACTIVE = 1
+            def __init__(self, destination): self.status = 1; self.ended = False; links.append(self)
+            def identify(self, identity): pass
+            def teardown(self): self.ended = True
+        class Resource:
+            def __init__(self, handle, *args, **kwargs): handles.append(handle); raise RuntimeError('Synthetic constructor failure')
+        namespace['link_establishment_window'] = lambda *args: 2
+        namespace['RNS'] = SimpleNamespace(Transport=SimpleNamespace(has_path=lambda destination: True), Identity=SimpleNamespace(recall=lambda destination: object()),
+            Destination=type('Destination', (), {'OUT': 1, 'SINGLE': 1, '__init__': lambda self, *args: None}), Link=Link, Resource=Resource)
+        async def check(client):
+            response = await client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(chosen)})
+            assert response.status == 502
+            assert handles[0].closed and links[0].ended and not value.links
+            assert chosen.read_bytes() == b'not leaked'
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_block_while_finding_a_path_prevents_opening_the_file_link(tmp_path):
+    async def run():
+        flags = {'blocked': False, 'path': False}; requested = asyncio.Event()
+        value = module.FileRuntime(SimpleNamespace(reticulum=object(), source=SimpleNamespace(identity=object())),
+            tmp_path / 'rncp', lambda address: flags['blocked'], AsyncMock())
+        chosen = value.shared / 'chosen.bin'; chosen.write_bytes(b'not transmitted')
+        value.handler._path_wait_seconds = lambda *args: 3
+        namespace = value.handler.send_file.__func__.__globals__
+        namespace['RNS'] = SimpleNamespace(Transport=SimpleNamespace(has_path=lambda destination: flags['path'], request_path=lambda destination: requested.set()),
+            Identity=SimpleNamespace(recall=lambda destination: pytest.fail('Must reject before recalling or opening a destination')))
+        async def check(client):
+            operation = asyncio.create_task(client.post('/api/v1/rncp/send', json={'destination_hash': ADDRESS, 'file_path': str(chosen)}))
+            await asyncio.wait_for(requested.wait(), 2)
+            flags.update(blocked=True, path=True)
+            assert (await asyncio.wait_for(operation, 2)).status == 400
+            assert not value.links and chosen.read_bytes() == b'not transmitted'
+        await with_client(value, check)
+    asyncio.run(run())
