@@ -31,7 +31,7 @@ targets:
         NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
         NSLocationWhenInUseUsageDescription: Use your location when you choose to center the map or share it with a contact.
         NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
-        UIBackgroundModes: [bluetooth-central, audio, voip]
+        UIBackgroundModes: [bluetooth-central, audio, voip, location]
         NSBluetoothAlwaysUsageDescription: Connect to the RNode or MeshCore companion you choose for mesh messaging.
         NSLocalNetworkUsageDescription: Connect to the local Reticulum peers, radios or SIP providers you choose.
         NSAppTransportSecurity:
@@ -70,6 +70,9 @@ targets:
     sources:
       - path: Tests
         excludes: [peer.json, ProbeUITests.swift]
+      - path: App/NextLocationGrants.swift
+      - path: App/NextLocationCommand.swift
+      - path: App/FamilyLocationSession.swift
       - path: App/NextFamilyCard.swift
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift

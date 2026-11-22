@@ -38,6 +38,24 @@ into the app; physical verification is stated separately.
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then qualify the new native recipient-route editor and signed sender hints. Native receiving-side enrollment, token rotation, explicit sender approvals and alert-tap retrieval are integrated in development source and await Xcode qualification. Personal-signed previews leave Apple enrollment disabled. Real suspended APNs delivery needs Apple signing entitlements, a deployed provider and device tests |
 | Recovery and distribution | Unsigned arm64 device packages build; same-account personal upgrades preserve the separate preview | Finish identity/settings backup and restore paths, release configuration, signing, TestFlight and store listing/review |
 
+## Native location follow-up under qualification
+
+The separate native Location sharing panel adds explicit Reticulum recipients,
+15-minute/one-hour/until-stopped sessions, and a locked-screen option off by
+default. It uses When In Use permission and the visible iOS location indicator;
+no Always permission is requested. Foreground-only sessions pause when locked.
+Fixed-duration sessions retain their original deadline through delayed requests
+and restarts. Cold starts do not activate GPS; Resume must occur in the foreground.
+Independent native consent revisions prevent a failed backend settings write
+from restoring a stopped session. Removing a recipient or disabling Browser GPS
+revokes its session, including a send still finding a path. Live updates use
+standard private LXMF telemetry without an offline-mailbox copy. They send no
+more often than once a minute while moving and every five minutes when still.
+The native panel does not replace manual-coordinate sharing or MeshCore's existing
+foreground location controls; native MeshCore background parity remains pending.
+Host regressions pass; Xcode and physical GPS/lock/expiry verification remain
+required. This is development work, not a public release or a completed device test.
+
 ## Verified checkpoints
 
 On November 21, 2026, the separate physical neXt preview upgraded from build

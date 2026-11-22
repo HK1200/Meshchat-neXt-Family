@@ -27,3 +27,5 @@ void next_probe_set_voice_muted(bool muted);
 /* Used only by bounded signed-hint worker threads, never the main/audio queue. */
 typedef int32_t (*NextHTTPSPost)(const char *, const uint8_t *, size_t);
 void next_probe_set_https_post(NextHTTPSPost post);
+
+void next_probe_set_location(NextBluetoothRequest request);

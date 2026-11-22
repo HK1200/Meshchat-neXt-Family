@@ -380,7 +380,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -388,6 +388,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     maps = None
     relay = None
     telemetry = None
+    location = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -733,6 +734,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 payload = await request.json()
                 if telemetry and isinstance(payload, dict) and telemetry.location_keys.intersection(payload):
                     config.update(telemetry.configure(payload))
+                    if location: await location.tick()
                     await meshcore_broadcast({"type": "config", "config": config})
                     return web.json_response({"config": config})
                 if isinstance(payload, dict) and "auto_send_failed_messages_to_propagation_node" in payload:
@@ -989,6 +991,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         telemetry.register(app.router)
         async def stop_telemetry(_): telemetry.close()
         app.on_cleanup.append(stop_telemetry)
+    if location_factory and telemetry:
+        location = location_factory(ready_file.parent, probe, history, telemetry)
+        location.register(app.router)
+        async def stop_location(_): await location.close()
+        # Revoke GPS before closing telemetry's persistent settings.
+        app.on_cleanup.insert(0, stop_location)
     if relay_factory:
         relay = relay_factory(ready_file.parent, probe.source.identity, probe.reticulum, history.contacts,
                               lambda: config["display_name"], lambda event: track(meshcore_broadcast(event)))
@@ -1040,6 +1048,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await announce_routes()
             if relay: relay.refresh_contacts()
             mailbox.tick()
+            if location: await location.tick()
             await asyncio.sleep(1)
     finally:
         inbox.close()
@@ -1073,8 +1082,9 @@ def run_for_app(ready_file):
         from map_runtime import MapRuntime
         from relay_runtime import RelayRuntime
         from telemetry_runtime import TelemetryRuntime
+        from location_runtime import LocationRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

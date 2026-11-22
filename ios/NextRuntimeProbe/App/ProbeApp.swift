@@ -23,7 +23,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -121,6 +121,10 @@ private struct ProbeScreen: View {
                                     .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }.accessibilityIdentifier("next-mailbox-settings")
+                            Button { panel = .location } label: {
+                                Label("Location sharing", systemImage: "location")
+                                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                            }.accessibilityIdentifier("next-location-settings")
                             Text("My LXMF address")
                             Spacer()
                             Button { panel = .myContact } label: {
@@ -227,6 +231,8 @@ private struct ProbeScreen: View {
                         ToolbarItem(placement: .confirmationAction) { Button("Done") { panel = nil } }
                     }
                 }
+            case .location:
+                if let url { NextLocationSettings(base: url).interactiveDismissDisabled() }
             case .mailbox:
                 if let url { NextMailboxSettings(base: url, push: alerts.push).interactiveDismissDisabled() }
             case .reticulum:
@@ -485,6 +491,10 @@ private struct ProbeScreen: View {
         next_probe_set_sip { request in
             guard let request else { return nil }
             return strdup(NextSIPBridge.request(String(cString: request)))
+        }
+        next_probe_set_location { request in
+            guard let request else { return nil }
+            return strdup(NextLocationBridge.request(String(cString: request)))
         }
         next_probe_set_voice { request in
             guard let request else { return nil }

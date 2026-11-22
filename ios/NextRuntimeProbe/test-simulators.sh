@@ -54,6 +54,7 @@ ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
 cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" App/
+cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyNativeHTTPS.swift" App/
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
@@ -85,6 +86,8 @@ cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 cp "$family_ios/../app/src/main/python/mailbox_push.py" staged/mailbox_push.py
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
+cp "$probe/location_sessions.py" "$probe/location_runtime.py" staged/
+test -s staged/location_sessions.py && test -s staged/location_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py
 cp "$probe/relay_runtime.py" staged/relay_runtime.py
 cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
@@ -137,7 +140,7 @@ YAML
 import plistlib, sys
 with open(sys.argv[1], 'rb') as stream:
     value = plistlib.load(stream)
-assert {'audio', 'voip'}.issubset(value.get('UIBackgroundModes', [])), 'CallKit requires the VoIP mode in the actual device app'
+assert {'audio', 'voip', 'location'}.issubset(value.get('UIBackgroundModes', [])), 'The actual device app must include its call and opt-in location modes'
 PYTHON
     test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = org.meshchat.next.ios.runtimeprobe
     mkdir Payload

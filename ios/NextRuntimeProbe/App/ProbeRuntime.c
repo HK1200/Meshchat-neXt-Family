@@ -54,6 +54,33 @@ static struct PyModuleDef https_module = {
 };
 static PyObject *init_https(void) { return PyModule_Create(&https_module); }
 
+static NextBluetoothRequest location_request;
+void next_probe_set_location(NextBluetoothRequest request) {
+    if (!Py_IsInitialized()) location_request = request;
+}
+static PyObject *location_call(PyObject *self, PyObject *args) {
+    const char *request;
+    if (!PyArg_ParseTuple(args, "s", &request)) return NULL;
+    if (strlen(request) > 16384) return PyErr_Format(PyExc_ValueError, "Location request is too large");
+    if (!location_request) return PyErr_Format(PyExc_RuntimeError, "Native location is unavailable");
+    char *reply;
+    Py_BEGIN_ALLOW_THREADS
+    reply = location_request(request);
+    Py_END_ALLOW_THREADS
+    if (!reply) return PyErr_NoMemory();
+    PyObject *result = PyUnicode_FromString(reply);
+    free(reply);
+    return result;
+}
+static PyMethodDef location_methods[] = {
+    {"request", location_call, METH_VARARGS, NULL}, {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef location_module = {
+    PyModuleDef_HEAD_INIT, "_next_location", NULL, -1, location_methods,
+    NULL, NULL, NULL, NULL
+};
+static PyObject *init_location(void) { return PyModule_Create(&location_module); }
+
 static NextBluetoothRequest bluetooth_request;
 static NextBluetoothRequest credentials_request;
 static NextBluetoothRequest sip_request;
@@ -237,6 +264,7 @@ void next_probe_run(const char *home, const char *modules, const char *ready_fil
     if (PyImport_AppendInittab("_next_credentials", init_credentials) != 0) return;
     if (PyImport_AppendInittab("_next_sip", init_sip) != 0) return;
     if (PyImport_AppendInittab("_next_voice", init_voice) != 0) return;
+    if (PyImport_AppendInittab("_next_location", init_location) != 0) return;
     if (PyImport_AppendInittab("_next_lifecycle", init_lifecycle) != 0) return;
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
