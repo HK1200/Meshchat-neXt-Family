@@ -120,7 +120,7 @@ struct NextPermissionCheckup: View {
                 }.disabled(busy).buttonStyle(.bordered)
             } else if optional.microphone != .granted { settingsButton }
         case 3:
-            Text("Camera access lets you take a photo to attach when you choose the camera. neXt does not turn the camera on in the background.")
+            Text("Camera access lets you scan a contact QR code or take a photo to attach when you choose the camera. neXt does not turn the camera on in the background.")
             LabeledContent("Camera", value: optional.camera == .authorized ? "Allowed" : "Not allowed yet")
             if optional.camera == .notDetermined {
                 Button("Allow camera") {

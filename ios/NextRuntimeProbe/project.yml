@@ -28,7 +28,7 @@ targets:
         NextPushEnvironment: "$(NEXT_APNS_ENVIRONMENT)"
         NSPhotoLibraryUsageDescription: Choose photos to attach to a message.
         NSPhotoLibraryAddUsageDescription: Save a received photo when you choose Save Image.
-        NSCameraUsageDescription: Take a photo to attach to a message when you choose the camera.
+        NSCameraUsageDescription: Scan a contact QR code or take a photo to attach when you choose the camera.
         NSLocationWhenInUseUsageDescription: Use your location when you choose to center the map or share it with a contact.
         NSMicrophoneUsageDescription: Record a voice message or speak during a call when you choose.
         UIBackgroundModes: [bluetooth-central, audio, voip, location]

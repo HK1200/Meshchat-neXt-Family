@@ -29,6 +29,7 @@ from loopback_listener import ResumableListener
 from conversation_organization import ConversationOrganization
 from blocked_destinations import PeerBlocks
 from block_runtime import BlockRuntime
+from contact_import import ContactImport
 
 
 def record(message, state):
@@ -1056,6 +1057,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         await meshcore_broadcast({"type":"blocked_destinations", "blocked_destinations":blocks.snapshot()})
 
     BlockRuntime(blocks, history, organization, revoke_blocked, blocks_changed).register(app.router)
+    async def imported_contact_changed():
+        contacts.clear(); contacts.update(history.contacts())
+        if voice: voice.refresh_call_contacts()
+        if relay: relay.refresh_contacts()
+
+    ContactImport(history, blocks, own, imported_contact_changed).register(app.router)
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)

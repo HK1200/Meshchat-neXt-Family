@@ -4,10 +4,41 @@ import CoreImage
 final class ProbeUITests: XCTestCase {
     private struct EchoFixture: Decodable {
         let message: String
+        let address: String
         let port: Int
         let deleteMessage: String?
         let freshMessage: String?
         let locationReceipt: String?
+    }
+
+    func testContactCodeImportReviewsExistingContactWithoutRequestingCamera() throws {
+        executionTimeAllowance = 180
+        continueAfterFailure = false
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: file))
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        let own = app.staticTexts["my-lxmf-address"].label
+        app.buttons["show-my-contact-qr"].tap()
+        let importing = app.buttons["next-import-contact"]
+        XCTAssertTrue(importing.waitForExistence(timeout: 15), app.debugDescription)
+        importing.tap()
+        XCTAssertTrue(app.collectionViews["next-contact-import-form"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["next-contact-import-photo"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        let paste = app.buttons["next-contact-import-paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 15), app.debugDescription)
+        paste.tap()
+        let address = app.staticTexts["next-contact-import-address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 30), app.debugDescription)
+        XCTAssertEqual(address.label, fixture.address)
+        XCTAssertTrue(app.staticTexts["Already saved as Simulator Echo"].exists, app.debugDescription)
+        XCTAssertFalse(app.buttons["next-contact-import-save"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        app.navigationBars["Add Reticulum contact"].buttons["Cancel"].tap()
+        app.navigationBars["My contact QR"].buttons["Done"].tap()
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, own)
     }
 
     func testConversationSendsAndReceivesSignedLXMF() throws {

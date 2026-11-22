@@ -57,6 +57,7 @@ cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
 cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" App/
 cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
+cp "$family_ios/FamilyLive/FamilyQRScanner.swift" App/
 cp "$family_ios/FamilyLive/FamilyNativeHTTPS.swift" App/
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" App/
@@ -90,7 +91,7 @@ cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 cp "$family_ios/../app/src/main/python/mailbox_push.py" staged/mailbox_push.py
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
-cp "$probe/blocked_destinations.py" "$probe/block_runtime.py" staged/
+cp "$probe/blocked_destinations.py" "$probe/block_runtime.py" "$probe/contact_import.py" staged/
 cp "$probe/location_sessions.py" "$probe/location_runtime.py" staged/
 test -s staged/location_sessions.py && test -s staged/location_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py
@@ -257,6 +258,17 @@ run_device_tests() {
     # explicitly approves the first-use prompt; the checkup never grants it.
     # Keep its timestamp fresh even when the preceding message UI checks are long.
     xcrun simctl install "$destination" DerivedData/Build/Products/Debug-iphonesimulator/NextRuntimeProbe.app || return $?
+    # Only the disposable simulator receives this private fixture's public code.
+    # The native import test uses Apple's explicit Paste button, never the host's
+    # clipboard or a physical device, and must not overwrite the existing contact.
+    python3 - "$scratch/echo/peer.json" "$scratch/qr-import-code.txt" <<'PYTHON'
+import json, sys
+from pathlib import Path
+peer = json.loads(Path(sys.argv[1]).read_text())
+assert peer['host'] == '127.0.0.1'
+Path(sys.argv[2]).write_text('lxmf://' + peer['address'])
+PYTHON
+    xcrun simctl pbcopy "$destination" < "$scratch/qr-import-code.txt" || return $?
     xcrun simctl location "$destination" set 48.7500000,-122.4800000 || return $?
     (
         while true; do

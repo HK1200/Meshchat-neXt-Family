@@ -11,6 +11,7 @@ struct NextMyContactQR: View {
     @State private var familyPayload: String?
     @State private var loading = false
     @State private var error = ""
+    @State private var importing = false
 
     private var payload: String? {
         guard address.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil else { return nil }
@@ -71,8 +72,15 @@ struct NextMyContactQR: View {
             }
             .navigationTitle("My contact QR")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if base != nil {
+                        Button("Add contact", systemImage: "person.badge.plus") { importing = true }
+                            .accessibilityIdentifier("next-import-contact")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+            .sheet(isPresented: $importing) { if let base { NextContactImport(base: base) } }
             .task(id: format) {
                 if format == .family { await loadFamilyCard() }
             }
