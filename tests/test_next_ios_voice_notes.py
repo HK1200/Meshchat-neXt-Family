@@ -146,6 +146,49 @@ def test_bad_ogg_does_not_crash_the_player():
         voice_notes.playable_wav(b"OggS" + b"OpusHead" + b"\x00" * 32)
 
 
+def audio_only_hub(folder, ports, pipe):
+    import LXMF
+    import RNS
+
+    folder.mkdir()
+    assert len(ports) == 1
+    (folder / "config").write_text(
+        "[reticulum]\nshare_instance = No\nenable_transport = Yes\n"
+        "[interfaces]\n[[Private audio]]\ntype = TCPServerInterface\nenabled = Yes\n"
+        f"listen_ip = 127.0.0.1\nlisten_port = {ports[0]}\n"
+    )
+    RNS.Reticulum(configdir=str(folder), loglevel=1)
+    identity = RNS.Identity()
+    router = LXMF.LXMRouter(
+        identity=identity, storagepath=str(folder / "lxmf"), autopeer=False
+    )
+    source = router.register_delivery_identity(
+        identity, display_name="Private audio-only test", stamp_cost=0
+    )
+
+    def reply(message):
+        if not message.signature_validated:
+            return
+        recalled = RNS.Identity.recall(message.source_hash)
+        target = RNS.Destination(
+            recalled, RNS.Destination.OUT, RNS.Destination.SINGLE, "lxmf", "delivery"
+        )
+        router.handle_outbound(
+            LXMF.LXMessage(
+                target,
+                source,
+                "",
+                fields=message.fields,
+                desired_method=LXMF.LXMessage.DIRECT,
+            )
+        )
+
+    router.register_delivery_callback(reply)
+    source.announce()
+    pipe.send(source.hash.hex())
+    pipe.recv()
+
+
 def test_audio_only_signed_exchange_and_wav_http_playback(tmp_path):
     from contextlib import ExitStack
     import json
@@ -155,7 +198,6 @@ def test_audio_only_signed_exchange_and_wav_http_playback(tmp_path):
         api,
         backend,
         private_request,
-        run_hub,
         run_server,
         start,
         wait,
@@ -165,7 +207,7 @@ def test_audio_only_signed_exchange_and_wav_http_playback(tmp_path):
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
     with ExitStack() as stack:
-        _, pipe = start(stack, run_hub, tmp_path / "hub", [port])
+        _, pipe = start(stack, audio_only_hub, tmp_path / "hub", [port])
         assert pipe.poll(20)
         address = pipe.recv()
         app = tmp_path / "app"
@@ -220,6 +262,11 @@ def test_audio_only_signed_exchange_and_wav_http_playback(tmp_path):
 
         echoed = wait(incoming, timeout=45)
         assert echoed["fields"]["audio"]["audio_bytes"] is None
+        assert echoed["content"] == "" and not echoed["is_private_telemetry"]
+        assert any(
+            row["peer"] == address and row["hash"] == echoed["hash"]
+            for row in api(base, "preview/unread-messages")[1]["messages"]
+        )
         with urlopen(
             private_request(
                 base, "/api/v1/lxmf-messages/attachment/" + echoed["hash"] + "/audio"
