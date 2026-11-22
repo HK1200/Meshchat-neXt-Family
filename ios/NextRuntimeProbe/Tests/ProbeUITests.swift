@@ -363,6 +363,8 @@ final class ProbeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["next-push-enable"].isEnabled)
         XCTAssertFalse(app.alerts.firstMatch.exists, "Opening optional settings must not request Apple permission")
         app.navigationBars["Mailbox push alerts"].buttons["Done"].tap()
+        XCTAssertTrue(app.collectionViews["next-push-form"].waitForNonExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.navigationBars["Offline mailbox"].buttons["Done"].isHittable, app.debugDescription)
         let recipients = app.buttons["next-recipient-alerts"]
         reveal(recipients, in: form)
         recipients.tap()

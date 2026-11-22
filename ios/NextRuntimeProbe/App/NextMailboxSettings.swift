@@ -9,8 +9,11 @@ struct NextMailboxSettings: View {
     @State private var sendFallback = false
     @State private var state: NextMailboxState?
     @State private var busy = false
-    @State private var showPushSettings = false
-    @State private var showRecipientAlerts = false
+    private enum Detail: String, Identifiable {
+        case receiving, recipients
+        var id: String { rawValue }
+    }
+    @State private var detail: Detail?
     @State private var saving = false
     @State private var loaded = false
     @State private var error = ""
@@ -48,11 +51,11 @@ struct NextMailboxSettings: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Receiving alerts") {
-                    Button("Mailbox push alerts") { showPushSettings = true }
+                    Button("Mailbox push alerts") { detail = .receiving }
                         .accessibilityIdentifier("next-push-settings")
                 }
                 Section("Sending alerts") {
-                    Button("Recipient mailbox alerts") { showRecipientAlerts = true }
+                    Button("Recipient mailbox alerts") { detail = .recipients }
                         .accessibilityIdentifier("next-recipient-alerts")
                 }
                 Section("Status") {
@@ -78,13 +81,19 @@ struct NextMailboxSettings: View {
                     }
                 }
             }
-            .sheet(isPresented: $showRecipientAlerts) { NextRecipientAlerts(base: base).interactiveDismissDisabled() }
-            .sheet(isPresented: $showPushSettings) { NextPushSettings(base: base, push: push) }
+            // One presentation owner prevents competing sheet bindings when
+            // moving from receiving alerts to a recipient's route settings.
+            .sheet(item: $detail) { selected in
+                switch selected {
+                case .receiving: NextPushSettings(base: base, push: push)
+                case .recipients: NextRecipientAlerts(base: base).interactiveDismissDisabled()
+                }
+            }
             .task {
                 await update(initial: true)
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(3)) } catch { break }
-                    await update()
+                    if detail == nil { await update() }
                 }
             }
         }
