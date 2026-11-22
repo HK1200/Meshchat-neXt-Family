@@ -51,7 +51,7 @@ def test_reads_use_real_handlers_without_transmissions_or_setting_changes(monkey
             response=await client.get('/api/v1/reticulum/interfaces')
             assert (await response.json())['interfaces']['neXt TCP saved']['interface_enabled'] is True
             response=await client.get('/api/v1/interface-stats')
-            row=(await response.json())['interfaces'][0]
+            row=(await response.json())['interface_stats']['interfaces'][0]
             assert row['hash']==(b'a'*16).hex() and row['interface_name']=='neXt TCP saved'
             assert not calls and runtime.probe.connections.snapshot()[0]['port']==4242
     asyncio.run(run())
@@ -139,4 +139,21 @@ def test_known_and_own_paths_match_the_conversation_header_contract(monkeypatch)
             assert await response.json()=={'path':{'hops':2,'next_hop':(b'v'*16).hex(),'next_hop_interface':'neXt TCP saved'},'path_stale':False,'path_unresponsive':False}
             response=await client.get('/api/v1/destination/'+(b'i'*16).hex()+'/path')
             assert (await response.json())['path']=={'hops':0,'next_hop':(b'i'*16).hex(),'next_hop_interface':'Local'}
+    asyncio.run(run())
+
+
+def test_radio_stats_do_not_invent_a_battery_reading(monkeypatch):
+    radio=type('IOSRNodeInterface', (), {'name':'neXt TCP saved', 'ble':SimpleNamespace(connected=True), 'r_battery_state':0})()
+    monkeypatch.setattr(RNS.Transport, 'interfaces', [radio])
+    async def run():
+        runtime=fixture(); raw=runtime.probe.reticulum.get_interface_stats()
+        raw['interfaces'][0]['battery_percent']=0
+        runtime.probe.reticulum.get_interface_stats=lambda:raw
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.get('/api/v1/interface-stats')
+            result=await response.json(); assert set(result)=={'interface_stats'}
+            row=result['interface_stats']['interfaces'][0]
+            assert row['bluetooth_connected'] is True and 'battery_percent' not in row
+            assert raw['interfaces'][0]['battery_percent']==0
     asyncio.run(run())

@@ -135,9 +135,20 @@ class NetworkRuntime:
                     raise ValueError('Path requests require an explicit POST action')
                 result = await self.read(self.path, address=self.address(request.match_info['destination_hash']))
             else:
-                result = jsonable(await self.read(self.probe.reticulum.get_interface_stats))
-                for row in result.get('interfaces', []):
-                    if row.get('short_name'): row['interface_name'] = row['short_name']
+                stats = jsonable(await self.read(self.probe.reticulum.get_interface_stats))
+                if not isinstance(stats, dict): stats = {'interfaces': []}
+                for row in stats.get('interfaces') or []:
+                    if row.get('short_name'):
+                        row['interface_name'] = row['short_name']
+                        for interface in tuple(RNS.Transport.interfaces):
+                            if getattr(interface, 'name', None) == row['short_name'] and 'RNode' in type(interface).__name__:
+                                row['bluetooth_connected'] = any(
+                                    bool(getattr(getattr(interface, name, None), 'connected', False))
+                                    for name in ('ble', 'bt_manager'))
+                                if getattr(interface, 'r_battery_state', 0) == 0:
+                                    row.pop('battery_percent', None)
+                                break
+                result = {'interface_stats': stats}
             return web.json_response(jsonable(result), headers={'Cache-Control': 'no-store'})
         except (ValueError, TypeError) as error:
             return web.json_response({'message': str(error)}, status=400)
