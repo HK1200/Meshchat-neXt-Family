@@ -16,7 +16,7 @@ def test_committed_attachment_recovers_after_network_hold_and_process_terminatio
     with socket.socket() as listener:
         listener.bind(('127.0.0.1',0));target_port=listener.getsockname()[1]
     with ExitStack() as stack:
-        receiver,commands=start(stack,run_hub,tmp_path/'receiver',[target_port])
+        _receiver,commands=start(stack,run_hub,tmp_path/'receiver',[target_port])
         assert commands.poll(10);destination=commands.recv()
         proxy=GatedProxy(0,target_port).start()
         # Cleanup refers to the current proxy after the mid-test replacement.
@@ -60,7 +60,7 @@ def test_committed_attachment_recovers_after_network_hold_and_process_terminatio
             assert db.execute('SELECT state FROM messages WHERE hash=?',(saved['hash'],)).fetchone()==('sending',)
         proxy=GatedProxy(proxy.port,target_port).start()
         ready.unlink()
-        recovered,_=start(stack,run_server,folder,ready,fixture)
+        _recovered,_=start(stack,run_server,folder,ready,fixture)
         wait(ready.exists);base=backend(ready)
         assert hashlib.sha256((folder/'reticulum/identity').read_bytes()).hexdigest()==identity_sha
         commands.send({'announce':True})
