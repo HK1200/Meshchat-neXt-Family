@@ -71,9 +71,11 @@ struct NextMailboxSettings: View {
                 // Background status reads must not swallow a user's Done tap.
                 // Keep an explicit Save protected until its result is known.
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(saving) }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    if typing {
+                        Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }
+                            .accessibilityIdentifier("next-mailbox-done-typing")
+                    }
                 }
             }
             .sheet(isPresented: $showRecipientAlerts) { NextRecipientAlerts(base: base).interactiveDismissDisabled() }

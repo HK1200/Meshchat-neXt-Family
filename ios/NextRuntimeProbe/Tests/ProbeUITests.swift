@@ -151,7 +151,7 @@ final class ProbeUITests: XCTestCase {
         let start = app.buttons["next-location-start"]
         XCTAssertTrue(start.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(start.isEnabled, "No recipient was selected; opening this screen must not start GPS or sending.")
-        app.buttons["next-location-done"].tap()
+        closeLocationSettings(app)
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, address)
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20), app.debugDescription)
@@ -196,7 +196,7 @@ final class ProbeUITests: XCTestCase {
         allow.tap()
         let current = app.buttons["Stop all sharing"]
         XCTAssertTrue(current.waitForExistence(timeout: 20), app.debugDescription)
-        app.buttons["next-location-done"].tap()
+        closeLocationSettings(app)
         let web = app.webViews.firstMatch
         // Receipt is created only after the private peer verifies the real
         // LXMF signature and the exact fresh synthetic CoreLocation telemetry.
@@ -209,7 +209,7 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Location sharing"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.switches["next-location-recipient"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertFalse(app.buttons["Stop all sharing"].exists, app.debugDescription)
-        app.buttons["next-location-done"].tap()
+        closeLocationSettings(app)
         app.terminate()
         app.resetAuthorizationStatus(for: .location)
     }
@@ -745,11 +745,24 @@ final class ProbeUITests: XCTestCase {
         // The recipient editor keeps its dismissal control in the native
         // navigation bar, independent of the OS keyboard accessory's lifetime.
         let routeDone = app.buttons["next-recipient-alert-done-typing"]
-        let done = routeDone.exists ? routeDone : app.buttons["Done typing"]
+        let mailboxDone = app.buttons["next-mailbox-done-typing"]
+        let done = routeDone.exists ? routeDone : (mailboxDone.exists ? mailboxDone : app.buttons["Done typing"])
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
         done.tap()
         dismissSimulatorSystemNotice()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
+    }
+
+    private func closeLocationSettings(_ app: XCUIApplication) {
+        let done = app.buttons["next-location-done"]
+        // Active sharing can be visible before the explicit save completes.
+        // Wait for the actual control instead of tapping a disabled button.
+        let ready = NSPredicate(format: "exists == true AND enabled == true AND hittable == true")
+        expectation(for: ready, evaluatedWith: done)
+        waitForExpectations(timeout: 20)
+        done.tap()
+        XCTAssertTrue(app.navigationBars["Location sharing"].waitForNonExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(app.collectionViews["next-location-form"].waitForNonExistence(timeout: 5), app.debugDescription)
     }
 
     private func dismissSimulatorSystemNotice() {
