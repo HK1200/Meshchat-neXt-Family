@@ -23,7 +23,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -105,12 +105,7 @@ private struct ProbeScreen: View {
                                   systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
                                 .labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-meshcore-settings")
-                        Menu {
-                            Button("Reticulum calling") { panel = .reticulum }
-                                .accessibilityIdentifier("next-reticulum-calling")
-                            Button("SIP accounts") { panel = .sip }
-                                .accessibilityIdentifier("next-sip-settings")
-                        } label: {
+                        Button { panel = .calling } label: {
                             Label("Calling", systemImage: "phone").labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-calling-menu")
                         Button("TCP connections") { panel = .connections }
@@ -204,6 +199,23 @@ private struct ProbeScreen: View {
         }
         .sheet(item: $panel) { selected in
             switch selected {
+            case .calling:
+                NavigationStack {
+                    List {
+                        Button { panel = .reticulum } label: {
+                            Label("Reticulum calling", systemImage: "antenna.radiowaves.left.and.right")
+                                .frame(minHeight: 44)
+                        }.accessibilityIdentifier("next-reticulum-calling")
+                        Button { panel = .sip } label: {
+                            Label("SIP accounts", systemImage: "phone")
+                                .frame(minHeight: 44)
+                        }.accessibilityIdentifier("next-sip-settings")
+                    }
+                    .navigationTitle("Calling")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { panel = nil } }
+                    }
+                }
             case .mailbox:
                 if let url { NextMailboxSettings(base: url).interactiveDismissDisabled() }
             case .reticulum:

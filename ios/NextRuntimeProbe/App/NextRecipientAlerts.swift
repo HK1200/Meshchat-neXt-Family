@@ -38,14 +38,14 @@ struct NextRecipientAlerts: View {
                         Picker("Contact", selection: $selected) {
                             ForEach(contacts) { contact in Text(contact.name).tag(contact.id) }
                         }.disabled(busy).accessibilityIdentifier("next-recipient-alert-contact")
-                        Text(saved == nil ? "Off" : "Recipient alerts saved")
+                        Text(!loaded ? "Loading recipient alerts…" : saved == nil ? "Off" : "Recipient alerts saved")
                             .accessibilityIdentifier("next-recipient-alert-status")
                         TextField("HTTPS alert provider", text: $provider)
-                            .keyboardType(.URL).focused($typing).accessibilityIdentifier("next-recipient-alert-provider")
+                            .keyboardType(.URL).disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-provider")
                         TextField("Provider name (audience)", text: $audience)
-                            .focused($typing).accessibilityIdentifier("next-recipient-alert-audience")
+                            .disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-audience")
                         TextField("Mailbox propagation address", text: $relay)
-                            .focused($typing).accessibilityIdentifier("next-recipient-alert-relay")
+                            .disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-relay")
                         Button("Save recipient alerts") { change(remove: false) }
                             .disabled(busy || !loaded || provider.isEmpty || audience.isEmpty || relay.isEmpty)
                             .accessibilityIdentifier("next-recipient-alert-save")
