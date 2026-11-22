@@ -173,4 +173,4 @@ URLs and its own blob URLs may become native downloads. The camera permission
 is requested only if the user chooses to take a photo. Physical camera/Photos/
 Files picker checks still require device verification.
 
-These additions are transport work toward the full neXt port. They do not imply the prototype already implements Android/desktop calling, Bluetooth radios, map/location or all administration endpoints. Those features require their own native/backend integration and device verification.
+The neXt preview also integrates native SIP and Reticulum calls, Bluetooth radio bridges, maps, private location sharing and Relay Chat. The [neXt verification audit](NEXT_FEATURE_PARITY.md) distinguishes implemented controls, simulator results and actual device checks. Fully suspended internet alerts, the remaining Reticulum tools and the physical phone/radio reliability matrix still require work before public iOS release.

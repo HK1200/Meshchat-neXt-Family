@@ -170,3 +170,29 @@ address validation. Two private Reticulum calls, one in each direction, passed
 native capture/receive frame checks and reported current microphone flow
 correctly. These checks did not record speech or establish subjective audio
 quality, locked internet ringing, or physical iPhone compatibility.
+
+
+## Verified separate iPad preview: 348.1
+
+Exact source `33f1e81` passed all 98 required checks on each simulator (92
+native and six Messages UI cases) in run `45006778485`. The same-key upgrade
+from 337.1 preserved all 2,355 current non-cache support files, twelve messages,
+two contacts, the Reticulum identity and native preferences before first launch.
+Regular Family 47.6 and Family Mailbox Test 218.1 remained byte-identical.
+
+The actual iPad backend passed a private signed exchange with exact file/photo
+bytes and synthetic native Opus encode/decode, a cold process restart,
+conversation pin/move/export/import, and deletion followed by a fresh signed
+reply. Contact import preview did not save or approve the contact; explicit
+saving, blocking, rejection of a blocked code and cleanup were verified. The
+visible conversation and composer rendered normally after the upgrade. These
+checks do not qualify physical camera/picker gestures or recorded speech.
+
+A private reconnect experiment captured an upstream LXMF direct message stuck
+in Sending after losing its assigned link, despite a fresh active replacement.
+The recovery passed three signed round trips across two connection retirements
+on the receiving test peer. Both negative and positive local TCP regressions
+passed in neXt CI. This is not proof of independent public-provider failover,
+Wi-Fi/cellular transitions, persistence of an unsent queue across termination,
+or fully suspended iPad delivery. The following app archives remain separately
+subject to their complete native test gates before installation.
