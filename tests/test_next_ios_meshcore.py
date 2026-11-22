@@ -37,7 +37,7 @@ def test_session_constructs_native_adapter_without_opening_radio(monkeypatch):
             self.factory = connection_factory
     def connection(*args, **kwargs):
         calls.append((args, kwargs))
-        return object()
+        return SimpleNamespace(send=lambda data:None)
     monkeypatch.setitem(sys.modules, "meshchatnext.src.backend.meshcore_session", SimpleNamespace(MeshCoreSession=Session))
     monkeypatch.setitem(sys.modules, "meshchatnext.src.backend.meshcore_transport", SimpleNamespace(AndroidConnection=connection))
     session = runtime.session_factory(device=True)

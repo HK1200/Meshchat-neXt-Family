@@ -47,4 +47,4 @@ def test_real_javascript_client_lifecycle_and_cancellation():
     result=subprocess.run([node,'--test','--test-reporter=tap',str(PROBE/'test-native-location-client.mjs')],
                           capture_output=True,text=True,timeout=30)
     assert result.returncode==0,result.stdout+'\n'+result.stderr
-    assert '# tests 10\n' in result.stdout and '# pass 10\n' in result.stdout and '# fail 0\n' in result.stdout
+    assert '# tests 13\n' in result.stdout and '# pass 13\n' in result.stdout and '# fail 0\n' in result.stdout

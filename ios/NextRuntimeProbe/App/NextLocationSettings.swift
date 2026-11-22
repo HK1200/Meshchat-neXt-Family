@@ -52,12 +52,12 @@ struct NextLocationSettings: View {
                             })) {
                                 VStack(alignment: .leading) {
                                     Text(recipient.name)
-                                    Text(recipient.online ? "Reticulum" : "Reticulum · waiting for a connection").font(.caption)
+                                    Text((recipient.service == "meshcore" ? "MeshCore" : "Reticulum") + (recipient.online ? "" : " · waiting for a connection")).font(.caption)
                                 }
                             }.accessibilityIdentifier("next-location-recipient")
                         }
                         if state.recipients.isEmpty {
-                            Text("Choose Browser GPS in Settings → Telemetry & Location and add a Reticulum contact or conversation first.")
+                            Text("Choose Browser GPS in Settings → Telemetry & Location and add a Reticulum contact or conversation, or enable private sharing for a saved MeshCore user first.")
                         }
                         if selected.count > 16 { Text("Choose up to 16 recipients.").foregroundStyle(.orange) }
                         Picker("Duration", selection: $duration) {
@@ -76,7 +76,7 @@ struct NextLocationSettings: View {
                         }.disabled(busy || selected.isEmpty || selected.count > 16)
                         .accessibilityIdentifier("next-location-start")
                     } header: { Text("Share device location") } footer: {
-                        Text("Locked-screen sharing is optional and uses more battery. Start it while neXt is open. iOS shows a location indicator. Force-quitting neXt ends the session. Updates use private Reticulum messages, never a public room or offline mailbox. Existing sessions keep their own locked-screen setting until you restart or stop them.")
+                        Text("Locked-screen sharing is optional and uses more battery. Start it while neXt is open. iOS shows a location indicator. Force-quitting neXt ends the session. Updates use private Reticulum or encrypted MeshCore direct messages, never a public room, channel or offline mailbox. MeshCore requires private sharing enabled for the selected user. Existing sessions keep their own locked-screen setting until you restart or stop them.")
                     }
                     if !state.location_status.isEmpty && !state.sessions.isEmpty { Text(state.location_status).font(.caption) }
                     if !state.error.isEmpty { Text(state.error).foregroundStyle(.red) }

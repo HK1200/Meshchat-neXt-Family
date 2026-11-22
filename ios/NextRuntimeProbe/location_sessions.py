@@ -179,7 +179,7 @@ class LocationSessions:
                 raise ValueError('Sharing controls changed; review the recipients again')
             # Starting a new selection is not consent to resume other saved
             # recipients. Those need the explicit Resume path and native grants.
-            proposed = self._active() if self.armed else {}
+            proposed = {key: row for key, row in self._active().items() if key in available} if self.armed else {}
             until = deadline if deadline is not None else (-1 if duration == 'ongoing' else self.clock() + DURATIONS[duration])
             for key in targets: proposed[key] = Session(until, duration, request_id, background)
             if len(proposed) > MAX_TARGETS: raise ValueError('Share with at most 16 recipients')
@@ -196,7 +196,7 @@ class LocationSessions:
                 self._cancel(list(self.workers))
                 with contextlib.suppress(Exception): await self._native('stop', {})
                 raise
-            self._cancel(targets)
+            self._cancel(set(targets) | (set(self.sessions) - set(proposed)))
             self.sessions = proposed
             self.armed = True
             self.fix = None

@@ -376,3 +376,16 @@ def test_idle_tick_and_summary_do_not_repeatedly_read_the_contact_database():
             assert not state['active'] and state['sessions']==[] and state['recipients']==[] and f.requests==[]
         finally:await f.close()
     asyncio.run(run())
+
+
+def test_explicit_start_discards_a_removed_policy_revision_without_waiting_for_next_tick():
+    async def run():
+        f=Fixture()
+        try:
+            await f.manager.start(['rns:one'],'ongoing',background=True)
+            f.contacts={'meshcore:new-permission':{'name':'New selection','service':'meshcore','online':True}}
+            await f.manager.start(['meshcore:new-permission'],'15')
+            assert set(f.manager.sessions)=={'meshcore:new-permission'}
+            assert f.requests[-1]['background'] is False
+        finally:await f.close()
+    asyncio.run(run())

@@ -15,12 +15,17 @@ export function createNativeLocationClient({sessions, request, report = () => {}
     }}) {
     const entries = new Map(), pending = new Map();
     let disposed = false, syncing = false, epoch = -1;
-    const validKey = (key) => typeof key === "string" && /^reticulum:[a-f0-9]{32}:[a-f0-9]{32}$/.test(key);
+    const reticulumKey = (key) => typeof key === "string" && /^reticulum:[a-f0-9]{32}:[a-f0-9]{32}$/.test(key);
+    const meshcoreKey = (key) => typeof key === "string" && /^meshcore:[a-f0-9]{64}:[a-f0-9]{64}:[a-f0-9]{32}$/.test(key);
+    const validKey = (key) => reticulumKey(key) || meshcoreKey(key);
+    // Native consent includes the MeshCore policy revision, while the released
+    // chat/global Stop map uses the companion and private peer only.
+    const uiKey = (key) => meshcoreKey(key) ? key.slice(0, key.lastIndexOf(":")) : key;
     const validID = (id) => typeof id === "string" && /^[a-f0-9]{32}$/.test(id);
 
     function finish(key, entry, reason = "stopped") {
         if (entries.get(key) === entry) entries.delete(key);
-        if (sessions.get(key) === entry.value) sessions.delete(key);
+        if (sessions.get(uiKey(key)) === entry.value) sessions.delete(uiKey(key));
         if (!entry.finished) {
             entry.finished = true;
             try { entry.onStop?.(reason); } catch { /* UI cleanup cannot undo revocation. */ }
@@ -31,7 +36,7 @@ export function createNativeLocationClient({sessions, request, report = () => {}
             cancelled: false, finished: false, stopping: null};
         entry.value = {name, __nextNativeLocation: true,
             stop: (reason = "stopped") => stop(key, entry, typeof reason === "string" ? reason : "stopped")};
-        entries.set(key, entry); sessions.set(key, entry.value);
+        entries.set(key, entry); sessions.set(uiKey(key), entry.value);
         return entry;
     }
     function validate(state) {
@@ -63,12 +68,12 @@ export function createNativeLocationClient({sessions, request, report = () => {}
             if (current?.id === row.request_id) {
                 if (current.value.name !== row.name) {
                     current.name = row.name; current.value = {...current.value, name: row.name};
-                    sessions.set(row.target, current.value);
+                    sessions.set(uiKey(row.target), current.value);
                 }
                 continue;
             }
             if (current) finish(row.target, current, "superseded");
-            const previous = sessions.get(row.target);
+            const previous = sessions.get(uiKey(row.target));
             // A new explicit native session supersedes a legacy manual timer
             // for that same contact; unrelated MeshCore/manual sessions remain.
             if (previous && !previous.__nextNativeLocation) previous.stop("superseded");
@@ -99,7 +104,7 @@ export function createNativeLocationClient({sessions, request, report = () => {}
         return entry.stopping;
     }
     function handles(key, options) {
-        return validKey(key) && options && Number.isFinite(options.firstFix?.time);
+        return reticulumKey(key) && options && Number.isFinite(options.firstFix?.time);
     }
     function start(key, name, options) {
         if (!handles(key, options) || sessions.has(key)) return false;

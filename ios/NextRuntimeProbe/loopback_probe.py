@@ -1017,6 +1017,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if not device and os.environ.get("NEXT_PROBE_LOCATION_FIXTURE") == "1":
             config.update(telemetry.configure({"location_source": "browser"}))
         location = location_factory(ready_file.parent, probe, history, telemetry)
+        location.meshcore = meshcore
         location.recipient_allowed = lambda peer: not blocks.denies(peer)
         location.register(app.router)
         async def stop_location(_): await location.close()

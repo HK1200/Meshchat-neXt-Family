@@ -1,4 +1,4 @@
-"""Native Reticulum location sessions, with no public broadcast or mailbox copy."""
+"""Native private Reticulum/MeshCore location, without public or mailbox copies."""
 import asyncio
 import json
 from pathlib import Path
@@ -11,6 +11,7 @@ from location_sessions import LocationSessions
 class LocationRuntime:
     def __init__(self, folder, probe, history, telemetry, *, native=None):
         self.probe, self.history, self.telemetry = probe, history, telemetry
+        self.meshcore = None
         folder = Path(folder) / 'native-location'
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         path = folder / 'sessions.sqlite3'
@@ -29,12 +30,35 @@ class LocationRuntime:
     async def catalog(self):
         if self.telemetry.settings()['location_source'] != 'browser': return {}
         identity = self.probe.source.identity.hash.hex()
-        return {f'reticulum:{identity}:{address}': dict(
+        rows = {f'reticulum:{identity}:{address}': dict(
             name=row['name'], service='reticulum', online=self.probe.online, address=address)
             for address, row in self.history.conversation_entries().items()
             if getattr(self, 'recipient_allowed', lambda peer: True)(address)}
+        if self.meshcore is not None:
+            rows.update(await self.meshcore.location_recipients())
+        return rows
 
     async def transmit(self, target, fix, guard):
+        if target.get('service') == 'meshcore':
+            if self.meshcore is None: return False
+            key = 'meshcore:' + target['owner'] + ':' + target['address'] + ':' + target['generation']
+            session = self.manager.sessions.get(key)
+            generation = self.manager.native_generation
+            if session is None or not await guard(): return False
+
+            def current():
+                # Called again by AndroidConnection in its final native-send
+                # thread, after waiting for its write lock. No disk or RF here.
+                if (self.manager.closed or not self.manager.armed
+                        or self.manager.sessions.get(key) is not session
+                        or not session.active(self.manager.clock())
+                        or not self.manager.clock()-120 <= fix['last_update'] <= self.manager.clock()+300):
+                    return False
+                native = self.native_write_status()
+                return (native.get('can_submit') is True and native.get('generation') == generation
+                        and (session.background or native.get('foreground') is True))
+
+            return await self.meshcore.send_native_location(target, fix, guard, current)
         from telemetry_runtime import outbound
         # The shipped neXt location UI converts CoreLocation/browser m/s to
         # the kilometres-per-hour value used by its standard telemetry.
@@ -50,6 +74,18 @@ class LocationRuntime:
         message.pack()
         self.probe.send(message)
         return True
+
+    def native_write_status(self):
+        """Read current native consent at the final Bluetooth handoff, never start GPS."""
+        import _next_location
+        reply = _next_location.request(json.dumps(dict(op='status', session=self.manager.token,
+            active=False, until=0, background=False, revisions=[])))
+        if not isinstance(reply, str) or len(reply) > 16384:
+            raise RuntimeError('Invalid native location status')
+        value = json.loads(reply)
+        if not isinstance(value, dict) or value.get('ok') is not True:
+            raise RuntimeError('Native location consent is unavailable')
+        return value
 
     async def contact_removed(self, address):
         key = f'reticulum:{self.probe.source.identity.hash.hex()}:{address}'

@@ -5,10 +5,48 @@ until it has been explicitly selected. Family approval rules are not reused.
 """
 
 import asyncio
+from contextvars import ContextVar
 from pathlib import Path
 from types import SimpleNamespace
 
 from aiohttp import web
+
+
+
+# Only the explicitly started native location task carries this guard. Ordinary
+# chat/admin writes retain the backend's existing behavior and permission checks.
+NATIVE_LOCATION_GUARD = ContextVar("next_native_meshcore_location_guard", default=None)
+
+
+def protect_native_location_writes(connection):
+    original = connection.send
+
+    async def send(data):
+        context = NATIVE_LOCATION_GUARD.get()
+        if context is None:
+            return await original(data)
+        from meshchatnext.src.backend.meshcore_private_location import WRITE_GUARD, LocationPermissionChanged
+        asynchronous, synchronous = context
+        if not await asynchronous():
+            raise LocationPermissionChanged("Native location sharing stopped before the radio write")
+        inherited = WRITE_GUARD.get()
+
+        def check():
+            if inherited is not None: inherited()
+            try: permitted = synchronous()
+            except (OSError, RuntimeError, ValueError, TypeError) as error:
+                raise LocationPermissionChanged("Native location permission could not be checked") from error
+            if not permitted:
+                raise LocationPermissionChanged("Native location sharing changed before the radio handoff")
+
+        token = WRITE_GUARD.set(check)
+        try:
+            return await original(data)
+        finally:
+            WRITE_GUARD.reset(token)
+
+    connection.send = send
+    return connection
 
 
 def ble_target(kind, target, *, device):
@@ -38,7 +76,7 @@ def session_factory(*, device):
 
     def connection(kind, target, **options):
         target = ble_target(kind, target, device=device)
-        return AndroidConnection(kind, target, native_factory=NativeSession, **options)
+        return protect_native_location_writes(AndroidConnection(kind, target, native_factory=NativeSession, **options))
     return MeshCoreSession(connection_factory=connection)
 
 
@@ -84,6 +122,48 @@ class NextMeshCore:
 
     async def close(self):
         await self.fleet.close()
+
+    async def location_recipients(self):
+        """Saved private users with existing explicit share permission only."""
+        rows = {}
+        for radio in self.fleet.radio_rows():
+            owner = radio.get("owner")
+            if not isinstance(owner, str) or len(owner) != 64: continue
+            service = self.fleet.resolve(radio["id"], owner)
+            store = service._store
+            if store is None: continue
+            def read():
+                result = []
+                for contact in store.contacts(owner):
+                    if contact["kind"] != 1 or not contact["active"]: continue
+                    try: policy = store.private_location_policy(owner, contact["peer"])
+                    except ValueError: continue
+                    if policy["share"] and policy["generation"]:
+                        result.append((contact, policy))
+                return result
+            selected = await asyncio.to_thread(read)
+            # Reading disk can overlap a radio removal or identity replacement.
+            try:
+                if self.fleet.resolve(radio["id"], owner) is not service: continue
+            except ValueError:
+                continue
+            for contact, policy in selected:
+                key = "meshcore:" + owner + ":" + contact["peer"] + ":" + policy["generation"]
+                rows[key] = dict(name=contact["name"] + " (" + radio.get("label", "MeshCore") + ")", service="meshcore", online=radio.get("connected") is True,
+                    address=contact["peer"], owner=owner, radio=radio["id"], generation=policy["generation"])
+        return rows
+
+    async def send_native_location(self, target, fix, asynchronous, synchronous):
+        import uuid
+        service = self.fleet.resolve(target["radio"], target["owner"])
+        if not await asynchronous(): return False
+        token = NATIVE_LOCATION_GUARD.set((asynchronous, synchronous))
+        try:
+            result = await service.call("messages", "send_private_location", peer=target["address"],
+                fix=fix, request_id=uuid.uuid4().hex, generation=target["generation"], expected_owner=target["owner"])
+            return result.get("state") == "accepted"
+        finally:
+            NATIVE_LOCATION_GUARD.reset(token)
 
     async def notification_candidates(self):
         owners = {row["owner"] for row in self.fleet.radio_rows() if row.get("owner")}

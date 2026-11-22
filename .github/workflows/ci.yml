@@ -60,6 +60,11 @@ jobs:
           python ios/NextRuntimeProbe/stage-backend.py \
             temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only \
             --cbor-wheel temp-tests/voice-source/cbor2.whl
+      - name: Verify native MeshCore location consent and final Bluetooth handoff
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python -m pytest -q ios/test-next-meshcore-location.py \
+            --basetemp=temp-tests/meshcore-location
       - name: Verify mobile decoder depth and independent-message isolation
         run: |
           python ios/test-cbor-security.py --staged temp-tests/voice-source/staged \

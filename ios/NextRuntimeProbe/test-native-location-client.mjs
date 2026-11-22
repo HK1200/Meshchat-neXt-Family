@@ -115,3 +115,35 @@ test("the chat keeps its Stop control until backend acknowledgement",async()=>{
     assert(f.sessions.has(key));release();assert(await stopping);
     assert(!f.sessions.has(key));f.client.dispose();
 });
+
+test("native MeshCore sharing uses the existing chat Stop with its exact policy target",async()=>{
+    const f=fixture();await flush();
+    const ui=`meshcore:${"3".repeat(64)}:${"4".repeat(64)}`;
+    const target=ui+":"+"5".repeat(32);
+    f.state={consent_epoch:1,active:true,sessions:[{target,name:"Private radio",request_id:nonce,until:1900,background:true}]};
+    await f.client.sync();assert.equal(f.sessions.get(ui).name,"Private radio");
+    assert(!f.sessions.has(target));assert(await f.sessions.get(ui).stop());
+    assert.equal(f.calls.at(-1).body.target,target);assert.equal(f.state.sessions.length,0);
+    assert(!f.sessions.has(ui));assert.deepEqual(f.reports,[]);f.client.dispose();
+});
+test("replacing MeshCore permission leaves one current Stop and cannot resurrect the prior target",async()=>{
+    const f=fixture();await flush();
+    const ui=`meshcore:${"3".repeat(64)}:${"4".repeat(64)}`;
+    const old=ui+":"+"5".repeat(32),fresh=ui+":"+"6".repeat(32);
+    f.state={consent_epoch:1,active:true,sessions:[{target:old,name:"Old",request_id:nonce,until:1900,background:true}]};
+    await f.client.sync();const previous=f.sessions.get(ui);
+    f.state={consent_epoch:2,active:true,sessions:[{target:fresh,name:"New",request_id:"b".repeat(32),until:1900,background:false}]};
+    await f.client.sync();assert.equal(f.sessions.size,1);assert.equal(f.sessions.get(ui).name,"New");
+    assert(await previous.stop());assert.equal(f.sessions.get(ui).name,"New");
+    assert(await f.sessions.get(ui).stop());assert.equal(f.sessions.size,0);f.client.dispose();
+});
+test("native radio sharing supersedes only the same contact legacy timer",async()=>{
+    const f=fixture();await flush();
+    const ui=`meshcore:${"3".repeat(64)}:${"4".repeat(64)}`;
+    let replaced=0,other=0;
+    f.sessions.set(ui,{name:"Old manual",stop:()=>replaced++});
+    f.sessions.set("unrelated",{name:"Other",stop:()=>other++});
+    f.state={consent_epoch:1,active:true,sessions:[{target:ui+":"+"5".repeat(32),name:"New native",request_id:nonce,until:1900,background:true}]};
+    await f.client.sync();assert.equal(replaced,1);assert.equal(other,0);assert.equal(f.sessions.size,2);
+    assert(await f.sessions.get(ui).stop());assert(f.sessions.has("unrelated"));f.client.dispose();
+});

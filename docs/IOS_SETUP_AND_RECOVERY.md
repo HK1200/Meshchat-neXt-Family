@@ -181,8 +181,15 @@ waiting for a route. Updates are limited to once a minute while moving and every
 five minutes when stationary. Both simulators have proved the actual native GPS
 update, signed Reticulum receipt and chat Stop path. Actual neXt iPad locked
 sharing still needs qualification; Family's separate device result does not
-establish neXt's result. Existing Manual and MeshCore foreground controls remain
-available; MeshCore native background sharing is not implemented yet.
+establish neXt's result. Existing Manual and MeshCore foreground controls remain available.
+Development builds also list saved MeshCore users whose private location sharing
+permission is already enabled in the MeshCore contact controls. Starting a native
+session does not enable that underlying permission. Each target uses its full
+radio identity, private user key and current sharing-permission revision. Turning
+that permission off and on requires selecting and starting the recipient again.
+These sessions use encrypted direct messages, never a room or channel. The
+existing chat/global Stop buttons also stop native MeshCore sharing. Real-radio
+locked sharing in neXt still needs verification before public release.
 
 Received signed location updates appear on the map with their timestamp. They
 do not create message alerts, unread chats or empty chat bubbles. Location data

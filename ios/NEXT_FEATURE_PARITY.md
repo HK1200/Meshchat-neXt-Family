@@ -54,8 +54,16 @@ standard private LXMF telemetry without an offline-mailbox copy. They send no
 more often than once a minute while moving and every five minutes when still.
 The released chat controls now follow the native Reticulum sessions, including
 Stop all and reopening the page. Ordinary chat starts remain foreground-only;
-locked-screen sharing needs an explicit setting for that recipient. Manual
-coordinates and MeshCore's existing foreground location controls remain intact; native MeshCore background parity remains pending.
+locked-screen sharing needs an explicit setting for that recipient. Manual coordinates and the existing MeshCore foreground controls remain intact.
+Development source also offers saved MeshCore users with existing private-share
+permission in the native panel. Each session binds the full companion identity,
+full user key and current policy revision. Original SDK policy checks remain,
+with additional native consent checks after the Bluetooth write lock and in
+its final native-send thread. Stops, expiry, native permission loss and changed
+radio identity cannot be bypassed by a delayed write. Turning private sharing
+off and back on requires a fresh native Start. The existing chat/global Stop
+controls follow these native sessions. Xcode and real-radio locked sharing for
+this extension remain required; these are not yet completed device results.
 Host regressions and both full simulator runs pass. Each simulator executed all
 98 required cases (92 native and six interface tests), including real native GPS,
 signed telemetry receipt, chat Stop and contact-code paste/review. The unsigned
