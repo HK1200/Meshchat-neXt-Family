@@ -223,3 +223,40 @@ def test_malformed_body_timeout_cannot_transmit(timeout,monkeypatch):
             response=await client.post('/api/v1/destination/'+'cd'*16+'/path',json={'timeout':timeout})
             assert response.status==400
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('hops', [0, 1, 2, 4])
+def test_trace_reports_only_known_hops_without_transmitting(monkeypatch, hops):
+    def forbidden(*args, **kwargs): raise AssertionError('A read-only trace transmitted')
+    monkeypatch.setattr(RNS.Transport, 'request_path', forbidden)
+    async def run():
+        runtime=fixture(); runtime.probe.identity=SimpleNamespace(hash=b'd'*16)
+        runtime.path=lambda address: {'path': {'hops': hops, 'next_hop': 'cd'*16,
+                                             'next_hop_interface': 'Private test'},
+                                      'path_stale': True, 'path_unresponsive': False}
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            response=await client.get('/api/v1/rnpath/trace/'+'ef'*16)
+            assert response.status==200 and response.headers['Cache-Control']=='no-store'
+            value=await response.json()
+            assert value['hops']==hops and value['path_stale'] is True
+            assert value['path'][0]['hash']==(b'd'*16).hex()
+            assert value['path'][-1]['hash']=='ef'*16 and value['path'][-1]['type']=='destination'
+            assert len([row for row in value['path'] if row['type']=='hop'])==int(hops>1)
+            unknown=[row for row in value['path'] if row['type']=='unknown']
+            assert unknown==([{'type':'unknown','count':hops-2}] if hops>2 else [])
+    asyncio.run(run())
+
+
+def test_trace_missing_and_invalid_paths_do_not_request_or_change_settings(monkeypatch):
+    calls=[];monkeypatch.setattr(RNS.Transport, 'request_path', lambda *a, **k:calls.append(a))
+    async def run():
+        runtime=fixture();runtime.path=lambda address:{'path':None}
+        app=web.Application();runtime.register(app.router)
+        async with TestClient(TestServer(app)) as client:
+            missing=await client.get('/api/v1/rnpath/trace/'+'ef'*16)
+            assert missing.status==200 and 'Request a path first' in (await missing.json())['error']
+            invalid=await client.get('/api/v1/rnpath/trace/not-an-address')
+            assert invalid.status==400
+            assert not calls and len(runtime.probe.connections.snapshot())==1
+    asyncio.run(run())

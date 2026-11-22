@@ -31,6 +31,7 @@ class NetworkRuntime:
     def register(self, router):
         for path in ('rnstatus', 'interface-stats', 'reticulum/interfaces', 'rnpath/table', 'rnpath/rates'):
             router.add_get('/api/v1/' + path, self.api)
+        router.add_get('/api/v1/rnpath/trace/{destination_hash}', self.api)
         router.add_get('/api/v1/destination/{destination_hash}/path', self.api)
         router.add_post('/api/v1/destination/{destination_hash}/{action:path|request-path|drop-path}', self.api)
         for action in ('request', 'drop', 'drop-via', 'drop-queues'):
@@ -97,6 +98,32 @@ class NetworkRuntime:
                 result = {'hops': hops, 'next_hop': via.hex(),
                           'next_hop_interface': self.probe.reticulum.get_next_hop_if_name(destination)}
         return {'path': result, **metadata}
+
+    def trace(self, address):
+        # A display refresh must not broadcast a path request. The existing
+        # explicit request action remains available when no route is known.
+        snapshot = self.path(address)
+        route = snapshot['path']
+        if route is None:
+            return {'error': 'No known path. Request a path first.'}
+        hops = route['hops']
+        local = getattr(getattr(self.probe, 'identity', None), 'hash', None)
+        path = [{'type': 'local', 'hash': local.hex() if isinstance(local, bytes) else 'unknown',
+                 'name': 'Local Node'}]
+        if hops > 1:
+            path.append({'type': 'hop', 'hash': route['next_hop'], 'name': 'Next Hop',
+                         'interface': route['next_hop_interface'], 'hop_number': 1})
+            if hops > 2:
+                path.append({'type': 'unknown', 'count': hops - 2})
+        destination = {'type': 'destination', 'hash': address, 'hops': hops,
+                       'interface': route['next_hop_interface']}
+        if hops == 0:
+            destination['name'] = 'Local destination'
+        path.append(destination)
+        return {'destination': address, 'hops': hops, 'path': path,
+                'interface': route['next_hop_interface'], 'next_hop': route['next_hop'],
+                'path_stale': snapshot.get('path_stale', False),
+                'path_unresponsive': snapshot.get('path_unresponsive', False)}
 
     async def wait_for_path(self, address, timeout):
         # Bound concurrent waits, and recheck a ban after every asynchronous boundary.
@@ -167,6 +194,8 @@ class NetworkRuntime:
                     include_link_stats=self.flag(request.query, 'include_link_stats'),
                     sorting=request.query.get('sorting'), sort_reverse=self.flag(request.query, 'sort_reverse'),
                     show_all=self.flag(request.query, 'show_all'))
+            elif path.startswith('rnpath/trace/'):
+                result = await self.read(self.trace, address=self.address(request.match_info['destination_hash']))
             elif path == 'rnpath/table':
                 result = await self.read(self.paths.get_path_table,
                     max_hops=self.number(request.query, 'max_hops'), hops=self.number(request.query, 'hops'),
