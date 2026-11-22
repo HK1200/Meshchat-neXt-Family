@@ -51,7 +51,7 @@ of that production manifest for `org.meshchat.family`. Never replace the Latest
 legacy manifest with the production manifest: older installed apps reject it.
 
 Before publishing a draft, run
-`python3 scripts/ci/family_release_feeds.py --tag v0.6.29 --preflight`.
+`python3 scripts/ci/family_release_feeds.py --tag v0.6.30 --preflight`.
 Publish the versioned assets without marking the release Latest, update the
 production `family-stable` manifest, then mark the new version Latest. Finally,
 run `python3 scripts/ci/family_release_feeds.py` or dispatch **Published Family

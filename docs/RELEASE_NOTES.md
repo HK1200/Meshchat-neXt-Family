@@ -1,3 +1,13 @@
+# neXt Family v0.6.30
+
+- Recover a Reticulum direct message left sending after its old link closes when a fresh active link is available. Preserve the signed packet, delivery budget and completed/cancelled state.
+- Keep live location telemetry out of message retries. Guardian approval and sharing controls remain unchanged.
+- Carry the shared recovery into the iOS development runtime. This is not an App Store release.
+- Preserve the production app ID, signing key, contacts, messages, guardian settings and Reticulum identity. Android version code is 44.
+- GitHub builds retain approved rooms and Relay Chat; store builds continue to omit them.
+
+---
+
 # neXt Family v0.6.29
 
 - Connect enabled Reticulum TCP peers independently so an unavailable peer cannot hold up a working connection or consume the whole iOS background-check window.
