@@ -2,12 +2,14 @@
 
 import argparse
 import base64
+import errno
 import hashlib
 import hmac
 import json
 import os
 import re
 import sqlite3
+import stat
 import subprocess
 import time
 import uuid
@@ -71,14 +73,33 @@ class Provider:
         """The relay writes destination || ciphertext || 32-byte propagation stamp."""
         for path in self.spool.glob(f"{message}_*"):
             try:
-                if path.is_symlink() or not path.is_file():
+                if path.is_symlink():
                     continue
-                data = path.read_bytes()
-            except FileNotFoundError:
-                continue  # Removed by a concurrent mailbox fetch.
-            if (len(data) > 48 and data[:16].hex() == recipient
-                    and hashlib.sha256(data[:-32]).hexdigest() == message):
-                return True
+                flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                with os.fdopen(os.open(path, flags), "rb") as stream:
+                    info = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_size <= 48:
+                        continue
+                    recipient_bytes = stream.read(16)
+                    if recipient_bytes.hex() != recipient:
+                        continue
+                    digest = hashlib.sha256(recipient_bytes)
+                    remaining = info.st_size - 48
+                    while remaining:
+                        chunk = stream.read(min(128 * 1024, remaining))
+                        if not chunk:
+                            break  # Concurrent truncation is not a stored packet.
+                        digest.update(chunk)
+                        remaining -= len(chunk)
+                    # The final 32 bytes are the propagation stamp, not part of
+                    # the packet hash. Reject a changed length while reading.
+                    if (remaining == 0 and len(stream.read(33)) == 32
+                            and digest.hexdigest() == message):
+                        return True
+            except OSError as error:
+                if error.errno not in (errno.ENOENT, errno.ELOOP, errno.ENOTDIR):
+                    raise
+                continue  # Removed or replaced by a concurrent mailbox fetch.
         return False
 
     def register(self, request, authorization):

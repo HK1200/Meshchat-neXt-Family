@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from hashlib import sha256
 
@@ -133,3 +134,57 @@ def test_guardian_enrollment_token_rotation_and_disable(tmp_path):
     broker = Provider("test-mailbox", tmp_path, subscriptions, database, lambda *item: alerts.append(item))
     assert broker.notify(hint_for(approved, recipient, pending), now=1001) == 403
     broker.database.close()
+
+
+def test_spool_verification_streams_large_encrypted_messages_without_loading_them(tmp_path):
+    import tracemalloc
+
+    recipient = "ab" * 16
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    temporary = spool / "pending"
+    digest = sha256(bytes.fromhex(recipient))
+    block = b"encrypted synthetic attachment" * 4096
+    with temporary.open("wb") as stream:
+        stream.write(bytes.fromhex(recipient))
+        for _ in range(160):
+            stream.write(block)
+            digest.update(block)
+        stream.write(bytes(32))
+    message = digest.hexdigest()
+    packet = spool / (message + "_123_14")
+    temporary.rename(packet)
+    broker = Provider("test-mailbox", spool, {}, tmp_path / "state.db", lambda *_: None)
+    tracemalloc.start()
+    try:
+        assert broker.stored(recipient, message)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+        broker.database.close()
+    assert peak < 2 * 1024 * 1024, f"Spool verification allocated {peak} bytes for one file"
+
+
+def test_streaming_spool_rejects_corruption_wrong_recipient_truncation_and_links(tmp_path):
+    recipient = "ab" * 16
+    message = mailbox_item(tmp_path, recipient, b"private synthetic ciphertext")
+    packet = tmp_path / (message + "_123_14")
+    original = packet.read_bytes()
+    broker = Provider("test-mailbox", tmp_path, {}, tmp_path / "state.db", lambda *_: None)
+    try:
+        assert broker.stored(recipient, message)
+        assert not broker.stored("cd" * 16, message)
+        packet.write_bytes(original[:16] + b"changed" + original[23:])
+        assert not broker.stored(recipient, message)
+        packet.write_bytes(original[:40])
+        assert not broker.stored(recipient, message)
+        packet.unlink()
+        target = tmp_path / "private-file"
+        target.write_bytes(original)
+        packet.symlink_to(target)
+        assert not broker.stored(recipient, message)
+        packet.unlink()
+        os.mkfifo(packet)
+        assert not broker.stored(recipient, message)
+    finally:
+        broker.database.close()
