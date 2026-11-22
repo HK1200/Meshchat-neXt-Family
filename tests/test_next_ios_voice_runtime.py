@@ -497,3 +497,37 @@ def test_global_message_policy_uses_initial_contacts_without_starting_voice():
             assert [row["op"] for row in native.requests]==["open"]
         finally:await voice.close();db.close()
     asyncio.run(run())
+
+
+def test_capture_status_uses_only_recent_audio_from_the_current_call():
+    async def run():
+        voice,native,db=fixture()
+        now=[100.0]
+        voice.clock=lambda:now[0]
+        original_native=voice.native
+        waiting="Microphone captured. Waiting for Reticulum to send audio."
+        voice.native=lambda request: ({"ok":True,"capture_status":waiting}
+            if request["op"]=="capabilities" else original_native(request))
+        try:
+            await voice.configure(True)
+            identity,peer=connect(voice)
+            await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",identity)
+            call_id=voice.call.id
+            assert voice.snapshot()["capture_status"]==waiting
+            voice.push(call_id,b"\x01\x00"*960,True)
+            assert voice.snapshot()["capture_status"]=="Microphone audio is flowing."
+            voice.call.muted=True
+            assert voice.snapshot()["capture_status"]=="Microphone muted."
+            voice.call.muted=False
+            now[0]+=3
+            assert voice.snapshot()["capture_status"]==waiting
+            voice.push(call_id,b"\x01\x00"*960,True)
+            assert voice.snapshot()["capture_status"]=="Microphone audio is flowing."
+            await voice.end(call_id)
+            await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",identity)
+            voice.push(call_id,b"\x01\x00"*960,True)
+            assert voice.snapshot()["capture_status"]==waiting
+        finally:await voice.close();db.close()
+    asyncio.run(run())

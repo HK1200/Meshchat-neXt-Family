@@ -60,6 +60,7 @@ class Call:
     receive_muted: bool = False
     started_at: float = field(default_factory=time.time)
     connected_at: float = 0.
+    capture_activity_at: float | None = None
 
 
 class VoiceEngine:
@@ -398,6 +399,7 @@ class ReticulumVoice:
                 try:
                     engine.push(data, native_processing)
                     self.sent_frames += 1
+                    self.call.capture_activity_at = self.clock()
                 except Exception as error:
                     self.loop.call_soon_threadsafe(self.audio_failed, call_id, str(error)[:180])
 
@@ -528,6 +530,13 @@ class ReticulumVoice:
         capabilities = {}
         if call is not None and call.phase == "connected":
             with contextlib.suppress(RuntimeError): capabilities = self.request("capabilities")
+        capture_status = capabilities.get("capture_status")
+        if call is not None and call.phase == "connected":
+            if call.muted:
+                capture_status = "Microphone muted."
+            elif (call.capture_activity_at is not None
+                  and 0 <= self.clock() - call.capture_activity_at < 2):
+                capture_status = "Microphone audio is flowing."
         phone = self.engine.manager.telephone if self.engine else None
         active = None
         if call is not None and call.phase != "ending":
@@ -543,7 +552,7 @@ class ReticulumVoice:
                           is_half_duplex=self.engine.manager.is_half_duplex() if self.engine else False,
                           is_ptt_active=bool(self.engine.manager.ptt_active) if self.engine else False)
         return dict(**self.call_policy, speaker=capabilities.get("speaker"),
-                    external_audio=capabilities.get("external_audio"), capture_status=capabilities.get("capture_status"),
+                    external_audio=capabilities.get("external_audio"), capture_status=capture_status,
                     microphone_permission=capabilities.get("microphone_permission"), platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
                     calling_available=self.available, address=phone.destination.hash.hex() if phone and phone.destination else "",
                     active_call=active, call_status=active["status"] if active else 3, is_busy=call is not None or self.ending is not None,
