@@ -145,7 +145,14 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(recipient.waitForExistence(timeout: 20), app.debugDescription)
         reveal(recipient, in: form)
         XCTAssertEqual(recipient.value as? String, "0")
-        recipient.tap()
+        // A custom SwiftUI Toggle exposes both the whole label row and its
+        // UISwitch. The row's midpoint is whitespace, not the switch thumb.
+        let selector = recipient.switches.firstMatch
+        XCTAssertTrue(selector.waitForExistence(timeout: 10), app.debugDescription)
+        selector.tap()
+        let selected = app.switches.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "next-location-recipient", "1")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 15), app.debugDescription)
         let start = app.buttons["next-location-start"]
         reveal(start, in: form)
         XCTAssertTrue(start.isEnabled, app.debugDescription)
