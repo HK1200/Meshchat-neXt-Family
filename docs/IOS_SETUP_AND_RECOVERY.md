@@ -217,3 +217,23 @@ to open Messages and retrieve encrypted mail. This does not guarantee silent
 retrieval while fully suspended or wake incoming calls. **Turn off push alerts**
 stays pending until the provider confirms removal; reopen neXt online or use
 Retry if needed. Family’s enrollment, account and settings remain separate.
+
+### neXt conversation folders and pins (development source)
+
+Open **Messages → Conversations**. Use **Create folder** beside Folders to
+organize conversations. A conversation’s context menu lets you pin it or move
+it into a folder. Select **All messages**, **Uncategorized**, or a named folder
+to change the view. Search and the Unread, Failed and Attachments filters apply
+to the conversation list. Pins appear before ordinary conversations, including
+when the list spans multiple pages.
+
+The folders menu exports and imports folder names and assignments in neXt’s
+JSON format. Imported folder identifiers are matched by name rather than
+replacing unrelated existing folders. A rejected import preserves the previous
+state. Reimporting an unchanged assignment preserves its timestamps. Removing
+a folder moves its assignments to Uncategorized and does not delete contacts,
+messages or pins. These local labels never approve calls, add contacts, enable
+location sharing or authorize mailbox push senders.
+
+The private backend and archived-interface browser checks have passed. Native
+folder interaction and real-device sharing/pickers still need qualification.

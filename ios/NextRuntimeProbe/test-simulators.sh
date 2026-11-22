@@ -89,6 +89,7 @@ cp "$probe/relay_runtime.py" staged/relay_runtime.py
 cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
 cp "$probe/push_receiving.py" staged/push_receiving.py
 cp "$probe/telemetry_runtime.py" staged/telemetry_runtime.py
+cp "$probe/conversation_organization.py" staged/conversation_organization.py
 cp "$family_ios/../app/src/main/python/family_location.py" "$family_ios/../app/src/main/python/family_meshcore_location.py" staged/
 cp "$family_ios/../app/src/main/python/family_maps.py" staged/family_maps.py
 cp "$family_ios/../app/src/main/python/lxst_pyogg_ctypes_compat.py" staged/lxst_pyogg_ctypes_compat.py

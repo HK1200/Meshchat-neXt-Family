@@ -26,6 +26,7 @@ from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
 import mailbox_push
 from loopback_listener import ResumableListener
+from conversation_organization import ConversationOrganization
 
 
 def record(message, state):
@@ -449,8 +450,6 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         "auth/status": {"auth_enabled": False, "authenticated": True},
         "auth/csrf": {"csrf_token": token},
         "config": {"config": config},
-        "lxmf/conversation-pins": {"pinned_destination_hashes": []},
-        "lxmf/folders": {"folders": []},
     }
 
     announce_lock = asyncio.Lock()
@@ -582,16 +581,6 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 )
             if path in responses:
                 return web.json_response(responses[path])
-            if path == "lxmf/conversations":
-                return web.json_response({"conversations": [
-                    {
-                        "destination_hash": address,
-                        "display_name": entry["name"],
-                        "is_contact": entry["is_contact"],
-                        **history.summary(address),
-                    }
-                    for address, entry in history.conversation_entries().items()
-                ]})
             label = re.fullmatch(r"destination/([a-f0-9]{32})/custom-display-name", path)
             if label:
                 return web.json_response({"custom_display_name": history.custom_name(label[1])})
@@ -910,6 +899,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
+    ConversationOrganization(history).register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS
