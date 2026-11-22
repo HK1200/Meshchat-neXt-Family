@@ -48,6 +48,7 @@ private struct ProbeScreen: View {
     @State private var theme = "system"
     @State private var pushSyncing = false
     @State private var lastPushCheck = ContinuousClock.now - .seconds(15)
+    @StateObject private var webLoad = NextWebLoadState()
     @State private var tcpConnected: Bool?
     @State private var tcpEnabledCount: Int?
 
@@ -145,7 +146,7 @@ private struct ProbeScreen: View {
                             .padding(.vertical, 4)
                             .task(id: url) { await watchConnection(at: url) }
                     }
-                    ProbeWebView(url: url, modalPresented: panel != nil, onExport: { file in
+                    ProbeWebView(url: url, modalPresented: panel != nil, loadState: webLoad, onExport: { file in
                         exportFolder = file.deletingLastPathComponent()
                         exportItem = NextExportItem(file: file)
                     }, onExportError: { problem in
@@ -153,6 +154,23 @@ private struct ProbeScreen: View {
                     }, onPreferencesError: { problem in
                         preferencesError = problem; showPreferencesError = true
                     }, onExternalLink: { target in openURL(target) })
+                    .overlay {
+                        if let problem = webLoad.problem {
+                            VStack(spacing: 12) {
+                                Text(problem).multilineTextAlignment(.center)
+                                Button("Retry interface") { webLoad.retry() }
+                                    .accessibilityIdentifier("next-web-retry")
+                            }
+                            .padding().frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(.background)
+                            .accessibilityIdentifier("next-web-error")
+                        } else if webLoad.loading {
+                            ProgressView("Loading interface…")
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(.background)
+                                .accessibilityIdentifier("next-web-loading")
+                        }
+                    }
                 }
             } else if let error {
                 VStack {
@@ -532,12 +550,13 @@ private struct ProbeScreen: View {
 private struct ProbeWebView: UIViewRepresentable {
     let url: URL
     let modalPresented: Bool
+    @ObservedObject var loadState: NextWebLoadState
     let onExport: (URL) -> Void
     let onExportError: (String) -> Void
     let onPreferencesError: (String) -> Void
     let onExternalLink: (URL) -> Void
 
-    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, onExport: onExport, onError: onExportError, onPreferencesError: onPreferencesError, onExternalLink: onExternalLink) }
+    func makeCoordinator() -> NavigationGuard { NavigationGuard(url: url, loadState: loadState, onExport: onExport, onError: onExportError, onPreferencesError: onPreferencesError, onExternalLink: onExternalLink) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -560,27 +579,29 @@ private struct ProbeWebView: UIViewRepresentable {
             )
         }
         let view = WKWebView(frame: .zero, configuration: configuration)
-        view.accessibilityElementsHidden = modalPresented
+        view.accessibilityElementsHidden = modalPresented || loadState.loading || loadState.problem != nil
         view.navigationDelegate = context.coordinator
         context.coordinator.setModal(modalPresented, on: view)
-        if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
+        context.coordinator.load(url, in: view)
         return view
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
         // A presented native form owns interaction; keep its inactive WebKit
         // page out of VoiceOver and accessibility snapshots until dismissal.
-        view.accessibilityElementsHidden = modalPresented
+        view.accessibilityElementsHidden = modalPresented || loadState.loading || loadState.problem != nil
         context.coordinator.setModal(modalPresented, on: view)
         // React only to an explicit native route request. Comparing view.url
         // itself would overwrite ordinary in-page navigation on every redraw.
-        if context.coordinator.requestedURL != url {
+        if context.coordinator.requestedURL != url || context.coordinator.handledRetry != loadState.retryRequest {
             context.coordinator.requestedURL = url
-            if let request = try? NextHTTP.shared.webRequest(for: url) { view.load(request) }
+            context.coordinator.handledRetry = loadState.retryRequest
+            context.coordinator.load(url, in: view)
         }
     }
 
     static func dismantleUIView(_ view: WKWebView, coordinator: NavigationGuard) {
+        coordinator.cancelLoadWatchdog()
         coordinator.downloads.cancel()
         view.configuration.userContentController.removeScriptMessageHandler(forName: "nextPreferences", contentWorld: .page)
     }
@@ -593,6 +614,66 @@ private struct ProbeWebView: UIViewRepresentable {
         let downloads: NextAttachmentDownloads
         var requestedURL: URL
         private var modalPresented = false
+        let loadState: NextWebLoadState
+        var handledRetry = 0
+        private var loadWatchdog: Task<Void, Never>?
+        private var currentNavigation: WKNavigation?
+        private var renderWait: Task<Void, Never>?
+        private var loadRequest = 0
+
+        func cancelLoadWatchdog() {
+            loadRequest += 1
+            loadWatchdog?.cancel(); loadWatchdog = nil
+            renderWait?.cancel(); renderWait = nil
+        }
+
+        func load(_ target: URL, in view: WKWebView) {
+            cancelLoadWatchdog()
+            let expected = loadRequest
+            view.accessibilityElementsHidden = true
+            // Do not publish ObservableObject changes during updateUIView.
+            Task { @MainActor [weak self, weak view] in
+                guard let self, let view, self.loadRequest == expected else { return }
+                let generation = self.loadState.begin()
+                guard let request = try? NextHTTP.shared.webRequest(for: target) else {
+                    self.loadState.failed(generation); return
+                }
+                self.currentNavigation = view.load(request)
+                self.loadWatchdog = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .seconds(45)) } catch { return }
+                    guard let self, !Task.isCancelled else { return }
+                    self.loadState.failed(generation)
+                }
+            }
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            guard let navigation, navigation !== currentNavigation else { return }
+            // A page-initiated local reload also needs the native fallback.
+            cancelLoadWatchdog()
+            currentNavigation = navigation
+            let generation = loadState.begin()
+            webView.accessibilityElementsHidden = true
+            loadWatchdog = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .seconds(45)) } catch { return }
+                guard let self, !Task.isCancelled else { return }
+                self.loadState.failed(generation)
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            navigationFailed(navigation)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            navigationFailed(navigation)
+        }
+
+        private func navigationFailed(_ navigation: WKNavigation?) {
+            guard let navigation, navigation === currentNavigation else { return }
+            cancelLoadWatchdog()
+            loadState.failed(loadState.generation)
+        }
 
         func setModal(_ active: Bool, on view: WKWebView) {
             guard modalPresented != active else { return }
@@ -607,8 +688,9 @@ private struct ProbeWebView: UIViewRepresentable {
             view.callAsyncJavaScript(NextModalPage.script, arguments: ["active": modalPresented],
                                      in: nil, in: .defaultClient) { _ in }
         }
-        init(url: URL, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void, onExternalLink: @escaping (URL) -> Void) {
+        init(url: URL, loadState: NextWebLoadState, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void, onExternalLink: @escaping (URL) -> Void) {
             self.url = url
+            self.loadState = loadState
             self.onExternalLink = onExternalLink
             requestedURL = url
             preferences = NextWebPreferencesBridge(base: url, folder: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]) {
@@ -623,11 +705,36 @@ private struct ProbeWebView: UIViewRepresentable {
             // saved conversations. Restore only our authenticated local URL.
             let current = webView.url
             let target = current?.scheme == url.scheme && current?.host == url.host && current?.port == url.port ? current! : requestedURL
-            if let request = try? NextHTTP.shared.webRequest(for: target) { webView.load(request) }
+            cancelLoadWatchdog()
+            guard loadState.rendererTerminated() else { return }
+            load(target, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            applyModal(to: webView)
+            guard let navigation, navigation === currentNavigation else { return }
+            let generation = loadState.generation
+            renderWait?.cancel()
+            renderWait = Task { @MainActor [weak self, weak webView] in
+                for _ in 0..<120 {
+                    guard let self, let webView, !Task.isCancelled,
+                          self.loadState.generation == generation else { return }
+                    let rendered: Bool = await withCheckedContinuation { continuation in
+                        webView.callAsyncJavaScript(NextWebLoadState.pageReadyScript, arguments: [:], in: nil, in: .page) { result in
+                            continuation.resume(returning: (try? result.get()) as? Bool ?? false)
+                        }
+                    }
+                    guard !Task.isCancelled, self.loadState.generation == generation else { return }
+                    if rendered {
+                        self.loadWatchdog?.cancel(); self.loadWatchdog = nil
+                        self.loadState.ready(generation)
+                        webView.accessibilityElementsHidden = self.modalPresented
+                        self.applyModal(to: webView)
+                        return
+                    }
+                    do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+                }
+                self?.loadState.failed(generation)
+            }
             // Log only the local access result, never credentials or message data.
             webView.callAsyncJavaScript("return (await fetch('/api/v1/status', {cache:'no-store'})).status",
                                         arguments: [:], in: nil, in: .page) { result in

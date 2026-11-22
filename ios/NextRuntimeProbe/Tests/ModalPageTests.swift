@@ -23,6 +23,22 @@ final class ModalPageTests: XCTestCase {
         }
     }
 
+    func testInterfaceReadinessRequiresTheRenderedAppNotAnEmptyDocument() async throws {
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640))
+        let ready = expectation(description: "Synthetic app document loaded")
+        let navigation = Navigation(ready)
+        view.navigationDelegate = navigation
+        defer { view.stopLoading(); view.navigationDelegate = nil }
+        view.loadHTMLString("<html><body><div id='app'></div></body></html>", baseURL: nil)
+        await fulfillment(of: [ready], timeout: 30)
+        XCTAssertNil(navigation.error)
+        let empty = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(empty as? Bool, false)
+        _ = try await javascript(view, "document.getElementById('app').appendChild(document.createElement('main')); return true;")
+        let rendered = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(rendered as? Bool, true)
+    }
+
     func testNativeModalHidesPageWithoutLosingDraftAndRestoresIt() async throws {
         try await verify(attributes: "", expectedAria: NSNull(), expectedInert: false)
     }
