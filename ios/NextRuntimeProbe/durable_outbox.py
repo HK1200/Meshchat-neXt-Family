@@ -22,7 +22,7 @@ def schema(database):
         policy TEXT NOT NULL)""")
 
 
-def policy(method, automatic, relay, route):
+def policy(method, automatic, relay, route, *, recipient=None):
     if type(method) is not int or method not in (LXMF.LXMessage.DIRECT, LXMF.LXMessage.OPPORTUNISTIC, LXMF.LXMessage.PROPAGATED):
         raise ValueError('Unsupported pending delivery method')
     if type(automatic) is not bool:
@@ -31,9 +31,11 @@ def policy(method, automatic, relay, route):
         raise ValueError('Invalid pending mailbox')
     if method == LXMF.LXMessage.PROPAGATED and relay is None:
         raise ValueError('A propagated message requires its selected mailbox')
+    if recipient is not None and (not isinstance(recipient, bytes) or len(recipient) != 64):
+        raise ValueError('Invalid pending recipient public key')
     # Only a fingerprint is needed to prevent a changed route receiving a hint.
     fingerprint = route_fingerprint(route)
-    return dict(method=method, automatic=automatic, relay=relay.hex() if relay else None, route=fingerprint)
+    return dict(method=method, automatic=automatic, relay=relay.hex() if relay else None, route=fingerprint, recipient=recipient.hex() if recipient is not None else None)
 
 
 def route_fingerprint(route):
@@ -52,6 +54,7 @@ def enqueue(database, row, packet, delivery):
             or not isinstance(peer, str) or not re.fullmatch('[a-f0-9]{32}', peer)
             or not isinstance(packet, bytes) or not 96 < len(packet) <= MAX_PACKET):
         raise ValueError('Invalid pending signed message')
+    recipient_identity(delivery, peer)
     current = database.execute('SELECT COUNT(*), COALESCE(SUM(length(packet)), 0) FROM next_pending_messages WHERE hash != ?', (key,)).fetchone()
     if current[0] >= MAX_PENDING or current[1] + len(packet) > MAX_TOTAL:
         raise ValueError('Pending messages have filled the local queue. Wait for delivery or remove an unsent conversation.')
@@ -65,14 +68,33 @@ def remove(database, key):
 
 def selected_policy(raw):
     value = json.loads(raw)
-    if not isinstance(value, dict) or set(value) != {'method', 'automatic', 'relay', 'route'}:
+    if not isinstance(value, dict) or set(value) not in ({'method', 'automatic', 'relay', 'route'}, {'method', 'automatic', 'relay', 'route', 'recipient'}):
         raise ValueError('Invalid saved delivery choices')
     relay = bytes.fromhex(value['relay']) if isinstance(value['relay'], str) else value['relay']
-    result = policy(value['method'], value['automatic'], relay, None)
+    recipient = value.get('recipient')
+    if recipient is not None and (not isinstance(recipient, str) or not re.fullmatch('[a-f0-9]{128}', recipient)):
+        raise ValueError('Invalid saved recipient public key')
+    result = policy(value['method'], value['automatic'], relay, None, recipient=bytes.fromhex(recipient) if recipient else None)
     if value['route'] is not None and (not isinstance(value['route'], str) or not re.fullmatch('[a-f0-9]{64}', value['route'])):
         raise ValueError('Invalid saved alert route')
     result['route'] = value['route']
     return result
+
+
+def recipient_identity(delivery, peer):
+    """Recover only a public key bound to this exact LXMF destination."""
+    import RNS
+    saved = delivery.get('recipient')
+    if saved is None:
+        # Older journals remain readable. Never invent a missing public key.
+        return RNS.Identity.recall(bytes.fromhex(peer), _no_use=True)
+    if not isinstance(saved, str) or not re.fullmatch('[a-f0-9]{128}', saved):
+        raise ValueError('Invalid saved recipient public key')
+    identity = RNS.Identity(create_keys=False)
+    identity.load_public_key(bytes.fromhex(saved))
+    if RNS.Destination.hash_from_name_and_identity('lxmf.delivery', identity).hex() != peer:
+        raise ValueError('The pending recipient public key does not match its address')
+    return identity
 
 
 def recreate(packet, expected_hash, peer, probe, delivery):
@@ -99,7 +121,7 @@ def recreate(packet, expected_hash, peer, probe, delivery):
     if (original.content_as_string().startswith('!NFLOC1:') or any(key in fields for key in
             (LXMF.FIELD_TELEMETRY, LXMF.FIELD_TELEMETRY_STREAM))):
         raise ValueError('Location updates must never be replayed after a restart')
-    identity = RNS.Identity.recall(bytes.fromhex(peer), _no_use=True)
+    identity = recipient_identity(delivery, peer)
     if identity is None or RNS.Destination.hash_from_name_and_identity('lxmf.delivery', identity).hex() != peer:
         raise LookupError('The recipient identity is not currently known')
     message = probe._message(identity, original.content_as_string(), fields, delivery['method'])

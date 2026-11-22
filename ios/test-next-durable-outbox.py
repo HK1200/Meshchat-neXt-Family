@@ -137,3 +137,46 @@ def test_history_and_restart_packet_cannot_commit_separately(tmp_path):
     assert history.db.execute('SELECT COUNT(*) FROM next_pending_messages').fetchone()[0] == 0
     assert history.db.execute('SELECT COUNT(*) FROM messages').fetchone()[0] == 0
     history.close()
+
+
+def test_saved_public_key_recovers_without_recipient_in_volatile_cache(db, monkeypatch):
+    import json
+    original, probe, row, delivery = sample(fields={LXMF.FIELD_FILE_ATTACHMENTS:[['offline.bin',b'exact offline bytes']]})
+    public = original.destination.identity.get_public_key()
+    delivery=module.policy(original.desired_method,True,None,None,recipient=public)
+    with db:module.enqueue(db,row,original.packed,delivery)
+    packed,saved=db.execute('SELECT packet,policy FROM next_pending_messages').fetchone()
+    assert json.loads(saved)['recipient']==public.hex()
+    monkeypatch.setattr(RNS.Identity,'recall',lambda *args,**kwargs:None)
+    restored=module.recreate(packed,row['hash'],row['destination_hash'],probe,module.selected_policy(saved))
+    assert restored.packed==original.packed and restored.hash==original.hash
+    assert restored.destination.identity.get_public_key()==public
+    assert restored.destination.identity.get_private_key() is None
+
+
+def test_wrong_recipient_key_cannot_be_enqueued_or_replayed(db):
+    original,probe,row,delivery=sample()
+    delivery=module.policy(original.desired_method,True,None,None,recipient=RNS.Identity().get_public_key())
+    with pytest.raises(ValueError,match='does not match'):
+        with db:module.enqueue(db,row,original.packed,delivery)
+    assert db.execute('SELECT COUNT(*) FROM next_pending_messages').fetchone()[0]==0
+    with pytest.raises(ValueError,match='does not match'):
+        module.recreate(original.packed,row['hash'],row['destination_hash'],probe,delivery)
+
+
+def test_legacy_policy_without_public_key_remains_readable_but_never_guesses(monkeypatch):
+    import json
+    original,probe,row,delivery=sample()
+    delivery.pop('recipient')
+    restored=module.selected_policy(json.dumps(delivery))
+    assert restored['recipient'] is None
+    assert module.recreate(original.packed,row['hash'],row['destination_hash'],probe,restored).hash==original.hash
+    monkeypatch.setattr(RNS.Identity,'recall',lambda *args,**kwargs:None)
+    with pytest.raises(LookupError):module.recreate(original.packed,row['hash'],row['destination_hash'],probe,restored)
+
+
+@pytest.mark.parametrize('recipient',[True,123,'aa','zz'*64])
+def test_malformed_saved_public_keys_are_rejected(recipient):
+    import json
+    _,_,_,delivery=sample();delivery['recipient']=recipient
+    with pytest.raises(ValueError):module.selected_policy(json.dumps(delivery))

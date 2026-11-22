@@ -923,7 +923,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 pending = None
                 outgoing = record(message, "sending")
                 if not outgoing["is_private_telemetry"] and not telemetry_fields:
-                    choices = durable_outbox.policy(message.desired_method, delivery_method is None, selected_node, expected_alert_route)
+                    choices = durable_outbox.policy(message.desired_method, delivery_method is None, selected_node, expected_alert_route, recipient=message.destination.identity.get_public_key())
                     pending = (message.packed, choices)
                 try:
                     row = history.save(address, outgoing, pending=pending)

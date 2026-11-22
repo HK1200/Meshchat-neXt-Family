@@ -324,3 +324,13 @@ two full TCP retirements with the receiving peer using this recovery. The
 unmodified receiver's stalled state was retained as the negative reference.
 This is a private reconnect check, not a completed Wi-Fi/cellular or independent
 public-provider failover test. No firewall settings were changed.
+
+### Pending messages and offline recipients
+
+The development neXt restart journal retains the recipient's public key beside
+the original signed packet, so a recipient who is offline does not have to
+announce again before an opted-in mailbox send can resume. neXt checks that
+the public key belongs to the saved LXMF address before using it. This retains
+no recipient private key and sends no additional identity data. Older pending
+records without that public key remain readable and may still need a verified
+announce. This correction remains under native/device qualification.

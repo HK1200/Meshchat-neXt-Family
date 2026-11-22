@@ -7,15 +7,14 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The verified separate iPad build 367.1 pins the public 0.1.25 backend and
-frontend and displays 0.1.25 as its app version. Exact source `842f20e`
-passed all 99 checks on each simulator. Its same-key physical upgrade retained
-all 1,502 current non-cache support files, twelve messages, two contacts,
-identity, native preferences and four peers before first launch. Regular Family
-and Family Mailbox Test were unchanged. The physical slow-transfer check below
-qualifies the bounded RNCP backport, not every remaining file-picker gesture.
-Native call identity, voice playback and location bindings retain explicit
-checksum checks and regression coverage. These results do not qualify fully
+The current separate iPad build 370.1 pins the public 0.1.25 backend and
+frontend and displays 0.1.25 as its app version. Exact source `472f5be`
+passed all 103 checks on each simulator. Its same-key physical upgrade retained
+all 1,079 current non-cache support files, twelve messages, two contacts,
+identity, native preferences and four peers before first launch. Both Family
+apps remained byte-identical. The ordinary interface rendered after the prior
+369.1 cold-restart tests. The newer recipient-key recovery correction below is
+not yet qualified on the physical iPad. These results do not qualify fully
 suspended internet alerts or every remaining desktop service.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
@@ -322,5 +321,24 @@ commit. The original signed resource and echo arrived with matching bytes.
 Deletion, corrupted signatures and disabled-mailbox recovery transmitted no
 pending message. All five cases passed on Python 3.11 and 3.14. Seventeen
 focused checks also cover signature/identity changes, queue bounds, rollback
-and history migration. These results still need native archive, simulator and
-actual iPad qualification before being treated as a device release feature.
+and history migration. Source `472f5be` subsequently passed both full simulator suites and both
+unsigned archive jobs in run `45066859273`. On the actual iPad, a one-shot test
+peer did not reestablish the recovery route within the deadline. With periodic
+private peer announces, the same build recovered the original signed message,
+a 75,000-byte attachment and exact photo bytes after termination; the receiver
+had no copy before restart and recorded the original hash once. Original
+contacts and peers were restored. This does not qualify provider-independent
+route recovery.
+
+A follow-up real relay regression found that a recipient's public key could
+remain only in volatile Reticulum state when a pending packet was saved. After
+cold restart, a fully offline recipient could not supply another announce, so
+its pending propagated message did not reach the relay. The repair journals
+only the recipient's public key, validates its LXMF address binding on enqueue
+and recovery, and preserves legacy journals. No recipient private key is saved
+and no additional identity data is transmitted. The regression fails before
+the repair; afterward the relay accepts the original signed packet while the
+recipient remains offline, then delivers its exact attachment when the
+recipient reconnects. All 741 available root tests and 42 focused Python 3.11
+checks passed. The new repair still requires exact-source CI, native simulator
+and device qualification.
