@@ -85,6 +85,8 @@ final class ProbeUITests: XCTestCase {
         let composer = web.textViews.firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)
         composer.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { composer.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         composer.typeText(fixture.message)
         let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
         XCTAssertTrue(send.waitForExistence(timeout: 10), app.debugDescription)
@@ -112,6 +114,8 @@ final class ProbeUITests: XCTestCase {
             let composer = web.textViews.firstMatch
             XCTAssertTrue(composer.waitForExistence(timeout: 60), app.debugDescription)
             composer.tap()
+            if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { composer.tap() }
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
             composer.typeText(text)
             let send = web.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", "Send", "Send (")).firstMatch
             XCTAssertTrue(send.waitForExistence(timeout: 10) && send.isEnabled, app.debugDescription)
