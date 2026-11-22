@@ -90,6 +90,7 @@ cp "$family_ios/../app/src/main/python/family_tcp.py" staged/
 cp "$family_ios/../app/src/main/python/mailbox_push.py" staged/mailbox_push.py
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
+cp "$probe/blocked_destinations.py" "$probe/block_runtime.py" staged/
 cp "$probe/location_sessions.py" "$probe/location_runtime.py" staged/
 test -s staged/location_sessions.py && test -s staged/location_runtime.py
 cp "$probe/map_runtime.py" staged/map_runtime.py

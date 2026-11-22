@@ -61,6 +61,7 @@ class Call:
     started_at: float = field(default_factory=time.time)
     connected_at: float = 0.
     capture_activity_at: float | None = None
+    suppressed: bool = False
 
 
 class VoiceEngine:
@@ -263,6 +264,7 @@ class ReticulumVoice:
     def message_allowed(self, peer):
         # Global stranger blocking applies to received DMs even with calling off.
         return (isinstance(peer, str) and re.fullmatch(r"[a-f0-9]{32}", peer) is not None
+                and not getattr(self, "destination_blocked", lambda peer: False)(peer)
                 and (not self.call_policy["block_all_from_strangers"] or peer in self.policy_contacts))
 
     def caller_allowed(self, identity_hash):
@@ -276,7 +278,8 @@ class ReticulumVoice:
                        RNS.Destination.hash_from_name_and_identity("lxmf.delivery", bytes(identity_hash)).hex(),
                        RNS.Destination.hash_from_name_and_identity("lxst.telephony", bytes(identity_hash)).hex()}
             if (not self.config.telephone_enabled.get() or self.call_policy["do_not_disturb_enabled"]
-                    or aliases.intersection(self.blocked_callers)):
+                    or aliases.intersection(self.blocked_callers)
+                    or any(getattr(self, "destination_blocked", lambda peer: False)(peer) for peer in aliases)):
                 return False
             if self.call_policy["telephone_allow_calls_from_contacts_only"] or self.call_policy["block_all_from_strangers"]:
                 return bool(aliases.intersection(self.policy_contacts))
@@ -316,10 +319,14 @@ class ReticulumVoice:
 
     async def dial(self, peer):
         peer = address(peer)
+        if getattr(self, "destination_blocked", lambda peer: False)(peer):
+            raise ValueError("This Reticulum destination is blocked")
         if not self.config.telephone_enabled.get(): raise ValueError("Enable Reticulum calling first")
         if self.call or self.ending: raise ValueError("Another call is active or still closing")
         self.request("open")
         await self.ensure_engine()
+        if getattr(self, "destination_blocked", lambda peer: False)(peer):
+            raise ValueError("This Reticulum destination was blocked before calling")
         import RNS
         identity = RNS.Identity.recall(bytes.fromhex(peer))
         canonical = RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity.hash).hex() if identity else peer
@@ -339,6 +346,17 @@ class ReticulumVoice:
         if event in ("ringing", "established") and identity is None: return
         peer = RNS.Destination.hash_from_name_and_identity("lxst.telephony", identity.hash).hex() if identity else None
         call = self.call
+        if event in ("ringing", "established") and getattr(self, "destination_blocked", lambda peer: False)(peer):
+            # A network worker may have accepted the call just before the ban.
+            # Retire that engine without ever publishing ringing/audio/history.
+            if call is None:
+                call = Call(uuid.uuid4().hex, peer, "", True, "ending", identity.hash.hex(), suppressed=True)
+                self.call = call
+            elif call.peer != peer and call.requested_peer not in (peer, identity.hash.hex(),
+                    RNS.Destination.hash_from_name_and_identity("lxmf.delivery", identity.hash).hex()):
+                return
+            self.schedule_end(call.id)
+            return
         if event == "ringing" and call is None:
             call = Call(uuid.uuid4().hex, peer, self.name_for(peer, identity), True, "incoming", identity.hash.hex())
             self.call = call
@@ -566,6 +584,7 @@ class ReticulumVoice:
                     call_targets=[{"address": key, "name": row["name"]} for key, row in self.contacts().items()])
 
     def record_call(self, call):
+        if call.suppressed: return
         status = "Completed" if call.connected_at else "Missed" if call.incoming else "Failed"
         duration = max(0, int(time.time() - call.connected_at)) if call.connected_at else 0
         with self.database:

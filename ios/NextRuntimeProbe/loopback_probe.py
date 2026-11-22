@@ -27,6 +27,8 @@ from offline_mailbox import OfflineMailbox
 import mailbox_push
 from loopback_listener import ResumableListener
 from conversation_organization import ConversationOrganization
+from blocked_destinations import PeerBlocks
+from block_runtime import BlockRuntime
 
 
 def record(message, state):
@@ -394,7 +396,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
         if not re.fullmatch(r"[a-f0-9]{32}", address):
             return None, False
-        if address == own:
+        if address == own or blocks.denies(address):
             return None, True
         if not row["is_outbound"] and voice is not None and not voice.message_allowed(address):
             # Acknowledge the verified packet without creating history or alerts.
@@ -457,6 +459,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     own = probe.source.hash.hex()
     history = ConversationHistory(ready_file.parent / f"messages-{own}.sqlite3",
                                   notification_floor=settings.get("notification_floor", 0))
+    blocks = PeerBlocks(history.db, probe.source.identity)
     def mailbox_session():
         # Reconnects invalidate the relay link even if another parallel peer
         # stays online. Include only live, attached interfaces and their epochs.
@@ -469,7 +472,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     token = secrets.token_urlsafe(32)
     access = RuntimeAccess(ready_file.parent)
     contact = "Test contact" if device else "Simulator Echo"
-    if peer:
+    if peer and not blocks.denies(peer):
         history.ensure_contact(peer, contact)
     contacts = history.contacts()
     display_name = "neXt iOS" if device else "neXt Simulator"
@@ -610,7 +613,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 try:
                     if relay and request.query.get("aspect") == "rrc.hub":
                         return web.json_response({"announces": relay.discovered(request.query)}, headers={"Cache-Control": "no-store"})
-                    return web.json_response({"announces": probe.discovery.page(request.query)}, headers={"Cache-Control": "no-store"})
+                    return web.json_response({"announces": [row for row in probe.discovery.page(request.query)
+                        if request.query.get("include_blocked") == "true" or not blocks.denies(row["destination_hash"])]}, headers={"Cache-Control": "no-store"})
                 except ValueError:
                     raise web.HTTPBadRequest(text="Invalid discovery search or pagination") from None
             if path == "preview/reticulum-connections":
@@ -815,9 +819,13 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 if (not isinstance(address, str) or not re.fullmatch(r"[a-fA-F0-9]{32}", address)
                         or address.lower() == own):
                     return web.json_response({"message": "Enter a name and a valid LXMF address"}, status=400)
+                if blocks.denies(address):
+                    return web.json_response({"message": "Unblock this Reticulum destination before adding it"}, status=403)
                 if address.lower() in contacts:
                     return web.json_response({"message": "That LXMF address is already saved"}, status=409)
                 history.ensure_contact(address.lower(), name.strip())
+                with history.db:
+                    history.db.execute("DELETE FROM hidden_conversations WHERE peer = ?", (address.lower(),))
                 contacts.update(history.contacts())
                 if voice: voice.refresh_call_contacts()
                 if relay: relay.refresh_contacts()
@@ -848,6 +856,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 address = draft.get("destination_hash")
                 if not isinstance(address, str) or (address not in contacts and not history.has_conversation(address)) or not isinstance(content, str):
                     return web.json_response({"message": "Choose an LXMF contact or an existing conversation"}, status=400)
+                if blocks.denies(address):
+                    return web.json_response({"message": "This Reticulum destination is blocked"}, status=403)
                 try:
                     raw_fields = draft.get("fields") or {}
                     telemetry_fields = {}
@@ -876,6 +886,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 try:
                     message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields,
                         delivery_method=delivery_method, propagation_node=selected_node)
+                    if blocks.denies(address):
+                        raise ValueError("This Reticulum destination was blocked before submission")
                     if telemetry_fields and telemetry.generation != location_generation:
                         raise ValueError("Location settings changed before the update could be sent")
                     if telemetry_fields:
@@ -906,6 +918,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     # Run on the app loop: a callback must recheck the current
                     # explicit opt-in before a relay receives any message.
                     from outbound_mailbox import retry_via_mailbox
+                    if blocks.denies(address): return False
                     retried = retry_via_mailbox(updated, probe.router, selected_node,
                         mailbox.outbound_node(), automatic=delivery_method is None)
                     state_changed(updated, "sending" if retried else "failed")
@@ -959,7 +972,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         raise web.HTTPNotFound()
 
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
-    ConversationOrganization(history, cancel_outbound=probe.router.cancel_outbound).register(app.router)
+    organization = ConversationOrganization(history, cancel_outbound=probe.router.cancel_outbound)
+    organization.register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS
@@ -975,6 +989,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             track(broadcast_voice_settings())
         voice.on_settings = voice_settings_changed
         config.update(voice.settings_snapshot())
+        voice.destination_blocked = blocks.denies
         voice.register(app.router)
         async def start_voice(_): await voice.start()
         async def stop_voice(_): await voice.close()
@@ -1001,6 +1016,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if not device and os.environ.get("NEXT_PROBE_LOCATION_FIXTURE") == "1":
             config.update(telemetry.configure({"location_source": "browser"}))
         location = location_factory(ready_file.parent, probe, history, telemetry)
+        location.recipient_allowed = lambda peer: not blocks.denies(peer)
         location.register(app.router)
         async def stop_location(_): await location.close()
         # Revoke GPS before closing telemetry's persistent settings.
@@ -1026,6 +1042,20 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             await sip.close()
         app.on_startup.append(start_sip)
         app.on_cleanup.append(stop_sip)
+    async def revoke_blocked(keys):
+        for key in keys:
+            if location: await location.contact_removed(key)
+            mailbox_push.save_route(ready_file.parent, key, None)
+
+    async def blocks_changed():
+        contacts.clear(); contacts.update(history.contacts())
+        if relay: relay.refresh_contacts()
+        if voice:
+            voice.refresh_call_contacts()
+            if voice.call and blocks.denies(voice.call.peer): voice.schedule_end(voice.call.id)
+        await meshcore_broadcast({"type":"blocked_destinations", "blocked_destinations":blocks.snapshot()})
+
+    BlockRuntime(blocks, history, organization, revoke_blocked, blocks_changed).register(app.router)
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)

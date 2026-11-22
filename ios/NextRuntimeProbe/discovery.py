@@ -1,6 +1,7 @@
 """Bounded, passive LXMF discovery for the iOS client; never adds contacts."""
 from datetime import datetime, timezone
 import sqlite3
+import re
 import threading
 import time
 import unicodedata
@@ -86,6 +87,13 @@ class ClientDiscovery:
             rows = self.db.execute("""SELECT address, identity_hash, public_key, name, last_seen
                 FROM clients WHERE last_seen >= ? ORDER BY last_seen DESC, address""",
                 (time.time() - self.retention_seconds,)).fetchall()
+        destination = query.get("destination_hash")
+        if destination is not None:
+            if not isinstance(destination, str) or not re.fullmatch('[a-fA-F0-9]{32}', destination):
+                raise ValueError("Choose a valid Reticulum destination")
+            destination = destination.lower()
+            rows = [row for row in rows if destination in (row[0], row[1],
+                RNS.Destination.hash_from_name_and_identity('lxst.telephony', bytes.fromhex(row[1])).hex())]
         needle = search.strip().casefold()
         rows = [row for row in rows if needle in (row[3] + " " + row[0]).casefold()]
         return [{"destination_hash": address, "identity_hash": identity_hash,

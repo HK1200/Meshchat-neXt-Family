@@ -31,7 +31,8 @@ class LocationRuntime:
         identity = self.probe.source.identity.hash.hex()
         return {f'reticulum:{identity}:{address}': dict(
             name=row['name'], service='reticulum', online=self.probe.online, address=address)
-            for address, row in self.history.conversation_entries().items()}
+            for address, row in self.history.conversation_entries().items()
+            if getattr(self, 'recipient_allowed', lambda peer: True)(address)}
 
     async def transmit(self, target, fix, guard):
         from telemetry_runtime import outbound
