@@ -342,3 +342,29 @@ recipient remains offline, then delivers its exact attachment when the
 recipient reconnects. All 741 available root tests and 42 focused Python 3.11
 checks passed. The new repair still requires exact-source CI, native simulator
 and device qualification.
+
+
+## Verified separate iPad preview: 369.1
+
+Exact source `7d110412dee818b4de6c587a81fd564e85f23bb2` passed all 103
+required checks on each simulator (97 native and six Messages UI cases) in run
+`45063671633`. Its unsigned device and production archives also passed. The
+same-key upgrade from 367.1 preserved all 2,565 current non-cache support files,
+twelve messages, two contacts, identity, native preferences and four saved TCP
+peers before first launch. Regular Family 47.6 and Family Mailbox Test 353.1
+retained byte-identical state, identity and native preferences.
+
+The actual iPad restored the synthetic RNSh session configuration and all
+Unicode terminal output without executing its command again. The stopped test
+session was then removed. Private signed text, file and photo exchanges and
+synthetic native Opus encode/decode passed, including exact attachment bytes
+after a cold process restart. Folder organization, deletion followed by a fresh
+signed reply, and restoration of the original peers and contacts also passed.
+The normal conversation and composer rendered on the physical iPad.
+
+This build adds a native loading/error/retry surface and bounded recovery for
+a terminated WebKit renderer. A successful launch and cold restart do not prove
+every suspension or OS resource-pressure failure is resolved. These private
+backend/device checks do not qualify human speech quality, picker gestures,
+fully suspended internet alerts or physical iPhone behavior. The newer durable
+outbox and 0.1.26 source pins remain subject to their own qualification.
