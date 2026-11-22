@@ -4,7 +4,9 @@ set -euo pipefail
 family_ios="$(cd -- "${1:?Pass the Family checkout ios directory}" && pwd)"
 mode="${2:-simulators}"
 case "$mode" in simulators|device) ;; *) exit 2 ;; esac
-push_settings=()
+# macOS ships Bash 3.2: expanding an empty array under nounset fails.
+# Pass an explicit empty build setting for the normal personal-signing case.
+push_settings=("NEXT_APNS_ENVIRONMENT=")
 if [[ -n "${NEXT_APNS_ENVIRONMENT:-}" ]]; then
     case "$NEXT_APNS_ENVIRONMENT" in development|production) ;;
         *) echo "NEXT_APNS_ENVIRONMENT must be development or production" >&2; exit 2 ;;

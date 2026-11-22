@@ -128,7 +128,9 @@ final class NextPushRegistration: ObservableObject {
 
     func updateAllowedContacts(_ selected: Set<String>, state incoming: NextPushState, stillPermitted: () -> Bool) {
         let state = lastKnownState ?? incoming
-        guard var current = enrollment, !current.revoking, !busy, stillPermitted(),
+        // Persist the latest explicit selection even if an older upload is
+        // finishing. Its completion queues this new selection in order.
+        guard var current = enrollment, !current.revoking, stillPermitted(),
               Self.validSelection(selected, state: state) else { return }
         current.allowedAddresses = selected.sorted()
         guard save(current) else { status = "neXt couldn’t save the selected contacts."; return }
@@ -268,4 +270,3 @@ final class NextPushRegistration: ObservableObject {
         }
     }
 }
-

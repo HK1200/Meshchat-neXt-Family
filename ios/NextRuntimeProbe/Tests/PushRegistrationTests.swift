@@ -140,6 +140,21 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(service.status, "Off"); XCTAssertNil(store.data)
     }
 
+    @MainActor func testChangingAllowedContactsDuringAnUploadPersistsAndSendsTheNewSelectionNext() async throws {
+        let store = PushMemory(), device = PushDevice(), upload = PushUpload(); upload.pause = true
+        let service = NextPushRegistration(store: store, uploader: upload, device: device)
+        await service.enable(provider: provider, secret: secret, state: state(second: true), allowedAddresses: [peer], stillPermitted: { true })
+        service.receivedToken(Data(repeating: 1, count: 32)); try await ready { upload.waiting != nil }
+        service.refresh(state(second: true))
+        service.updateAllowedContacts([other], state: state(second: true), stillPermitted: { true })
+        XCTAssertEqual(service.allowedAddresses, [other], "An explicit Save must not silently disappear behind an older upload")
+        upload.waiting?.resume(returning: 204); try await settle(service)
+        XCTAssertEqual(upload.requests.count, 2)
+        XCTAssertEqual(try body(upload.requests[1])["senders"] as? [String], [String(repeating: "e5", count: 64)])
+        let restored = NextPushRegistration(store: store, uploader: PushUpload(), device: PushDevice())
+        XCTAssertEqual(restored.allowedAddresses, [other])
+    }
+
     @MainActor func testPendingRevocationSurvivesRestartAndNeverRegistersAgain() async throws {
         let store = PushMemory(), device = PushDevice(), upload = PushUpload()
         let service = NextPushRegistration(store: store, uploader: upload, device: device)
