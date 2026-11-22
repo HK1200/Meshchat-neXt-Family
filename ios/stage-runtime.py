@@ -10,7 +10,7 @@ from zipfile import ZipFile
 
 RNS_SHA256 = "0e4aaf8cc47f770da34572d2215b45fea900e104b009551600eb9741a41faddf"
 FAMILY_SOURCE = Path(__file__).resolve().parents[1] / "app/src/main/python"
-FAMILY_MODULES = ("family_backend.py", "mailbox_push.py", "family_cards.py", "family_radios.py", "family_ios_bluetooth.py", "family_ios_meshcore_crypto.py", "family_meshcore.py", "family_meshcore_rooms.py", "family_meshcore_location.py", "family_routes.py", "family_call_quality.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
+FAMILY_MODULES = ("family_backend.py", "lxmf_reconnect.py", "mailbox_push.py", "family_cards.py", "family_radios.py", "family_ios_bluetooth.py", "family_ios_meshcore_crypto.py", "family_meshcore.py", "family_meshcore_rooms.py", "family_meshcore_location.py", "family_routes.py", "family_call_quality.py", "family_tcp.py", "family_location.py", "family_maps.py", "family_rooms.py", "family_room_names.py", "family_voice.py", "lxst_audio_processing.py", "lxst_pyogg_ctypes_compat.py")
 
 
 def standalone_rns(source):

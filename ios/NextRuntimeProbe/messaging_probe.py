@@ -61,6 +61,8 @@ class MessagingProbe:
         self.router = LXMF.LXMRouter(
             identity=identity, storagepath=str(folder / "lxmf"), autopeer=False, delivery_limit=10_000,
         )
+        from lxmf_reconnect import install_reconnect_recovery
+        install_reconnect_recovery(self.router)
         self.source = self.router.register_delivery_identity(
             identity, display_name="neXt iOS" if device else "neXt simulator probe", stamp_cost=0,
         )

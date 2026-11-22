@@ -302,3 +302,19 @@ route. New blocked traffic is rejected before inbox records or notifications.
 Unblocking allows future traffic; it does not restore removed history or restart
 sharing. This is a local communication block, not a Reticulum transport
 blackhole announcement.
+
+### Recovering a stalled Reticulum send after reconnect (development source)
+
+A live connection change can leave an LXMF direct message marked Sending after
+its old delivery link has gone away. The development recovery waits for an
+active replacement link, then lets LXMF continue the same queued packet. It
+preserves the packet's identity, original retry budget and delivery callbacks.
+It does not revive cancelled or completed messages, enable mailbox fallback or
+requeue live location telemetry. Closing the app still does not create a
+persistent outbound queue; the restart limitation above remains.
+
+The separate iPad test completed signed messages and replies before and after
+two full TCP retirements with the receiving peer using this recovery. The
+unmodified receiver's stalled state was retained as the negative reference.
+This is a private reconnect check, not a completed Wi-Fi/cellular or independent
+public-provider failover test. No firewall settings were changed.

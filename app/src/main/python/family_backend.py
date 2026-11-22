@@ -185,6 +185,8 @@ def _start():
         identity=RNS.Identity.from_file(str(identity_path)) if identity_path.exists() else RNS.Identity()
         if not identity_path.exists():identity.to_file(str(identity_path));os.chmod(identity_path,0o600)
         _router=LXMF.LXMRouter(identity=identity,storagepath=str(_root/'lxmf'),autopeer=False,enforce_stamps=False,delivery_limit=_incoming_limit()/1000)
+        from lxmf_reconnect import install_reconnect_recovery
+        install_reconnect_recovery(_router)
         with _announce_lock,_lock:
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive, require_propagation_delivery=_tcp_only)

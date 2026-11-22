@@ -102,6 +102,7 @@ lipo "$app/FamilyLive" -verify_arch arm64
 test -f "$app/Frameworks/Python.framework/Python"
 test -f "$app/Frameworks/FamilyVoiceCodecs.framework/FamilyVoiceCodecs"
 test -f "$app/staged/family_tcp.py"
+test -s "$app/staged/lxmf_reconnect.py"
 test -s "$app/offline-tiles/tiles.bin"
 test -s "$app/offline-tiles/index.json"
 test -f "$app/PrivacyInfo.xcprivacy"
