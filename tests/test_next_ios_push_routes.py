@@ -17,6 +17,7 @@ ROUTE = {'provider': 'https://alerts.example.invalid', 'audience': 'private test
     {**ROUTE, 'provider': 'https://example.invalid:0'},
     {**ROUTE, 'provider': 'https://example.invalid/path'},
     {**ROUTE, 'audience': 'line\nbreak'}, {**ROUTE, 'audience': ' '},
+    {**ROUTE, 'audience': 'x' + ' ' * 128},
     {**ROUTE, 'relay': 'AB' * 16}, {**ROUTE, 'provider': True},
 ])
 def test_invalid_route_cannot_replace_existing_consent(tmp_path, entry):
