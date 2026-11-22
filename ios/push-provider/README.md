@@ -81,3 +81,50 @@ pages in the active database. Operator configuration, access logs, filesystem
 snapshots and backups have separate retention; do not promise that app turn-off
 erases those copies or the relay's encrypted mailbox. Keep those stores private
 and define their retention before deploying the service.
+
+## Private incoming-call provider foundation
+
+`call_service.py` is a separate, opt-in VoIP provider for development. It does
+not enable calls in existing app builds. Native PushKit registration, immediate
+CallKit reporting and transport handoff still need integration and live tests.
+Do not deploy it as a working background-call feature. A free personal-signing
+profile cannot qualify live Apple push delivery; enrollment remains on hold.
+
+The service accepts genuine signed Reticulum call intents only, not mailbox
+messages or location updates. A registration binds the recipient's public key
+to its LXMF address and requires a matching private enrollment code. Every
+subscription must explicitly contain `allow_calls: true`, plus the existing
+`enrollment_hash`; a mailbox subscription alone grants no call permission.
+The guardian must separately approve the caller's Reticulum voice address.
+The Apple VoIP token is separate from the message-alert token.
+
+For development, copy the private configuration structure above, omit `spool`,
+choose a different private SQLite database, set the loopback port to `8088`,
+and add `allow_calls: true` to each explicitly authorized subscription. Use the
+base bundle identifier as `apns.topic`; the service appends `.voip`. Run
+`python call_service.py /path/to/private-call-config.json` from this checkout.
+Keep the same private-file permissions. Use a separate HTTPS reverse proxy
+with ingress rate limits and short request timeouts; the service itself binds
+only to loopback and exposes no health, token or subscription listing.
+
+The POST routes are `/v1/call-subscription` (12,000-byte maximum),
+`/v1/call-alert` and `/v1/call-cancel` (2,048 bytes), and authenticated
+`/v1/call-state` (256 bytes). Registration accepts `recipient_key`, a nullable
+VoIP `token`, and approved `callers`. State lookup accepts `owner` and `call`
+and requires the recipient's enrollment code. Removing the token deletes the
+registration. Disabling the operator's call grant immediately rejects new wakes;
+idle cleanup removes its registration. Short-lived call metadata is pruned
+after two minutes. Private configuration and backups have separate retention.
+
+Call intents use a domain-separated identity signature, a random call ID and a
+30-second validity window. The provider encrypts the payload to the recipient's
+X25519 public key using an ephemeral key and authenticated encryption. Apple
+receives the app topic and device token, but no plaintext mesh addresses or
+caller names. Audio and SIP account credentials never enter this service.
+APNs requests use `voip`, priority 10 and expiration 0. Apple delivery is still
+best effort. Cancellation updates the authenticated state endpoint and never
+sends a second VoIP push. Clients must not report a connected call before the
+real media transport has established it.
+
+The isolated tests exercise real loopback HTTP requests and a mocked APNs
+transport; they do not contact Apple, place calls or register real tokens.
