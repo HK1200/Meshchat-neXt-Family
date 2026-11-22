@@ -64,3 +64,20 @@ Development source after neXt 0.1.21 adds **Offline mailbox → Mailbox push ale
 Run a separate provider instance for neXt with `apns.app` set to `next` and the exact signed neXt bundle identifier as `apns.topic`. Family remains the default app. Each instance uses its fixed configured Apple topic and generic app-specific alert; senders cannot choose the topic or alert text. The APNs environment must match the signing profile. For a push-enabled neXt device archive, set `NEXT_APNS_ENVIRONMENT` to `development` or `production`; the build adds its APNs entitlement only when explicitly requested. A matching paid-developer provisioning profile is still required before signing. Personal previews leave this setting empty and cannot enable Apple push enrollment.
 
 A visible push alert can arrive while iOS suspends neXt. Tapping it opens Messages and retrieves the encrypted mailbox while the app is running. This does not promise silent retrieval while fully suspended, instant radio delivery, or background call ringing. Token rotation and contact revocations sync when neXt runs. Turning alerts off remains pending until the provider acknowledges token removal. No live Apple push delivery has been qualified yet; Apple enrollment is still on hold.
+
+## Notification metadata retention
+
+The reference provider retains recipient/message identifiers and acceptance times
+for duplicate suppression and rate limiting for one hour. Its HTTP service
+prunes older records during idle operation, at most once per minute. This is
+longer than the five-minute signed-hint window, so removing expired records does
+not make an original expired hint valid again. Normal clients retry the same
+hint only within that window. A newly signed hint is a new authorized request.
+
+Acknowledged turn-off removes the active registration, including its Apple token
+and approved-sender keys, rather than retaining an empty registration row. Old
+empty rows are removed by cleanup too. SQLite secure deletion clears reusable
+pages in the active database. Operator configuration, access logs, filesystem
+snapshots and backups have separate retention; do not promise that app turn-off
+erases those copies or the relay's encrypted mailbox. Keep those stores private
+and define their retention before deploying the service.

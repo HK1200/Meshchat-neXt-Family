@@ -6,6 +6,7 @@ import errno
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -26,6 +27,8 @@ ALERT = {"aps": {"alert": {"title": "New Family message", "body": "Open neXt Fam
                  "sound": "default"}}
 HINT_FIELDS = {"recipient", "message", "sender", "issued", "signature"}
 HINT_LIFETIME = 300
+# Longer than every valid hint/retry window, without an indefinite delivery log.
+ALERT_RECORD_RETENTION = 3600
 NEXT_ALERT = {"aps": {"alert": {"title": "New neXt message", "body": "Open Meshchat neXt to read it."},
                        "sound": "default"}}
 ALERTS_PER_MINUTE = 6
@@ -54,6 +57,7 @@ class Provider:
         self.subscriptions = subscriptions
         self.send = send
         self.database = sqlite3.connect(database)
+        self.database.execute("PRAGMA secure_delete = ON")
         self.database.executescript("""
             CREATE TABLE IF NOT EXISTS alerts (
                 recipient TEXT NOT NULL,
@@ -62,12 +66,21 @@ class Provider:
                 PRIMARY KEY (recipient, message)
             );
             CREATE INDEX IF NOT EXISTS recipient_time ON alerts (recipient, accepted);
+            CREATE INDEX IF NOT EXISTS alert_expiry ON alerts (accepted);
             CREATE TABLE IF NOT EXISTS registrations (
                 recipient TEXT PRIMARY KEY,
                 token TEXT,
                 senders TEXT NOT NULL
             );
         """)
+
+    def prune(self, now=None):
+        now = int(time.time()) if now is None else now
+        with self.database:
+            expired = self.database.execute("DELETE FROM alerts WHERE accepted < ?",
+                                            (now - ALERT_RECORD_RETENTION,)).rowcount
+            disabled = self.database.execute("DELETE FROM registrations WHERE token IS NULL").rowcount
+        return expired + disabled
 
     def stored(self, recipient, message):
         """The relay writes destination || ciphertext || 32-byte propagation stamp."""
@@ -120,10 +133,13 @@ class Provider:
                 or not hmac.compare_digest(secret_hash, hashlib.sha256(bytes.fromhex(secret)).hexdigest())):
             return 403
         with self.database:
-            self.database.execute("""
-                INSERT INTO registrations VALUES (?, ?, ?)
-                ON CONFLICT(recipient) DO UPDATE SET token=excluded.token, senders=excluded.senders
-            """, (recipient, token, json.dumps(request["senders"] if token else [])))
+            if token is None:
+                self.database.execute("DELETE FROM registrations WHERE recipient = ?", (recipient,))
+            else:
+                self.database.execute("""
+                    INSERT INTO registrations VALUES (?, ?, ?)
+                    ON CONFLICT(recipient) DO UPDATE SET token=excluded.token, senders=excluded.senders
+                """, (recipient, token, json.dumps(request["senders"])))
         return 204
 
     def subscription(self, recipient):
@@ -283,6 +299,21 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
+class ProviderHTTPServer(HTTPServer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._next_cleanup = 0
+
+    def service_actions(self):
+        now = time.monotonic()
+        if now >= self._next_cleanup:
+            try:
+                self.provider.prune()
+            except sqlite3.Error:
+                logging.getLogger(__name__).warning("Mailbox alert metadata cleanup will retry")
+            self._next_cleanup = now + 60
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config", type=Path)
@@ -309,9 +340,12 @@ def main():
     if not spool.is_dir():
         raise ValueError("The private LXMF spool must be an existing directory")
     provider = Provider(config["audience"], spool, config["subscriptions"], database, APNs(config["apns"]))
-    with HTTPServer(("127.0.0.1", config.get("port", 8087)), Handler) as server:
-        server.provider = provider
-        server.serve_forever()
+    try:
+        with ProviderHTTPServer(("127.0.0.1", config.get("port", 8087)), Handler) as server:
+            server.provider = provider
+            server.serve_forever()
+    finally:
+        provider.database.close()
 
 
 if __name__ == "__main__":

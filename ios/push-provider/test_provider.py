@@ -188,3 +188,54 @@ def test_streaming_spool_rejects_corruption_wrong_recipient_truncation_and_links
         assert not broker.stored(recipient, message)
     finally:
         broker.database.close()
+
+
+def test_old_delivery_metadata_expires_without_reopening_valid_hint_replays(tmp_path):
+    from provider import ALERT_RECORD_RETENTION, HINT_LIFETIME
+    assert ALERT_RECORD_RETENTION > HINT_LIFETIME + 30
+    identity=RNS.Identity();recipient='ab'*16;alerts=[]
+    broker=Provider('test-mailbox',tmp_path,{recipient:{'senders':[identity.get_public_key().hex()],'token':'test-device'}},tmp_path/'state.db',lambda *value:alerts.append(value))
+    try:
+        message=mailbox_item(tmp_path,recipient,b'private ciphertext')
+        hint=hint_for(identity,recipient,message)
+        assert broker.notify(hint,now=1000)==204
+        broker.prune(now=1000+HINT_LIFETIME)
+        assert broker.notify(hint,now=1000+HINT_LIFETIME)==204
+        assert len(alerts)==1
+        broker.prune(now=1001+ALERT_RECORD_RETENTION)
+        assert broker.database.execute('select count(*) from alerts').fetchone()[0]==0
+        assert broker.notify(hint,now=1001+ALERT_RECORD_RETENTION)==403
+        assert len(alerts)==1
+    finally:broker.database.close()
+
+
+def test_disabling_deletes_the_active_registration_instead_of_retaining_empty_row(tmp_path):
+    recipient='ab'*16;secret='31'*32
+    broker=Provider('test-mailbox',tmp_path,{recipient:{'enrollment_hash':sha256(bytes.fromhex(secret)).hexdigest()}},tmp_path/'state.db',lambda *_:None)
+    try:
+        row={'recipient':recipient,'token':'e1'*32,'senders':[RNS.Identity().get_public_key().hex()]}
+        assert broker.register(row,'Bearer '+secret)==204
+        assert broker.register(dict(row,token=None,senders=[]),'Bearer '+secret)==204
+        assert broker.database.execute('select count(*) from registrations').fetchone()[0]==0
+        assert broker.subscription(recipient) is None
+        assert row['token'].encode() not in (tmp_path/'state.db').read_bytes()
+        assert row['senders'][0].encode() not in (tmp_path/'state.db').read_bytes()
+    finally:broker.database.close()
+
+
+def test_idle_http_server_prunes_without_any_incoming_request(tmp_path):
+    import threading,time
+    from provider import ProviderHTTPServer,Handler
+    broker=Provider('test-mailbox',tmp_path,{},tmp_path/'state.db',lambda *_:None)
+    try:
+        with broker.database:
+            broker.database.executemany('insert into alerts values(?,?,?)', [('old','old',0),('current','current',int(time.time()))])
+            broker.database.execute('insert into registrations values(?,NULL,?)',('disabled','[]'))
+        with ProviderHTTPServer(('127.0.0.1',0),Handler) as server:
+            server.provider=broker
+            stop=threading.Timer(.1,server.shutdown);stop.start()
+            try:server.serve_forever(poll_interval=.01)
+            finally:stop.join(timeout=2)
+        assert broker.database.execute('select recipient from alerts').fetchall()==[('current',)]
+        assert broker.database.execute('select count(*) from registrations').fetchone()[0]==0
+    finally:broker.database.close()
