@@ -140,6 +140,7 @@ private struct ProbeScreen: View {
                         .padding(.horizontal)
                         Text(address).font(.caption.monospaced()).textSelection(.enabled)
                             .accessibilityIdentifier("my-lxmf-address")
+                            .accessibilityValue(webLoad.accessibilityValue)
                         Label(tcpConnected == true ? "Reticulum connected" : "No Reticulum connection",
                               systemImage: tcpConnected == true ? "link" : "link.badge.plus")
                             .font(.caption)
@@ -639,10 +640,10 @@ private struct ProbeWebView: UIViewRepresentable {
                     self.loadState.failed(generation); return
                 }
                 self.currentNavigation = view.load(request)
-                self.loadWatchdog = Task { @MainActor [weak self] in
+                self.loadWatchdog = Task { @MainActor [weak self, weak view] in
                     do { try await Task.sleep(for: .seconds(45)) } catch { return }
-                    guard let self, !Task.isCancelled else { return }
-                    self.loadState.failed(generation)
+                    guard let self, let view, !Task.isCancelled else { return }
+                    self.recoverStalledStartup(generation, in: view)
                 }
             }
         }
@@ -654,10 +655,10 @@ private struct ProbeWebView: UIViewRepresentable {
             currentNavigation = navigation
             let generation = loadState.begin()
             webView.accessibilityElementsHidden = true
-            loadWatchdog = Task { @MainActor [weak self] in
+            loadWatchdog = Task { @MainActor [weak self, weak webView] in
                 do { try await Task.sleep(for: .seconds(45)) } catch { return }
-                guard let self, !Task.isCancelled else { return }
-                self.loadState.failed(generation)
+                guard let self, let webView, !Task.isCancelled else { return }
+                self.recoverStalledStartup(generation, in: webView)
             }
         }
 
@@ -700,6 +701,13 @@ private struct ProbeWebView: UIViewRepresentable {
             super.init()
         }
 
+        private func recoverStalledStartup(_ generation: Int, in view: WKWebView) {
+            guard loadState.startupStalled(generation) else { return }
+            // Retry only the native-authorized local route. Keep the backend,
+            // saved messages and connections, and never loop indefinitely.
+            load(requestedURL, in: view)
+        }
+
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             // Recreate WebKit's renderer without restarting Python or losing
             // saved conversations. Restore only our authenticated local URL.
@@ -733,7 +741,8 @@ private struct ProbeWebView: UIViewRepresentable {
                     }
                     do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                 }
-                self?.loadState.failed(generation)
+                guard let self, let webView else { return }
+                self.recoverStalledStartup(generation, in: webView)
             }
             // Log only the local access result, never credentials or message data.
             webView.callAsyncJavaScript("return (await fetch('/api/v1/status', {cache:'no-store'})).status",

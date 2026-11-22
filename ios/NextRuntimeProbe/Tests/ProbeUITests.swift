@@ -19,6 +19,7 @@ final class ProbeUITests: XCTestCase {
         let app = XCUIApplication()
         app.terminate(); app.launchArguments = []; app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         let own = app.staticTexts["my-lxmf-address"].label
         app.buttons["show-my-contact-qr"].tap()
         let importing = app.buttons["next-import-contact"]
@@ -37,7 +38,9 @@ final class ProbeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["next-contact-import-save"].exists)
         XCTAssertFalse(app.alerts.firstMatch.exists)
         app.navigationBars["Add Reticulum contact"].buttons["Cancel"].tap()
+        XCTAssertTrue(app.collectionViews["next-contact-import-form"].waitForNonExistence(timeout: 15), app.debugDescription)
         app.navigationBars["My contact QR"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["My contact QR"].waitForNonExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, own)
     }
 
@@ -140,6 +143,7 @@ final class ProbeUITests: XCTestCase {
         let app = XCUIApplication()
         app.terminate(); app.launchArguments = []; app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         let address = app.staticTexts["my-lxmf-address"].label
         let control = app.buttons["next-location-settings"]
         XCTAssertTrue(control.waitForExistence(timeout: 30) && control.isHittable, app.debugDescription)
@@ -170,6 +174,7 @@ final class ProbeUITests: XCTestCase {
         app.launchEnvironment["NEXT_PROBE_LOCATION_FIXTURE"] = "1"
         app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         app.buttons["next-location-settings"].tap()
         let form = app.collectionViews["next-location-form"]
         let recipient = app.switches["next-location-recipient"].firstMatch
@@ -224,6 +229,7 @@ final class ProbeUITests: XCTestCase {
         app.launchArguments = []
         app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         let ownAddress = app.staticTexts["my-lxmf-address"].label
         let web = app.webViews.firstMatch
         func sendPrivateMessage(_ text: String) -> String {
@@ -273,6 +279,7 @@ final class ProbeUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
         XCTAssertTrue(web.textViews.firstMatch.waitForExistence(timeout: 60), app.debugDescription)
         XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
@@ -283,6 +290,7 @@ final class ProbeUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
         XCTAssertTrue(web.staticTexts[freshReply].waitForExistence(timeout: 60), app.debugDescription)
         XCTAssertTrue(web.staticTexts[deletedReply].waitForNonExistence(timeout: 15), app.debugDescription)
@@ -753,6 +761,16 @@ final class ProbeUITests: XCTestCase {
         done.tap()
         dismissSimulatorSystemNotice()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
+    }
+
+    private func requireWebInterfaceReady(_ app: XCUIApplication) {
+        // Query a native status while WebKit is still booting; asking for its
+        // remote text fields during that phase can stall XCTest's snapshot.
+        let ready = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND value == %@", "my-lxmf-address", "Interface ready"
+        )).firstMatch
+        XCTAssertTrue(ready.waitForExistence(timeout: 75), app.debugDescription)
+        XCTAssertFalse(app.buttons["next-web-retry"].exists, app.debugDescription)
     }
 
     private func closeLocationSettings(_ app: XCUIApplication) {

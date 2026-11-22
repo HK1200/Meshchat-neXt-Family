@@ -39,6 +39,28 @@ final class ModalPageTests: XCTestCase {
         XCTAssertEqual(rendered as? Bool, true)
     }
 
+    func testMountedAppBehindStartupSplashIsNotReadyUntilSplashDisappears() async throws {
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640))
+        let ready = expectation(description: "Synthetic startup document loaded")
+        let navigation = Navigation(ready)
+        view.navigationDelegate = navigation
+        defer { view.stopLoading(); view.navigationDelegate = nil }
+        view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Getting things ready</div><div id='app'><main>Messages</main></div></body></html>", baseURL: nil)
+        await fulfillment(of: [ready], timeout: 30)
+        XCTAssertNil(navigation.error)
+        let stalled = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(stalled as? Bool, false)
+        _ = try await javascript(view, "document.getElementById('meshchatnext-boot-splash').hidden = true; return true;")
+        let hidden = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(hidden as? Bool, true)
+        _ = try await javascript(view, "const splash = document.getElementById('meshchatnext-boot-splash'); splash.hidden = false; splash.setAttribute('data-state', 'error'); return true;")
+        let failed = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(failed as? Bool, false)
+        _ = try await javascript(view, "document.getElementById('meshchatnext-boot-splash').remove(); return true;")
+        let rendered = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(rendered as? Bool, true)
+    }
+
     func testNativeModalHidesPageWithoutLosingDraftAndRestoresIt() async throws {
         try await verify(attributes: "", expectedAria: NSNull(), expectedInert: false)
     }

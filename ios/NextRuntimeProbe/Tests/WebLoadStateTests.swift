@@ -43,4 +43,36 @@ final class WebLoadStateTests: XCTestCase {
         XCTAssertFalse(state.loading)
         XCTAssertNil(state.problem)
     }
+    func testStartupAndRendererShareOneAutomaticRecoveryBudget() {
+        let state = NextWebLoadState()
+        let first = state.begin()
+        XCTAssertEqual(state.accessibilityValue, "Loading interface")
+        XCTAssertTrue(state.startupStalled(first))
+        _ = state.begin()
+        XCTAssertFalse(state.rendererTerminated())
+        XCTAssertEqual(state.accessibilityValue, "Interface unavailable")
+        state.retry()
+        let retried = state.begin()
+        XCTAssertTrue(state.startupStalled(retried))
+        let last = state.begin()
+        XCTAssertFalse(state.startupStalled(last))
+        XCTAssertNotNil(state.problem)
+        state.ready(last)
+        XCTAssertEqual(state.accessibilityValue, "Interface ready")
+        XCTAssertTrue(state.rendererTerminated())
+    }
+
+    func testOldOrCompletedStartupCannotConsumeRecoveryOrReplaceReadyPage() {
+        let state = NextWebLoadState()
+        let old = state.begin()
+        let current = state.begin()
+        XCTAssertFalse(state.startupStalled(old))
+        XCTAssertTrue(state.loading)
+        state.ready(current)
+        XCTAssertFalse(state.startupStalled(current))
+        XCTAssertNil(state.problem)
+        XCTAssertFalse(state.loading)
+        XCTAssertTrue(state.startupStalled(state.begin()))
+    }
+
 }
