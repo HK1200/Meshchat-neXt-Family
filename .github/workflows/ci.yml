@@ -79,6 +79,19 @@ jobs:
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
             python ios/test-next-file-wire.py --folder temp-tests/file-wire
+      - name: Verify native remote terminal lifecycle and saved history
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python -m pytest -q ios/test-next-terminal-runtime.py \
+            --basetemp=temp-tests/terminal-runtime
+      - name: Verify RNSh in the actual protected iOS app server
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python ios/test-next-terminal-app.py temp-tests/terminal-app
+      - name: Verify standard RNSh encrypted command flow over loopback
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python ios/test-next-terminal-wire.py --folder temp-tests/terminal-wire
       - name: Verify standard Reticulum probe receipts over private loopback TCP
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \

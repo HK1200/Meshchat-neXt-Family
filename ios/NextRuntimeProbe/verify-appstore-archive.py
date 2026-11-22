@@ -39,7 +39,7 @@ def verify(archive):
     for name in ('NextRuntimeProbe', 'Frameworks/Python.framework/Python',
                  'Frameworks/FamilyVoiceCodecs.framework/FamilyVoiceCodecs',
                  'staged/frontend/index.html', 'staged/network_runtime.py',
-                 'staged/voice_runtime.py', 'staged/lxmf_reconnect.py', 'staged/file_runtime.py', 'staged/mobile_rncp_guard.py',
+                 'staged/voice_runtime.py', 'staged/lxmf_reconnect.py', 'staged/file_runtime.py', 'staged/mobile_rncp_guard.py', 'staged/terminal_runtime.py',
                  'SIP-NOTICES.txt', 'staged/voice-notices/Opus-COPYING',
                  'staged/voice-notices/Codec2-COPYING', 'staged/voice-notices/audioop-LICENSE'):
         assert (app / name).is_file() and (app / name).stat().st_size > 0, name

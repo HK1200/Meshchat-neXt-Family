@@ -213,3 +213,19 @@ standard protocol watchdogs rather than an additional fixed data-transfer
 cutoff. These are active-app tools; the App Store archive and physical picker,
 radio and suspension tests are separate qualification steps. They do not enable
 an always-running iOS service.
+
+### neXt remote terminals under verification
+
+The RNSh page connects to standard remote RNSh hosts using this app’s Reticulum
+identity and enabled interfaces. The remote host must authorize that identity.
+The client supports authenticated version exchange, remote commands, ordered
+input/output and window resizing. It does not execute local shell commands or
+host a command listener on iOS; the page explains that limitation before use.
+
+Session definitions and bounded output history stay in private app storage.
+Closing and reopening neXt restores stopped sessions, never rerunning a saved
+command automatically. Start is explicit. Stop cancels pathfinding and closes
+only that session’s own link. Destination blocks are checked before sending.
+Private standard-listener host tests pass; real iPad UI and suspended-session
+reliability remain unqualified. The client reports the exit status received from
+the remote host; some standard RNSh versions mask process exit status incorrectly.

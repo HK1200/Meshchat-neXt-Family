@@ -383,7 +383,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None, network_factory=None, file_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None, network_factory=None, file_factory=None, terminal_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -393,6 +393,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     telemetry = None
     location = None
     files = None
+    terminal = None
 
     def persist(row):
         address = row["destination_hash"] if row["is_outbound"] else row["source_hash"]
@@ -985,6 +986,13 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 except (ConnectionError, RuntimeError): clients.discard(client)
         files = file_factory(probe, ready_file.parent / 'rncp' / own, blocks.denies, file_event)
         files.register(app.router)
+    if terminal_factory:
+        async def terminal_event(value):
+            for client in tuple(clients):
+                try: await client.send_json(value)
+                except (ConnectionError, RuntimeError): clients.discard(client)
+        terminal = terminal_factory(probe, ready_file.parent / 'rnsh' / own, blocks.denies, terminal_event)
+        terminal.register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS
@@ -1105,6 +1113,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if relay: relay.refresh_contacts()
             mailbox.tick()
             if location: await location.tick()
+            if terminal: await terminal.tick()
             await asyncio.sleep(1)
     finally:
         inbox.close()
@@ -1117,6 +1126,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             except (TimeoutError, ConnectionError, RuntimeError):
                 pass
         if files: await files.close()
+        if terminal: await terminal.close()
         probe.close()
         await runner.cleanup()
         if tasks:
@@ -1142,8 +1152,9 @@ def run_for_app(ready_file):
         from location_runtime import LocationRuntime
         from network_runtime import NetworkRuntime
         from file_runtime import FileRuntime
+        from terminal_runtime import TerminalRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime, network_factory=NetworkRuntime, file_factory=FileRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime, network_factory=NetworkRuntime, file_factory=FileRuntime, terminal_factory=TerminalRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: 0BSD
+"""Explain the mobile RNSh contract on the checksum-pinned released page."""
+import hashlib
+from pathlib import Path
+
+CHUNK = 'assets/RNSHManagerPage-CXywk8NJ.js'
+SHA256 = '15aca18b84a8799a1d6a9a7b0ddfaab8e02129512b06bb0a6ad3c76116980151'
+BEFORE = 'return C(),F("div",L,['
+NOTICE = ('Connect to remote RNSh hosts using this app’s identity and interfaces. '
+          'Sessions run while neXt is active. Hosting a local shell requires desktop neXt. '
+          'Saved sessions do not run commands again until you press Start.')
+
+
+def rewrite(source):
+    if source.count(BEFORE) != 1:
+        raise ValueError('The pinned terminal page changed; review its mobile guidance')
+    import json
+    after = BEFORE + 'v("p",{class:"px-3 py-2 text-sm text-sem-fg-muted border-b border-sem-border",role:"note"},' + json.dumps(NOTICE) + '),'
+    return source.replace(BEFORE, after)
+
+
+def stage(folder):
+    path = Path(folder) / CHUNK
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != SHA256:
+        raise ValueError('The pinned terminal frontend checksum changed')
+    path.write_text(rewrite(data.decode()))
+
+
+if __name__ == '__main__':
+    import sys
+    stage(sys.argv[1])
