@@ -25,7 +25,8 @@ struct NextRecipientAlerts: View {
     @State private var loaded = false
     @State private var error = ""
     @State private var status = ""
-    @FocusState private var typing: Bool
+    private enum Field: Hashable { case provider, audience, relay }
+    @FocusState private var focused: Field?
 
     var body: some View {
         NavigationStack {
@@ -41,11 +42,11 @@ struct NextRecipientAlerts: View {
                         Text(!loaded ? "Loading recipient alerts…" : saved == nil ? "Off" : "Recipient alerts saved")
                             .accessibilityIdentifier("next-recipient-alert-status")
                         TextField("HTTPS alert provider", text: $provider)
-                            .keyboardType(.URL).disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-provider")
+                            .keyboardType(.URL).disabled(busy || !loaded).focused($focused, equals: .provider).accessibilityIdentifier("next-recipient-alert-provider")
                         TextField("Provider name (audience)", text: $audience)
-                            .disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-audience")
+                            .disabled(busy || !loaded).focused($focused, equals: .audience).accessibilityIdentifier("next-recipient-alert-audience")
                         TextField("Mailbox propagation address", text: $relay)
-                            .disabled(busy || !loaded).focused($typing).accessibilityIdentifier("next-recipient-alert-relay")
+                            .disabled(busy || !loaded).focused($focused, equals: .relay).accessibilityIdentifier("next-recipient-alert-relay")
                         Button("Save recipient alerts") { change(remove: false) }
                             .disabled(busy || !loaded || provider.isEmpty || audience.isEmpty || relay.isEmpty)
                             .accessibilityIdentifier("next-recipient-alert-save")
@@ -64,8 +65,11 @@ struct NextRecipientAlerts: View {
             .navigationTitle("Recipient alerts")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(busy) }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer(); Button("Done typing") { typing = false; FamilyKeyboard.dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    if focused != nil {
+                        Button("Done typing") { focused = nil; FamilyKeyboard.dismiss() }
+                            .accessibilityIdentifier("next-recipient-alert-done-typing")
+                    }
                 }
             }
             .task {
@@ -102,7 +106,7 @@ struct NextRecipientAlerts: View {
     }
 
     private func change(remove: Bool) {
-        typing = false; FamilyKeyboard.dismiss(); busy = true; error = ""; status = ""
+        focused = nil; FamilyKeyboard.dismiss(); busy = true; error = ""; status = ""
         let contact = selected
         let draft = Route(provider: provider.trimmingCharacters(in: .whitespacesAndNewlines),
                           audience: audience.trimmingCharacters(in: .whitespacesAndNewlines),

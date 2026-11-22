@@ -442,7 +442,10 @@ final class ProbeUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(updated.waitForExistence(timeout: 30), app.debugDescription)
         XCTAssertEqual(field.value as? String, value, app.debugDescription)
-        let done = app.buttons["Done typing"]
+        // The recipient editor keeps its dismissal control in the native
+        // navigation bar, independent of the OS keyboard accessory's lifetime.
+        let routeDone = app.buttons["next-recipient-alert-done-typing"]
+        let done = routeDone.exists ? routeDone : app.buttons["Done typing"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
         done.tap()
         dismissSimulatorSystemNotice()
