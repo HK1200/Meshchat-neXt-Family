@@ -7,11 +7,12 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The next iOS build pins both the verified 0.1.23 backend and frontend and uses
-0.1.23 as its displayed app version. The hostless audio and SIP platform repairs
-are now upstream; native call identity, voice playback and location bindings
-retain explicit checksum checks and regression coverage. The exact bundle passed all 98 native/UI checks on each simulator and the
-separate iPad preview was upgraded to build 358.1 without changing regular Family.
+The next iOS build pins both the verified 0.1.25 backend and frontend and uses
+0.1.25 as its displayed app version. It carries the same discovery privacy and
+Micron-link fixes as the desktop/Android release. Native call identity, voice
+playback and location bindings retain explicit checksum checks and regression
+coverage. Xcode/device qualification of this updated bundle remains required;
+the separate verified 358.1 device results below describe its earlier bundle.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -232,3 +233,19 @@ reported live microphone capture and increasing sent/received frame counts.
 The test retained no recording and restored its temporary contact, peer and
 call policy. This verifies native frame flow, not subjective speech quality,
 locked-screen internet ringing or physical iPhone behavior.
+
+
+## Pending iOS 0.1.25 qualification
+
+The exact public 0.1.25 wheel and frontend archives are checksum-pinned. All
+308 backend Python modules are byte-identical to the qualified 0.1.23 runtime;
+the displayed version, build metadata and frontend security fixes advance.
+Twenty frontend-binding checks passed, including negative controls against the
+actual unpatched call handlers. The call-race checks now require a valid ringing
+state, a completion marker and a deadline, preventing an unfinished Node promise
+from being mistaken for a passing assertion.
+
+All 69 network and MeshCore location checks passed together in five bounded
+repeat runs, and two real private loopback probes received standard Reticulum
+receipt proofs. Native simulator and actual-device qualification of this source
+remain separate gates; these host checks do not qualify suspended alerts.
