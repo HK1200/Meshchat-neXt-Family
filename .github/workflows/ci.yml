@@ -65,6 +65,11 @@ jobs:
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
             python -m pytest -q ios/test-next-meshcore-location.py \
             --basetemp=temp-tests/meshcore-location
+      - name: Verify local network diagnostics and blocked path requests
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            python -m pytest -q ios/test-next-network-runtime.py \
+            --basetemp=temp-tests/network-diagnostics
       - name: Verify mobile decoder depth and independent-message isolation
         run: |
           python ios/test-cbor-security.py --staged temp-tests/voice-source/staged \

@@ -383,7 +383,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None, network_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -975,6 +975,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     app = web.Application(middlewares=[local_only], client_max_size=14_000_000)
     organization = ConversationOrganization(history, cancel_outbound=probe.router.cancel_outbound)
     organization.register(app.router)
+    if network_factory:
+        network_factory(probe, blocks.denies).register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS
@@ -1129,8 +1131,9 @@ def run_for_app(ready_file):
         from relay_runtime import RelayRuntime
         from telemetry_runtime import TelemetryRuntime
         from location_runtime import LocationRuntime
+        from network_runtime import NetworkRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime, network_factory=NetworkRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise
