@@ -15,7 +15,7 @@ def execute(tmp_path, body, *, patched=True):
     source = FIXTURE.read_text()
     if patched: source = module.rewrite(source)
     script = tmp_path / 'rncp-controls.cjs'
-    script.write_text("const assert=require('node:assert/strict');const alerts=[];const s={alert:async value=>alerts.push(value)};const methods=" + source + '\n(async()=>{' + body + "\nconsole.log('RNCP controls completed');})().catch(e=>{console.error(e);process.exitCode=1;});")
+    script.write_text("const assert=require('node:assert/strict');const alerts=[];const s={alert:async value=>alerts.push(value)};const o=value=>'/api/v1'+value;const methods=" + source + '\n(async()=>{' + body + "\nconsole.log('RNCP controls completed');})().catch(e=>{console.error(e);process.exitCode=1;});")
     result = subprocess.run(['node', str(script)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'RNCP controls completed' in result.stdout
@@ -28,7 +28,7 @@ const state={sendFilePath:'previous',sendInProgress:false};
 let posted=0;
 global.window={api:{post:async(path,form,options)=>{
  assert.equal(path,'/api/v1/preview/rncp/upload');assert.equal(await form.get('file').text(),'chosen bytes');
- assert.equal(form.get('file').name,'chosen.bin');assert.equal(options.headers['Content-Type'],undefined);
+ assert.equal(form.get('file').name,'chosen.bin');assert.equal(options.headers['Content-Type'],undefined);assert.equal(options.timeout,0);
  assert.equal(state.sendInProgress,true);posted++;return{data:{file_path:'selected/path/chosen.bin'}};
 }}};
 const event={target:{files:[file],value:'chosen'}};
@@ -88,3 +88,20 @@ def test_changed_or_duplicate_frontend_controls_are_rejected(tmp_path):
     path = tmp_path / module.CHUNK; path.parent.mkdir(parents=True); path.write_text(source)
     with pytest.raises(ValueError): module.stage(tmp_path)
     assert path.read_text() == source
+
+
+def test_real_file_operations_leave_healthy_transfer_timeouts_to_the_protocol(tmp_path):
+    execute(tmp_path, '''
+const calls=[];
+global.window={api:{post:async(path,body,options)=>{
+ calls.push({path,body,options});return {data:{transfer_id:'a'.repeat(64),file_path:'private/fixture.bin'}};
+}}};
+const state={sendDestinationHash:'a'.repeat(32),sendFilePath:'private/input.bin',sendTimeout:30,sendNoCompress:false,
+ fetchDestinationHash:'a'.repeat(32),fetchFilePath:'fixture.bin',fetchTimeout:30,fetchSavePath:null,fetchAllowOverwrite:false,
+ $t:value=>value,notifyRncp:()=>{}};
+await methods.sendFile.call(state);await methods.fetchFile.call(state);
+assert.equal(calls.length,2);assert.equal(calls[0].path,'/api/v1/rncp/send');assert.equal(calls[1].path,'/api/v1/rncp/fetch');
+for(const call of calls){assert.equal(call.options.timeout,0);assert.equal(call.body.timeout,30)}
+assert.equal(state.sendResult.success,true);assert.equal(state.fetchResult.success,true);
+assert.equal(state.sendInProgress,false);assert.equal(state.fetchInProgress,false);
+''')
