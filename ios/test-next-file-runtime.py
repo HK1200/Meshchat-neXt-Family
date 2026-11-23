@@ -361,3 +361,113 @@ def test_real_mobile_fetch_deadline_only_limits_waiting_for_resource_start(tmp_p
                     await exercise(value.handler, monkeypatch, tmp_path, started=False)
         finally: await value.close()
     asyncio.run(run())
+
+
+async def _exercise_mobile_segment_completion(
+    tmp_path, monkeypatch, terminal
+):
+    from contextlib import suppress
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from meshchatnext.src.backend import rncp_handler as engine
+
+    complete, failed = engine.RNS.Resource.COMPLETE, engine.RNS.Resource.FAILED
+    active = engine.RNS.Link.ACTIVE
+    outgoing, single = engine.RNS.Destination.OUT, engine.RNS.Destination.SINGLE
+    calls = []
+    link = SimpleNamespace(status=active, identify=MagicMock(), teardown=MagicMock())
+
+    class Link:
+        ACTIVE = active
+
+        def __new__(cls, *_):
+            return link
+
+    class Resource:
+        COMPLETE, FAILED = complete, failed
+
+        def __init__(self, handle, _link, **options):
+            self.hash = bytes.fromhex("12" * 32)
+            self.status = complete  # Only the first segment has its proof.
+            self.total_size = 123
+            self.get_progress = lambda: 1.0 if terminal == "immediate" else 1 / 3
+            calls.append((self, handle, options))
+            if terminal == "immediate":
+                options["callback"](self)
+
+    monkeypatch.setattr(engine.RNS, "Link", Link)
+    monkeypatch.setattr(engine.RNS, "Resource", Resource)
+    monkeypatch.setattr(engine.RNS.Transport, "has_path", lambda *_: True)
+    monkeypatch.setattr(engine.RNS.Identity, "recall", lambda *_: object())
+
+    class Destination:
+        OUT, SINGLE = outgoing, single
+
+        def __new__(cls, *_):
+            return object()
+
+    monkeypatch.setattr(engine.RNS, "Destination", Destination)
+    monkeypatch.setattr(engine, "link_establishment_window", lambda *_: 1)
+    monkeypatch.setattr(engine.traffic_stats, "get_meter", lambda: MagicMock())
+    value = runtime(tmp_path)
+    handler = value.handler
+    monkeypatch.setattr(handler, "_path_wait_seconds", lambda *_: 1)
+    source = value.shared / "selected.bin"
+    source.write_bytes(b"Private segmented-transfer fixture")
+    started = asyncio.Event()
+    task = asyncio.create_task(
+        handler.send_file(
+            bytes.fromhex("34" * 16),
+            str(source),
+            on_transfer_started=lambda _: started.set(),
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        if terminal == "immediate":
+            result = await asyncio.wait_for(task, 2)
+            assert result["status"] == "completed"
+            link.teardown.assert_called_once()
+            assert handler.active_transfers["12" * 32]["status"] == "completed"
+            return
+        await asyncio.sleep(0.01)
+        assert not task.done(), "First segment proof closed the complete file transfer"
+        link.teardown.assert_not_called()
+        assert handler.active_transfers["12" * 32]["status"] == "sending"
+        if terminal == "cancel":
+            handler.cancel_transfer("12" * 32)
+            with pytest.raises(InterruptedError, match="cancelled"):
+                await asyncio.wait_for(task, 2)
+        else:
+            final = SimpleNamespace(
+                status=complete if terminal == "complete" else failed,
+                total_size=123,
+                get_progress=lambda: 1.0,
+            )
+            calls[0][2]["callback"](final)
+            if terminal == "complete":
+                result = await asyncio.wait_for(task, 2)
+                assert result["status"] == "completed"
+            else:
+                with pytest.raises(Exception, match="Transfer failed"):
+                    await asyncio.wait_for(task, 2)
+        link.teardown.assert_called_once()
+        assert (
+            handler.active_transfers["12" * 32]["status"]
+            == {"complete": "completed", "failed": "failed", "cancel": "cancelled"}[
+                terminal
+            ]
+        )
+    finally:
+        if not task.done():
+            task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
+        for _, handle, _ in calls:
+            handle.close()
+        await value.close()
+
+
+@pytest.mark.parametrize("terminal", ["complete", "failed", "cancel", "immediate"])
+def test_mobile_waits_for_full_transfer_conclusion(tmp_path, monkeypatch, terminal):
+    asyncio.run(_exercise_mobile_segment_completion(tmp_path, monkeypatch, terminal))

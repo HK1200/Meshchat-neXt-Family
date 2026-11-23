@@ -70,7 +70,7 @@ async def client(folder, port, identity, ready):
     while not RNS.Transport.has_path(bytes.fromhex(ready['address'])):
         assert time.monotonic() < deadline, 'No private RNCP route'
         await asyncio.sleep(.05)
-    payload = os.urandom(90_000) + b'private-byte-proof'
+    payload = os.urandom(2 * 1024 * 1024) + b'private-byte-proof'
     async with TestClient(TestServer(app)) as http:
         try:
             form = FormData(); form.add_field('file', payload, filename='chosen.bin', content_type='application/octet-stream')
