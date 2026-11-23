@@ -277,6 +277,7 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [resolved], timeout: 15), .completed, app.debugDescription)
         let saveContact = app.buttons["Save contact"]
         reveal(saveContact, in: editor); saveContact.tap()
+        XCTAssertTrue(app.navigationBars["Guardian settings"].waitForExistence(timeout: 15))
         XCTAssertTrue(guardian.waitForExistence(timeout: 15))
         reveal(contact, in: guardian, up: false); contact.tap()
         let open = app.buttons["contact-call-alert-route"]
@@ -291,6 +292,7 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         let save = app.buttons["Save call-alert route"]
         reveal(save, in: form); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertTrue(app.navigationBars["Edit contact"].waitForExistence(timeout: 15))
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
         reveal(open, in: editor); open.tap()
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -298,6 +300,7 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertEqual(app.textFields["contact-call-alert-audience"].value as? String, "private-calls")
         let remove = app.buttons["Remove call-alert route"]
         reveal(remove, in: form); remove.tap()
+        XCTAssertTrue(app.navigationBars["Edit contact"].waitForExistence(timeout: 15))
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
         reveal(open, in: editor); open.tap()
         XCTAssertTrue(form.waitForExistence(timeout: 10))
