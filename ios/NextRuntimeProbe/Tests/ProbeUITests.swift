@@ -21,7 +21,9 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
         requireWebInterfaceReady(app)
         let own = app.staticTexts["my-lxmf-address"].label
-        app.buttons["show-my-contact-qr"].tap()
+        // The first interface paint can still settle native header geometry.
+        // Use one tap at its stable visible frame, just as for web navigation.
+        tapSettledButton(app.buttons["show-my-contact-qr"], in: app, app: app)
         let importing = app.buttons["next-import-contact"]
         XCTAssertTrue(importing.waitForExistence(timeout: 15), app.debugDescription)
         importing.tap()
@@ -623,6 +625,10 @@ final class ProbeUITests: XCTestCase {
     }
 
     private func tapSettledWebButton(_ button: XCUIElement, in web: XCUIElement, app: XCUIApplication) {
+        tapSettledButton(button, in: web, app: app)
+    }
+
+    private func tapSettledButton(_ button: XCUIElement, in container: XCUIElement, app: XCUIApplication) {
         XCTAssertTrue(button.waitForExistence(timeout: 15), app.debugDescription)
         // A cold WebKit page can expose the button before the native header's
         // final geometry settles. Keep the real one-tap navigation assertion,
@@ -641,7 +647,7 @@ final class ProbeUITests: XCTestCase {
                 stableSamples = frame == previous ? stableSamples + 1 : 0
                 previous = frame
                 if stableSamples >= 3 && button.isHittable &&
-                    web.frame.contains(frame) && app.frame.contains(frame) {
+                    container.frame.contains(frame) && app.frame.contains(frame) {
                     target = frame
                     break
                 }
