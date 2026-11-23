@@ -38,10 +38,11 @@ source=Path("Results/source-inventory");source.mkdir()
 for name in ("NativeModelHostTests","CallWakeEnrollmentTests","CallWakeInstallationTests","CallWakeIdentityTests","CallWakeRegistrationTests","CallWakePolicyTests","CallWakeCancellationTests","ModalPageTests","CallWakeTests","VoIPPushDeviceTests"):
     original=Path("../NextRuntimeProbe/Tests")/(name+".swift")
     (source/original.name).write_bytes(original.read_bytes())
+(source/"FamilyCallWakePolicyTests.swift").write_bytes(Path("FamilyCallWakePolicyTests.swift").read_bytes())
 proof=module.verify(json.loads(Path("Results/summary.json").read_text()), json.loads(Path("Results/tests.json").read_text()), source, unit_only=True)
 production = [Path("../NextRuntimeProbe/App")/(name+".swift") for name in
     ("NextNativeModelHost","NextCallWakeContext","NextCallWakeEnrollment","NextCallWakeInstallation","NextCallWakeIdentity","NextCallWakeRegistration","NextCallWakePolicy","NextCallWakeCancellation","NextModalPage","NextWebLoadState","NextVoIPPushDevice","NextPushServices")]
-production.append(Path("../FamilyLive/FamilyCallWake.swift"))
+production.extend(Path("../FamilyLive")/(name+".swift") for name in ("FamilyCallWake", "FamilyCallWakePolicy"))
 proof["production_sources"]={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in production}
 proof["real_push_registration_performed"]=False
 Path("Results/proof.json").write_text(json.dumps(proof,indent=2)+"\n")

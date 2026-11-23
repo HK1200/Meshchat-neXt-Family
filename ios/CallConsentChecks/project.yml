@@ -29,6 +29,8 @@ targets:
       - path: ../NextRuntimeProbe/App/NextWebLoadState.swift
       - path: ../NextRuntimeProbe/App/NextVoIPPushDevice.swift
       - path: ../NextRuntimeProbe/App/NextPushServices.swift
+      - path: ../FamilyLive/FamilyCallWakePolicy.swift
+      - path: FamilyCallWakePolicyTests.swift
       - path: ../FamilyLive/FamilyCallWake.swift
       - path: ../NextRuntimeProbe/Tests/CallWakeEnrollmentTests.swift
       - path: ../NextRuntimeProbe/Tests/CallWakeInstallationTests.swift
