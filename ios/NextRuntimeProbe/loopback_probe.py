@@ -899,8 +899,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 delivery_method = body.get("delivery_method")
                 selected_node = None if telemetry_fields or content.startswith("!NFLOC1:") else mailbox.outbound_node()
                 try:
+                    ordinary_message = not (telemetry_fields or content.startswith("!NFLOC1:") or
+                        any(key in fields for key in (LXMF.FIELD_TELEMETRY, LXMF.FIELD_TELEMETRY_STREAM)))
                     message = await asyncio.to_thread(probe.compose, content, bytes.fromhex(address), fields,
-                        delivery_method=delivery_method, propagation_node=selected_node)
+                        delivery_method=delivery_method, propagation_node=selected_node,
+                        allow_offline=ordinary_message)
                     if blocks.denies(address):
                         raise ValueError("This Reticulum destination was blocked before submission")
                     if telemetry_fields and telemetry.generation != location_generation:

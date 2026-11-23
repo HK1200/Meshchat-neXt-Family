@@ -446,3 +446,22 @@ Both full simulator suites and unsigned archives subsequently passed on source
 send, fetch, reverse reception, byte-identical downloads and explicit removal
 of the synthetic received files. Native picker/share-sheet gestures and
 suspended transfers remain unverified; regular Family was untouched.
+
+
+## Ordinary submission during an outage
+
+The physical build 384.1 private TCP outage check exposed a gap before the
+restart journal: a new ordinary send waited for a route for 35 seconds and
+returned HTTP 504 without saving a pending message. The fixture restored its
+original peers and contacts; neither Family app was changed. The same failure
+was reproduced in a real loopback TCP regression.
+
+Development source now lets ordinary messages to an already verified identity
+be signed and saved atomically before LXMF performs path requests and retries.
+Unknown recipient keys are not invented. Explicit mailbox permission, block
+checks, attachment bounds and the existing restart journal still apply.
+Location and telemetry retain live-path checks and cannot enter this offline
+queue. The regression verifies prompt durable submission while disconnected,
+automatic reconnection, the original delivered hash and a signed echo without
+resubmission. This follow-up still needs its own native and physical-device
+qualification; it is not part of the verified 384.1 package.

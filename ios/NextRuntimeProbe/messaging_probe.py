@@ -95,7 +95,7 @@ class MessagingProbe:
             return self.on_receive(message) is True
         return False
 
-    def compose(self, content, address, fields=None, *, delivery_method=None, propagation_node=None):
+    def compose(self, content, address, fields=None, *, delivery_method=None, propagation_node=None, allow_offline=False):
         if delivery_method not in (None, "direct", "opportunistic", "propagated"):
             raise ValueError("Choose Automatic, Direct, Opportunistic or Propagated delivery")
         if delivery_method == "propagated" and propagation_node is None:
@@ -105,6 +105,12 @@ class MessagingProbe:
             if identity is None:
                 raise ValueError("Receive a verified contact announce before sending through a mailbox")
             return self._message(identity, content, fields, LXMF.LXMessage.PROPAGATED)
+        if allow_offline and identity is not None:
+            # Ordinary messages must enter the signed restart journal before
+            # routing. LXMF owns path requests/retries after durable submission.
+            # A key is still required: never invent a recipient identity.
+            method = LXMF.LXMessage.OPPORTUNISTIC if delivery_method == "opportunistic" else LXMF.LXMessage.DIRECT
+            return self._message(identity, content, fields, method)
         deadline = time.monotonic() + 35
         next_request = 0
         while time.monotonic() < deadline:

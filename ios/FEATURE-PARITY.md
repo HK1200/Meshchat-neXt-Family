@@ -6,6 +6,26 @@ Regular Family on the iPad is excluded from testing. Apple enrollment remains on
 
 For the separate neXt port, see [neXt iOS completion status](NEXT_FEATURE_PARITY.md).
 
+## Cross-app qualification — November 23, 2026
+
+Family runtime at source `e82803cfa820f90d30b1fce2bf7226b8ec311255`
+passed all four iPhone/iPad live and sample-preview jobs in `45127212986`.
+The live jobs executed all 48 native cases and the actual guardian/contact,
+notification permission, private signed message/background round-trip and
+reconnect UI checks. Both iPhone jobs passed on their first attempt. The iPad
+live permission check and sample preview startup check needed one unchanged
+failed-only retry. Original failure logs and the iPad live recording are
+retained; the passing retry does not establish the initial failures' causes.
+
+Both unsigned Family device and App Store archives passed in `45127216492`.
+The App Store configuration continues to exclude rooms and Relay Chat; the
+GitHub configuration retains them. These simulator/archive checks did not
+install either Family package on the physical iPad. Regular Family **47.6**
+and separate Family Mailbox Test **353.1** retain their existing setup.
+Real suspended internet call/push verification, the physical iPhone matrix,
+Apple distribution signing and submission remain pending. Apple enrollment
+has not been performed.
+
 | Area | iOS status | Remaining verification or work |
 |---|---|---|
 | Guardian setup, nickname, approved contacts | Present | Setup/unlock visibility checks passed on both native simulators |
