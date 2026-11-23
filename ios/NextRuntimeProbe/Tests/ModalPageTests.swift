@@ -1,8 +1,32 @@
 import XCTest
 import WebKit
+import UIKit
 
 @MainActor
 final class ModalPageTests: XCTestCase {
+    /// A detached WKWebView may be suspended by iPadOS before navigation.
+    /// Host real WebKit in a visible test-owned window; restore the app's key
+    /// window afterward. This does not substitute a DOM mock or skip readiness.
+    @MainActor private final class Host {
+        let window: UIWindow
+        let previous: UIWindow?
+        init(_ view: WKWebView) throws {
+            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+            previous = scene.windows.first(where: \.isKeyWindow)
+            window = UIWindow(windowScene: scene)
+            let controller = UIViewController()
+            window.rootViewController = controller
+            view.frame = controller.view.bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            controller.view.addSubview(view)
+            window.makeKeyAndVisible()
+        }
+        func close() {
+            window.isHidden = true; window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+        }
+    }
+
     private final class Navigation: NSObject, WKNavigationDelegate {
         let ready: XCTestExpectation
         var error: Error?
@@ -28,6 +52,8 @@ final class ModalPageTests: XCTestCase {
         let ready = expectation(description: "Synthetic app document loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
+        let host = try Host(view)
+        defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='app'></div></body></html>", baseURL: nil)
         await fulfillment(of: [ready], timeout: 30)
@@ -44,6 +70,8 @@ final class ModalPageTests: XCTestCase {
         let ready = expectation(description: "Synthetic startup document loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
+        let host = try Host(view)
+        defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Getting things ready</div><div id='app'><main>Messages</main></div></body></html>", baseURL: nil)
         await fulfillment(of: [ready], timeout: 30)
@@ -72,6 +100,8 @@ final class ModalPageTests: XCTestCase {
         let ready = expectation(description: "Concealed startup document loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
+        let host = try Host(view)
+        defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Loading</div><div id='app'><textarea id='draft'>Private draft</textarea></div></body></html>", baseURL: nil)
         await fulfillment(of: [ready], timeout: 30)
@@ -107,6 +137,8 @@ final class ModalPageTests: XCTestCase {
         let ready = expectation(description: "Synthetic modal page loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
+        let host = try Host(view)
+        defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html \(attributes)><body><textarea id='draft'>Unsent private draft</textarea></body></html>", baseURL: nil)
         await fulfillment(of: [ready], timeout: 30)

@@ -35,12 +35,12 @@ spec=importlib.util.spec_from_file_location("verify", "../NextRuntimeProbe/verif
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 # Build a source inventory containing only the real tests included above.
 source=Path("Results/source-inventory");source.mkdir()
-for name in ("CallWakeEnrollmentTests","CallWakeInstallationTests","CallWakeIdentityTests","CallWakeRegistrationTests","CallWakePolicyTests","CallWakeCancellationTests","CallWakeTests","VoIPPushDeviceTests"):
+for name in ("CallWakeEnrollmentTests","CallWakeInstallationTests","CallWakeIdentityTests","CallWakeRegistrationTests","CallWakePolicyTests","CallWakeCancellationTests","ModalPageTests","CallWakeTests","VoIPPushDeviceTests"):
     original=Path("../NextRuntimeProbe/Tests")/(name+".swift")
     (source/original.name).write_bytes(original.read_bytes())
 proof=module.verify(json.loads(Path("Results/summary.json").read_text()), json.loads(Path("Results/tests.json").read_text()), source, unit_only=True)
 production = [Path("../NextRuntimeProbe/App")/(name+".swift") for name in
-    ("NextCallWakeContext","NextCallWakeEnrollment","NextCallWakeInstallation","NextCallWakeIdentity","NextCallWakeRegistration","NextCallWakePolicy","NextCallWakeCancellation","NextVoIPPushDevice","NextPushServices")]
+    ("NextCallWakeContext","NextCallWakeEnrollment","NextCallWakeInstallation","NextCallWakeIdentity","NextCallWakeRegistration","NextCallWakePolicy","NextCallWakeCancellation","NextModalPage","NextWebLoadState","NextVoIPPushDevice","NextPushServices")]
 production.append(Path("../FamilyLive/FamilyCallWake.swift"))
 proof["production_sources"]={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in production}
 proof["real_push_registration_performed"]=False

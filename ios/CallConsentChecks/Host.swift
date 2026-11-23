@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: 0BSD
-import UIKit
+import SwiftUI
 
 // Disposable simulator host only: no runtime, permissions, radio or APNs.
-@main @MainActor final class CallConsentHost: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-    func application(_ application: UIApplication,
-                     didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIViewController()
-        window.backgroundColor = .systemBackground
-        window.makeKeyAndVisible()
-        self.window = window
-        return true
-    }
+// A real foreground window scene also hosts the actual WebKit readiness tests.
+@main @MainActor struct CallConsentHost: App {
+    var body: some Scene { WindowGroup { Color.clear } }
 }

@@ -21,7 +21,7 @@ import Combine
         try FileManager.default.url(for: .applicationSupportDirectory,
             in: .userDomainMask, appropriateFor: nil, create: false)
     }
-    lazy var registration = NextCallWakeRegistration(
+    lazy var registration: NextCallWakeRegistration = NextCallWakeRegistration(
         store: NextCallWakeEnrollmentKeychain(), uploader: NextPushHTTPS(),
         marker: { try NextCallWakeInstallation.read(support: Self.support()) },
         invalidateMarker: { try NextCallWakeInstallation.invalidate(support: Self.support()) },
@@ -29,8 +29,8 @@ import Combine
         startDevice: { [weak self] in self?.device.start() ?? false },
         stopDevice: { [weak self] in self?.device.stop() },
         consentChanged: { [weak self] in self?.dispatcher.refreshConsent() })
-    private lazy var query = NextCallWakeQuery()
-    private lazy var dispatcher = NextCallWakeDispatcher(system: .shared,
+    private lazy var query: NextCallWakeQuery = NextCallWakeQuery()
+    private lazy var dispatcher: NextCallWakeDispatcher = NextCallWakeDispatcher(system: .shared,
         router: .shared, runtime: NextRuntimeLauncher.shared,
         context: { [weak self] in self?.validatedContext() },
         cancellationCheck: { [weak self] wake, saved in
@@ -41,7 +41,7 @@ import Combine
             return NextCallWakeCancellation.verified(data, wake: wake,
                 audience: saved.audience, now: Int(Date().timeIntervalSince1970))
         })
-    private lazy var device = NextVoIPPushDevice(
+    private lazy var device: NextVoIPPushDevice = NextVoIPPushDevice(
         delivery: { [weak self] payload, required, completion in
             guard let self else { completion(); return }
             self.dispatcher.receive(payload, mustReport: required, completion: completion)

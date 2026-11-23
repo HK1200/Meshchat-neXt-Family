@@ -77,6 +77,45 @@ private struct ProbeScreen: View {
                             notification_floor: alerts.reticulumBaselineID)
     }
 
+    private func mainToolbar(at url: URL) -> some View {
+        HStack {
+            Text("neXt").font(.headline)
+                .accessibilityIdentifier("next-native-brand")
+                .accessibilityValue(theme)
+            Spacer()
+            Button { panel = .alerts } label: {
+                Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }.accessibilityIdentifier("next-message-alerts")
+            Button { panel = .rnode } label: {
+                Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }.accessibilityIdentifier("next-rnode-settings")
+            Button {
+                if let previous = meshcoreReturnURL {
+                    self.url = previous
+                    meshcoreReturnURL = nil
+                } else {
+                    var route = URLComponents(url: url, resolvingAgainstBaseURL: true)
+                    route?.fragment = "/settings/meshcore"
+                    if let destination = route?.url {
+                        meshcoreReturnURL = url
+                        self.url = destination
+                    }
+                }
+            } label: {
+                Label(meshcoreReturnURL != nil ? "Messages" : "MeshCore",
+                      systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
+                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }.accessibilityIdentifier("next-meshcore-settings")
+            Button { panel = .calling } label: {
+                Label("Calling", systemImage: "phone").labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }.accessibilityIdentifier("next-calling-menu")
+            Button { panel = .connections } label: {
+                Label("TCP connections", systemImage: "network")
+                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+            }.accessibilityIdentifier("tcp-connections")
+        }.padding(.horizontal)
+    }
+
     private var setupForm: some View {
         Form {
             Section("Get started") {
@@ -107,42 +146,7 @@ private struct ProbeScreen: View {
         Group {
             if let url {
                 VStack(spacing: 0) {
-                    HStack {
-                        Text("neXt").font(.headline)
-                            .accessibilityIdentifier("next-native-brand")
-                            .accessibilityValue(theme)
-                        Spacer()
-                        Button { panel = .alerts } label: {
-                            Label("Message alerts", systemImage: "bell.badge").labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("next-message-alerts")
-                        Button { panel = .rnode } label: {
-                            Label("RNode", systemImage: "antenna.radiowaves.left.and.right").labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("next-rnode-settings")
-                        Button {
-                            if let previous = meshcoreReturnURL {
-                                self.url = previous
-                                meshcoreReturnURL = nil
-                            } else {
-                                var route = URLComponents(url: url, resolvingAgainstBaseURL: true)
-                                route?.fragment = "/settings/meshcore"
-                                if let destination = route?.url {
-                                    meshcoreReturnURL = url
-                                    self.url = destination
-                                }
-                            }
-                        } label: {
-                            Label(meshcoreReturnURL != nil ? "Messages" : "MeshCore",
-                                  systemImage: meshcoreReturnURL != nil ? "bubble.left.and.bubble.right" : "dot.radiowaves.left.and.right")
-                                .labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("next-meshcore-settings")
-                        Button { panel = .calling } label: {
-                            Label("Calling", systemImage: "phone").labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("next-calling-menu")
-                        Button { panel = .connections } label: {
-                            Label("TCP connections", systemImage: "network")
-                                .labelStyle(.iconOnly).frame(width: 44, height: 44)
-                        }.accessibilityIdentifier("tcp-connections")
-                    }.padding(.horizontal)
+                    mainToolbar(at: url)
                     if let address {
                         HStack {
                             Button { panel = .mailbox } label: {
