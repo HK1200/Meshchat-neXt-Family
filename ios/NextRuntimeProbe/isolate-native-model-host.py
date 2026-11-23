@@ -56,6 +56,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.source.resolve() in (args.output.resolve(), args.proof.resolve()) or args.output.resolve() == args.proof.resolve():
         raise ValueError('Input, isolated run and proof must have distinct paths')
+    # Xcode resolves __TESTROOT__ against the run file's parent directory.
+    # Relocating this copy would silently redirect unchanged app/bundle paths.
+    if args.source.resolve().parent != args.output.resolve().parent:
+        raise ValueError("Keep the isolated run beside its original built products")
     raw = args.source.read_bytes()
     if len(raw) > 4_194_304:
         raise ValueError('Unexpected test-run metadata size')
@@ -64,4 +68,4 @@ if __name__ == '__main__':
     assert args.source.read_bytes() == raw
     args.proof.write_text(json.dumps(dict(native_target=UNIT, ui_target=UI,
         only_native_environment_changed=True, original_run_file_unchanged=True,
-        all_tests_retained=True)) + '\n')
+        all_tests_retained=True, test_root_preserved=True)) + '\n')

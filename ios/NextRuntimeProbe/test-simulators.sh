@@ -248,8 +248,9 @@ python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-ipho
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
 test_arguments=(-xctestrun "${test_runs[0]}")
-python3 "$probe/isolate-native-model-host.py" "${test_runs[0]}" "$scratch/native-models.xctestrun" "$result_set/native-model-host-proof.json"
-native_test_arguments=(-xctestrun "$scratch/native-models.xctestrun")
+native_test_run="$(dirname -- "${test_runs[0]}")/native-models.xctestrun"
+python3 "$probe/isolate-native-model-host.py" "${test_runs[0]}" "$native_test_run" "$result_set/native-model-host-proof.json"
+native_test_arguments=(-xctestrun "$native_test_run")
 case "${NEXT_PROBE_UNIT_ONLY:-false}" in
     true) ;;
     false) ;;
