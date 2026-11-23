@@ -12,7 +12,7 @@ import UIKit
 @MainActor
 struct FamilyLiveApp: App {
     @UIApplicationDelegateAdaptor(FamilyNotifications.self) private var notifications
-    @StateObject private var family = FamilyModel()
+    @StateObject private var family = FamilyModel.shared
     @ObservedObject private var systemCalls = FamilySystemCalls.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -52,6 +52,7 @@ struct FamilyLiveApp: App {
                         family?.openNotification(contactID: contactID, messageID: messageID)
                     }
                     if scenePhase == .active {
+                        family.stopCallWakePolling()
                         family.stopRadioWake()
                         await family.setVoicePresence(true)
                         await family.refreshNotificationPermission()
@@ -80,7 +81,36 @@ struct FamilyLiveApp: App {
 }
 
 @MainActor
-final class FamilyModel: ObservableObject {
+final class FamilyModel: ObservableObject, FamilyCallWakeRuntime {
+    static let shared = FamilyModel()
+    private var callWakePolling: Task<Void, Never>?
+    private var callWakeGeneration = 0
+
+    func stopCallWakePolling() {
+        callWakeGeneration += 1
+        callWakePolling?.cancel(); callWakePolling = nil
+    }
+
+    /// Reuse this model's single embedded runtime. Poll only while CallKit owns
+    /// the pending/active approved call; this is not an idle background service.
+    func beginCallWake() async throws {
+        await refresh()
+        guard state?.setupComplete == true, state?.voice?.enabled == true else { throw URLError(.cannotConnectToHost) }
+        guard UIApplication.shared.applicationState != .active, callWakePolling == nil,
+              FamilySystemCalls.shared.hasCall else { return }
+        callWakeGeneration += 1
+        let generation = callWakeGeneration
+        callWakePolling = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { if self.callWakeGeneration == generation { self.callWakePolling = nil } }
+            while !Task.isCancelled, self.callWakeGeneration == generation, FamilySystemCalls.shared.hasCall {
+                await self.refresh()
+                do { try await Task.sleep(for: self.state?.voice?.call_state == "connected" ? .seconds(1) : .milliseconds(200)) }
+                catch { return }
+            }
+            if !Task.isCancelled, self.callWakeGeneration == generation { await self.refresh() }
+        }
+    }
     @Published private(set) var state: FamilyReply?
     @Published private(set) var unlocked = false
     @Published var error = ""
@@ -201,6 +231,7 @@ final class FamilyModel: ObservableObject {
                 checkMailboxOnNextRefresh()
             }
             state = updated
+            FamilyCallWakeOwner.shared.refreshPolicy()
             FamilySIP.shared.reconcile(updated)
             reconcileLocationSampling()
             if UIApplication.shared.applicationState == .active {
@@ -419,10 +450,23 @@ final class FamilyModel: ObservableObject {
             end: { [weak self] in await self?.endVoiceDirect(key.id) },
             mute: { [weak self] muted in await self?.muteVoiceDirect(key.id, muted: muted) ?? false }
         )
-        if !FamilySystemCalls.shared.track(key, name: approved.name, incoming: voice.call_state == "incoming", actions: actions) {
+        let known = FamilySystemCalls.shared.contains(key)
+        let pending = voice.call_state == "incoming" ? FamilyCallWakeOwner.shared.pendingIncoming(peer: target.lowercased()) : nil
+        // An expired/cancelled wake must not become a second ordinary call
+        // report while the app is backgrounded and its real link arrives late.
+        if voice.call_state == "incoming", !known, pending == nil,
+           UIApplication.shared.applicationState != .active {
             Task { await endVoiceDirect(key.id) }
             return
         }
+        let accepted: Bool
+        if !known, let pending {
+            accepted = FamilySystemCalls.shared.attachIncoming(pending, to: key, actions: actions)
+            if accepted { FamilyCallWakeOwner.shared.attached(pending, to: key) }
+        } else {
+            accepted = FamilySystemCalls.shared.track(key, name: approved.name, incoming: voice.call_state == "incoming", actions: actions)
+        }
+        if !accepted { Task { await endVoiceDirect(key.id) }; return }
         FamilySystemCalls.shared.update(key, connected: voice.call_state == "connected")
     }
 
@@ -1240,7 +1284,7 @@ struct FamilyGuardian: View {
                                 set: { enabled in Task { await family.configureVoiceKeepAwake(enabled) } }
                             ))
                             .disabled(family.state?.voice?.enabled != true)
-                            Text("Keep Family open to receive new calls. This option prevents auto-lock; calls already answered can continue when the screen locks or you switch apps.")
+                            Text("This option prevents auto-lock. Calls already answered can continue when the screen locks or you switch apps. Receiving new Reticulum calls while suspended needs optional call alerts in a compatible push-enabled build.")
                                 .font(.footnote).foregroundStyle(.secondary)
                             if let address = family.state?.voice?.address, !address.isEmpty {
                                 Text(address).font(.caption.monospaced()).textSelection(.enabled)
@@ -1255,13 +1299,15 @@ struct FamilyGuardian: View {
                             get: { FamilySystemCalls.shared.enabled },
                             set: { family.configureSystemCallControls($0) }
                         )).disabled(family.hasCallInProgress)
-                        Text("Answer, decline, end and mute approved calls using iOS controls. Keep Family open to receive new calls; this does not make Family always available while suspended.")
+                        Text("Answer, decline, end and mute approved calls using iOS controls. For new calls while suspended, review Incoming Reticulum call alerts below. Personal previews still need Family open for new calls.")
                             .font(.footnote).foregroundStyle(.secondary)
                         if !FamilySystemCalls.shared.error.isEmpty {
                             Text(FamilySystemCalls.shared.error).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                     Section {
+                        NavigationLink("Incoming Reticulum call alerts") { FamilyCallAlertsSettings(family: family) }
+                            .accessibilityIdentifier("family-call-alert-settings")
                         NavigationLink("SIP calling") { FamilySIPSettings(family: family) }
                         NavigationLink("MeshCore companion") { FamilyMeshCoreSettings(family: family) }
                         NavigationLink("RNode") { FamilyRNodeSettings(family: family) }

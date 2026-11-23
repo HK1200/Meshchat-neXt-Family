@@ -57,15 +57,17 @@ final class NextReticulumWakeRouter: NextIncomingCallWakeRouting {
     private let store: any NextCallWakeReplayStoring
     private let now: () -> Date
     private let delay: Delay
+    private let retired: @MainActor (UUID) -> Void
     private var pending: Pending?
     private var deadline: Task<Void, Never>?
     private(set) var status = "Off"
 
     init(system: FamilySystemCalls, store: (any NextCallWakeReplayStoring)? = nil,
          now: @escaping () -> Date = Date.init,
+         retired: @escaping @MainActor (UUID) -> Void = { _ in },
          delay: @escaping Delay = { try await Task.sleep(for: .seconds($0)) }) {
         self.system = system; self.store = store ?? NextCallWakeReplayKeychain()
-        self.now = now; self.delay = delay
+        self.now = now; self.delay = delay; self.retired = retired
     }
 
     func accept(_ payload: Data, recipientPrivateKey: Data, recipientPublicKey: Data,
@@ -147,11 +149,13 @@ final class NextReticulumWakeRouter: NextIncomingCallWakeRouting {
         guard let pending, pending.key == key, transport.service == .reticulum,
               system.contains(transport) else { return }
         self.pending = nil; deadline?.cancel(); deadline = nil
+        retired(pending.id)
         status = "Approved call connected to its transport"
     }
     func cancel(_ id: UUID) {
         guard let pending, pending.id == id else { return }
         self.pending = nil; deadline?.cancel(); deadline = nil
+        retired(pending.id)
         system.finish(pending.key, failed: true)
         status = "Call no longer available"
     }

@@ -71,7 +71,7 @@ def check_default_codec(profiles):
 
 class FamilyVoice:
  def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True,incoming_gate=None):
-  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.incoming_gate=incoming_gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
+  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.incoming_gate=incoming_gate;self.background_wake=False;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
   self.last_incoming='';self.last_playback_activity=float('-inf');self.playback_rms=0.0
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
@@ -231,6 +231,7 @@ class FamilyVoice:
     if self.gate is not None:self.last_incoming='Approved call arrived while Family was unavailable.'
     threading.Thread(target=self.hangup,daemon=True).start();return
    if self.gate is not None:self.last_incoming='Incoming call rang.'
+   self.background_wake=bool(self.incoming_gate is not None and not self._gate(True))
    self.outgoing=False;self.connected_at=0.;self.last_rtt=None
    self.generation+=1;self.call_id=uuid.uuid4().hex;self.phase='incoming';self.peer=identity.hash.hex();self.target=contact['addresses']['lxst'];self.name=contact['name'];self.error='';self.sent=0;self.received=0
  def _connected(self,identity):
@@ -246,7 +247,7 @@ class FamilyVoice:
     self.state['callQuality']=(self.state.get('callQuality',[])+[{'service':'reticulum','target':self.target,'context':self.quality_context,'timestamp':time.time(),'failed':bool(self.error),'metrics':metrics}])[-64:];self.save()
    if self.outgoing and self.phase in ('finding','calling') and not self.error:
     self.error='The Reticulum call ended before audio connected.'
-   self.outgoing=False;self.connected_at=0.
+   self.outgoing=False;self.connected_at=0.;self.background_wake=False
    self.generation+=1;self.phase='idle';self.peer='';self.target='';self.call_id='';self.muted=False;self._gate(False)
    self.pcm.clear();self.last_playback_activity=float('-inf');self.playback_rms=0.0
  def call(self,contact_id,automatic=False):
@@ -257,6 +258,7 @@ class FamilyVoice:
    if not self.state.get('voiceEnabled') or not self.phone:raise ValueError(self.error or 'Enable Reticulum calling in guardian settings')
    if self.phase!='idle' or self._dialling or self.phone.active_call:raise ValueError('A Reticulum call is already active')
    if not self._gate(True):raise ValueError('Another call is active or Family is in the background')
+   self.background_wake=False
    self.outgoing=True;self.connected_at=0.;self.quality_context=self.route_context(address)
    self.generation+=1;generation=self.generation;self.phase='finding';self._dialling=True;self.target=address;self.call_id=uuid.uuid4().hex;self.name=contact['name'];self.error='';self.sent=0;self.received=0
   def dial():

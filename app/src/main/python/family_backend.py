@@ -1355,7 +1355,8 @@ def request(raw):
                 _ios_voice_foreground=p['foreground']
                 if not _ios_voice_foreground and _voice and _voice.phase!='idle':
                     current_id = _voice.call_id
-                    if preserve != current_id or _voice.phase not in ('finding', 'calling', 'incoming', 'connected'):
+                    authenticated_wake=bool(getattr(_voice,'background_wake',False) and _voice.phase in ('incoming','connected'))
+                    if not authenticated_wake and (preserve != current_id or _voice.phase not in ('finding', 'calling', 'incoming', 'connected')):
                         _voice.hangup(current_id)
             if resumed and _voice and _voice.phone:
                 with _announce_lock:

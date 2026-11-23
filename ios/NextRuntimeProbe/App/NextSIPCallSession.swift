@@ -51,13 +51,6 @@ final class NextSIPSystemAudio: NextSIPCallAudio {
     }
 }
 
-/// Only a native authenticated wake owner may offer a pending call for adoption.
-@MainActor
-protocol NextIncomingCallWakeRouting: AnyObject {
-    func pendingIncoming(peer: String, service: FamilySystemCallKey.Service) -> FamilySystemCallKey?
-    func attached(_ pending: FamilySystemCallKey, to key: FamilySystemCallKey)
-}
-
 /// Owns one transport call; CallKit/permission awaits cannot act on a later call.
 /// SIP keeps its existing default policy; Reticulum supplies strict identity validation.
 @MainActor

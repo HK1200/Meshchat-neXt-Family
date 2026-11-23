@@ -96,3 +96,32 @@ def test_android_default_gate_is_still_used_for_incoming_calls(fixture):
     voice=FamilyVoice(None,f.voice.state,threading.RLock(),lambda:None,gate=lambda acquire:calls.append(acquire) or True,autostart=False)
     voice._ring(f.peer)
     assert voice.phase=='incoming' and calls==[True]
+
+
+def test_background_transition_preserves_only_the_authenticated_wake(fixture):
+    import json
+    f=fixture;f.backend._voice=f.voice
+    assert f.native.family_call_wake_arm(CALL,f.address.encode(),30)
+    f.voice._ring(f.peer)
+    assert f.voice.background_wake is True
+    result=json.loads(f.backend.request(json.dumps({'action':'voice_presence','payload':{'foreground':False,'generation':1}})))
+    assert result['ok'] and not f.ended.is_set()
+    assert f.backend._ios_voice_foreground is False
+
+
+def test_ordinary_foreground_ring_is_not_promoted_to_a_background_wake(fixture):
+    import json
+    f=fixture;f.backend._voice=f.voice;f.backend._ios_voice_foreground=True
+    f.voice._ring(f.peer)
+    assert f.voice.background_wake is False
+    result=json.loads(f.backend.request(json.dumps({'action':'voice_presence','payload':{'foreground':False,'generation':1}})))
+    assert result['ok'] and f.ended.is_set()
+
+
+def test_call_end_clears_the_consumed_background_wake_admission(fixture):
+    f=fixture
+    assert f.native.family_call_wake_arm(CALL,f.address.encode(),30)
+    f.voice._ring(f.peer)
+    assert f.voice.background_wake is True
+    f.voice._ended()
+    assert f.voice.background_wake is False and f.voice.phase=='idle'

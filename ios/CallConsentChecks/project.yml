@@ -29,6 +29,16 @@ targets:
       - path: ../NextRuntimeProbe/App/NextWebLoadState.swift
       - path: ../NextRuntimeProbe/App/NextVoIPPushDevice.swift
       - path: ../NextRuntimeProbe/App/NextPushServices.swift
+      - path: ../NextRuntimeProbe/App/NextIncomingCallWakeRouting.swift
+      - path: ../NextRuntimeProbe/App/NextReticulumWakeRouter.swift
+      - path: ../NextRuntimeProbe/App/NextCallWakeDispatcher.swift
+      - path: ../NextRuntimeProbe/App/NextCallWakeQuery.swift
+      - path: ../FamilyLive/FamilySystemCalls.swift
+      - path: ../FamilyLive/FamilyCallKitDriver.swift
+      - path: ../FamilyLive/FamilyCallAudioSession.swift
+      - path: ../FamilyLive/FamilyCallWakeOwner.swift
+      - path: FamilyCallWakeOwnerTests.swift
+      - path: ../NextRuntimeProbe/Tests/ReticulumWakeRouterTests.swift
       - path: ../FamilyLive/FamilyCallWakePolicy.swift
       - path: FamilyCallWakePolicyTests.swift
       - path: ../FamilyLive/FamilyCallWake.swift

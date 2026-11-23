@@ -35,3 +35,30 @@ relay or copies already received by another person.
 
 Rooms and Relay Chat are excluded from Google Play and planned App Store
 editions. GitHub editions can retain those guardian-controlled features.
+
+## Optional incoming Reticulum call alerts
+
+Call alerts are separate from mailbox alerts and are off until a guardian
+explicitly enrolls a compatible push-enabled iOS build with a chosen HTTPS
+provider. The guardian selects individual approved, identity-verified voice
+contacts. The app pauses alerts if those approvals, the device identity or
+calling permissions change. A guardian must review the selection to resume.
+Personal-signed previews cannot receive live Apple call pushes.
+
+The provider receives an Apple call push token, the recipient's public identity
+key, selected callers' public voice addresses and an enrollment credential
+used to authenticate registration and removal. The installation marker stays
+on the device. It does
+not receive the private identity key, guardian password, contact names, message
+contents, audio, photos or location coordinates. A sender explicitly configured
+for this route sends a signed, short-lived call intent. The provider forwards
+an encrypted call hint through Apple. The receiving device verifies the sender,
+current guardian approval, expiration and replay history before starting call
+signaling. The existing Reticulum connection carries the call's audio.
+
+Turning call alerts off stops local call-wake admission immediately. If the
+provider cannot be reached, removal remains pending and can be retried from
+Guardian settings. The reference provider expires call intents after their
+short validity window; provider logs and backups may retain connection or
+registration metadata according to the operator's policy. This feature does
+not provide suspended SIP calling or guarantee delivery without network access.

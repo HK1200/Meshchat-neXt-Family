@@ -93,9 +93,9 @@ HTTPS integration test verifies the actual sender and provider with an encrypted
 mock delivery callback, including cancellation after a lost acknowledgment.
 
 Full current-source app qualification, a deployed APNs provider and real
-locked-device tests remain required. Family's call-alert owner and guardian
-integration remain unfinished; its mailbox enrollment does not grant call
-permission. Do not deploy this as a proven background-call feature. A free
+locked-device tests remain required. Family's development source now has its
+own call-alert owner and Guardian controls, awaiting native/app qualification;
+its mailbox enrollment does not grant call permission. Do not deploy this as a proven background-call feature. A free
 personal-signing profile cannot qualify live Apple push delivery; Apple
 enrollment remains on hold.
 

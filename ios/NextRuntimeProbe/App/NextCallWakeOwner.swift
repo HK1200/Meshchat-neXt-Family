@@ -50,7 +50,8 @@ import Combine
     func restore() { registration.restore() }
     func policyChanged(_ digest: String) { registration.policyChanged(digest) }
     func refreshPermissions() {
-        if !FamilySystemCalls.shared.enabled && registration.configured { registration.pauseForReview() }
+        if !FamilySystemCalls.shared.enabled && registration.configured && !registration.stopping && !registration.needsReview { registration.pauseForReview() }
+        registration.synchronizeIfDue()
         dispatcher.refreshConsent()
     }
     private func validatedContext() -> NextCallWakeContext? {

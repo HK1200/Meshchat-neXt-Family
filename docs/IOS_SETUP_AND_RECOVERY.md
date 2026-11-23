@@ -413,3 +413,25 @@ after reconnecting. If the provider rotated its enrollment code, paste the new
 code into the removal form. That action can only finish removal, not turn
 alerts back on. Ordinary message alerts, radio settings and Family's separate
 installation are unaffected.
+
+### Optional incoming Reticulum call alerts
+
+In a compatible push-enabled build, open Guardian settings → Incoming Reticulum
+call alerts. No provider or caller is selected automatically. Allow microphone
+access and enable iOS call controls, choose an HTTPS call-alert provider and its
+audience/enrollment code, then select individual verified, approved voice
+contacts. Enable call alerts only after reviewing that selection. Mailbox
+message alerts do not enable call alerts.
+
+Personal-signed previews show this capability as unavailable. Keep Family open
+to receive new calls in those previews. A working foreground call, radio wake
+or simulator test does not prove delivery while iPadOS has fully suspended the
+app. SIP requires a separate compatible provider wake path.
+
+Changing the selected contacts' names, identity keys or voice approval, disabling
+calling, or changing this device's identity pauses call alerts for review.
+Unlock Guardian settings, refresh the caller list and explicitly confirm the
+selection to resume. Turning alerts off stops local admission immediately;
+if provider removal is pending, reconnect and retry removal. Never delete the
+app to solve a pending removal or upgrade problem. See [Privacy](PRIVACY.md)
+for the provider's data flow and retention limits.

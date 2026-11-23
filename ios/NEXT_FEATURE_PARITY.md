@@ -70,9 +70,12 @@ Personal-signed previews keep Apple push enrollment disabled. Neither installed
 iPad app has qualified suspended internet call delivery. Real APNs credentials,
 a deployed provider, appropriate signing and locked-device tests, including an
 iPhone, are still required. SIP requires its own compatible provider wake path.
-Family currently has mailbox alerts; its separate native call-alert owner and
-guardian integration remain unfinished. The new Family cold-start approval
-reader is a prerequisite only and does not enable a provider or change consent.
+Family development source now also has its own native call-alert owner and
+Guardian screen. It reuses the one embedded Family runtime, checks cold-start
+approvals and current identity, and arms a native caller-bound one-use window
+before Python starts. Its selected callers and consent are separate from mailbox
+alerts. The new owner and app wiring still require Xcode qualification; they
+have not been installed or verified with live Apple delivery.
 
 Earlier sections below record historical implementation checkpoints; their
 “not yet integrated” statements describe those earlier sources. This section

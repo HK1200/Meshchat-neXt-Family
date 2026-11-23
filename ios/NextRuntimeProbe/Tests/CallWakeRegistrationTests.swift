@@ -34,6 +34,8 @@ import XCTest
     var eligible = true, permitted = true
     var failInvalidate = false
     var starts = 0, stops = 0, changes = 0
+    var time: TimeInterval = 1000
+    var policyValid = true
     var controller: NextCallWakeRegistration!
     init() {
         controller = NextCallWakeRegistration(store: store, uploader: uploader,
@@ -47,7 +49,8 @@ import XCTest
             startDevice: { [weak self] in self?.starts += 1; return true },
             stopDevice: { [weak self] in self?.stops += 1 },
             consentChanged: { [weak self] in self?.changes += 1 },
-            now: { Date(timeIntervalSince1970: 1000) })
+            validatePolicy: { [weak self] _ in self?.policyValid == true },
+            now: { [weak self] in Date(timeIntervalSince1970: self?.time ?? 1000) })
     }
     func record() throws -> NextCallWakeEnrollment {
         let agreement = Curve25519.KeyAgreement.PrivateKey()
@@ -311,6 +314,56 @@ import XCTest
         try await ready { f.uploader.requests.count == 1 && !f.controller.busy }
         XCTAssertTrue(try f.body(0)["token"] is NSNull)
         XCTAssertTrue(f.controller.needsReview); XCTAssertNil(f.controller.context)
+    }
+
+    func testColdRefreshDoesNotUnregisterBeforeAppleReturnsItsToken() async throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        var record = try f.record(); record.mayBeRegistered = true
+        f.store.value = try record.encoded(installation: record.installation)
+        f.controller.restore()
+        for _ in 0..<5 { f.controller.synchronizeIfDue() }
+        XCTAssertFalse(f.controller.busy)
+        XCTAssertTrue(f.uploader.requests.isEmpty)
+        f.controller.receivedToken(Data(repeating: 4, count: 32))
+        try await ready { f.uploader.requests.count == 1 && !f.controller.busy }
+        XCTAssertEqual(try f.body(0)["token"] as? String, String(repeating: "04", count: 32))
+    }
+    func testExplicitTokenInvalidationStillRemovesTheRegisteredToken() async throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.controller.receivedToken(Data(repeating: 4, count: 32))
+        try await ready { f.uploader.requests.count == 1 && !f.controller.busy }
+        f.controller.receivedToken(nil)
+        try await ready { f.uploader.requests.count == 2 && !f.controller.busy }
+        XCTAssertTrue(try f.body(1)["token"] is NSNull)
+    }
+    func testAutomaticProviderRetryHonorsBackoffAndRecoversWithoutAnotherToken() async throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.uploader.fail = true; f.controller.receivedToken(Data(repeating: 4, count: 32))
+        try await ready { f.uploader.requests.count == 1 && !f.controller.busy }
+        f.uploader.fail = false; f.time = 1029; f.controller.synchronizeIfDue()
+        XCTAssertFalse(f.controller.busy)
+        XCTAssertEqual(f.uploader.requests.count, 1)
+        f.time = 1030; f.controller.synchronizeIfDue()
+        try await ready { f.uploader.requests.count == 2 && !f.controller.busy }
+        XCTAssertEqual(try f.body(1)["token"] as? String, String(repeating: "04", count: 32))
+    }
+
+    func testFreshEnrollmentMustPassItsExplicitPolicyValidator() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        f.policyValid = false
+        XCTAssertFalse(f.controller.enable(try f.record()))
+        XCTAssertNil(f.store.value); XCTAssertEqual(f.starts, 0)
+    }
+    func testSavedPolicyLossBeforeQueuedUploadCanOnlyRemoveTheToken() async throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.controller.receivedToken(Data(repeating: 4, count: 32)); f.policyValid = false
+        try await ready { f.controller.needsReview && !f.controller.busy }
+        XCTAssertNil(f.controller.context)
+        XCTAssertEqual(f.uploader.requests.count, 1)
+        XCTAssertTrue(try f.body(0)["token"] is NSNull)
     }
 
 }

@@ -201,4 +201,16 @@ final class FamilyCallWakePolicyTests: XCTestCase {
             approvalDigest: allowed.digest, now: 1000))
     }
 
+    func testApprovedUppercaseHexRemainsBoundAndCanonical() throws {
+        var (state, voice) = try sample()
+        var rows = try XCTUnwrap(state["contacts"] as? [[String: Any]])
+        rows[0]["identityPublicKey"] = (rows[0]["identityPublicKey"] as? String)?.uppercased()
+        var addresses = try XCTUnwrap(rows[0]["addresses"] as? [String: String])
+        addresses = addresses.mapValues { $0.uppercased() }
+        rows[0]["addresses"] = addresses; state["contacts"] = rows
+        let canonical = try approval(state, [voice.uppercased()])
+        XCTAssertEqual(canonical.callers.first?.voiceAddress, voice)
+        XCTAssertEqual(try FamilyCallWakePolicy.decode(bytes(state)).availableCallers(recipientPublicKey: publicKey(own)).count, 1)
+    }
+
 }

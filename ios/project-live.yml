@@ -25,6 +25,18 @@ targets:
       - path: FamilyLive
         excludes: [FamilyPush.entitlements]
       - LiveRuntime
+      - path: NextRuntimeProbe/App/NextIncomingCallWakeRouting.swift
+      - path: NextRuntimeProbe/App/NextCallWakeContext.swift
+      - path: NextRuntimeProbe/App/NextCallWakeEnrollment.swift
+      - path: NextRuntimeProbe/App/NextCallWakeInstallation.swift
+      - path: NextRuntimeProbe/App/NextCallWakeIdentity.swift
+      - path: NextRuntimeProbe/App/NextCallWakeRegistration.swift
+      - path: NextRuntimeProbe/App/NextCallWakeCancellation.swift
+      - path: NextRuntimeProbe/App/NextCallWakeQuery.swift
+      - path: NextRuntimeProbe/App/NextCallWakeDispatcher.swift
+      - path: NextRuntimeProbe/App/NextReticulumWakeRouter.swift
+      - path: NextRuntimeProbe/App/NextVoIPPushDevice.swift
+      - path: NextRuntimeProbe/App/NextPushServices.swift
       - path: SIP-NOTICES.txt
         buildPhase: resources
       - path: RuntimeBuild/offline-tiles
@@ -66,6 +78,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.meshchat.family.ios.live
         MARKETING_VERSION: 0.6.30
         CURRENT_PROJECT_VERSION: 1
+        FAMILY_APNS_ENVIRONMENT: ""
+        INFOPLIST_KEY_FamilyPushEnvironment: "$(FAMILY_APNS_ENVIRONMENT)"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: YES

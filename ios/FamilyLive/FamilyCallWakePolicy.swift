@@ -32,6 +32,13 @@ struct FamilyCallWakePolicy {
     }
     enum Invalid: Error { case unavailable, approval }
     private let state: State
+    var callingEnabled: Bool { state.setup_complete && state.voiceEnabled }
+    struct Identity {
+        let agreementPrivateKey: Data
+        let publicKey: Data
+        var messagingAddress: String { FamilyCallWakePolicy.messagingAddress(publicKey) }
+        var voiceAddress: String { get throws { try FamilyCallWake.voiceAddress(publicKey: publicKey) } }
+    }
 
     static func decode(_ bytes: Data) throws -> Self {
         guard bytes.count <= 33_554_432 else { throw Invalid.unavailable }
@@ -45,12 +52,14 @@ struct FamilyCallWakePolicy {
     func approval(selected: Set<String>, recipientPublicKey: Data) throws -> Approval {
         guard state.setup_complete, state.voiceEnabled, recipientPublicKey.count == 64,
               !selected.isEmpty, selected.count <= 256 else { throw Invalid.approval }
-        let rows = state.contacts.filter { selected.contains($0.addresses["lxst"] ?? "") }
-        guard rows.count == selected.count,
-              Set(rows.compactMap { $0.addresses["lxst"] }).count == selected.count else { throw Invalid.approval }
+        let canonicalSelected = Set(selected.map { $0.lowercased() })
+        guard canonicalSelected.count == selected.count else { throw Invalid.approval }
+        let rows = state.contacts.filter { canonicalSelected.contains(($0.addresses["lxst"] ?? "").lowercased()) }
+        guard rows.count == canonicalSelected.count,
+              Set(rows.compactMap { $0.addresses["lxst"]?.lowercased() }).count == canonicalSelected.count else { throw Invalid.approval }
         let callers: [Caller] = try rows.map { row in
-            guard let keyText = row.identityPublicKey, let voice = row.addresses["lxst"],
-                  let messaging = row.addresses["lxmf"],
+            guard let keyText = row.identityPublicKey, let voice = row.addresses["lxst"]?.lowercased(),
+                  let messaging = row.addresses["lxmf"]?.lowercased(),
                   (1...256).contains(row.name.utf8.count),
                   row.name.unicodeScalars.allSatisfy({ $0.value >= 32 && $0.value != 127 }) else { throw Invalid.approval }
             let key = try Self.publicKey(keyText)
@@ -83,21 +92,33 @@ struct FamilyCallWakePolicy {
         return Intent(wake: wake, name: caller.name, approvalDigest: before.digest)
     }
 
+    func availableCallers(recipientPublicKey: Data) -> [Caller] {
+        Set(state.contacts.compactMap { $0.addresses["lxst"]?.lowercased() }).sorted().compactMap { voice in
+            try? approval(selected: [voice], recipientPublicKey: recipientPublicKey).callers.first
+        }
+    }
+
     static func load(support: URL) throws -> Self {
         try decode(read(support: support, name: "state.json", maximum: 33_554_432))
     }
 
     /// Identity stays native-only and is never part of Approval or its digest.
-    static func identity(support: URL, expectedPublicKey: Data) throws -> Data {
+    static func ownIdentity(support: URL) throws -> Identity {
         let raw = try read(support: support, name: "identity", maximum: 64)
-        guard raw.count == 64, expectedPublicKey.count == 64 else { throw Invalid.unavailable }
+        guard raw.count == 64 else { throw Invalid.unavailable }
         let agreement = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw.prefix(32))
         let signing = try Curve25519.Signing.PrivateKey(rawRepresentation: raw.suffix(32))
-        guard agreement.publicKey.rawRepresentation + signing.publicKey.rawRepresentation == expectedPublicKey else { throw Invalid.approval }
-        return agreement.rawRepresentation
+        return Identity(agreementPrivateKey: agreement.rawRepresentation,
+            publicKey: agreement.publicKey.rawRepresentation + signing.publicKey.rawRepresentation)
+    }
+    static func identity(support: URL, expectedPublicKey: Data) throws -> Data {
+        let current = try ownIdentity(support: support)
+        guard expectedPublicKey.count == 64, current.publicKey == expectedPublicKey else { throw Invalid.approval }
+        return current.agreementPrivateKey
     }
 
-    private static func publicKey(_ text: String) throws -> Data {
+    private static func publicKey(_ source: String) throws -> Data {
+        let text = source.lowercased()
         guard text.range(of: #"\A[a-f0-9]{128}\z"#, options: .regularExpression) != nil else { throw Invalid.approval }
         return Data(stride(from: 0, to: 128, by: 2).map { offset in
             let start = text.index(text.startIndex, offsetBy: offset)

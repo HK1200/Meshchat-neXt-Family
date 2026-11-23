@@ -10,7 +10,10 @@ final class NextCallWakeDispatcher {
     typealias PollDelay = @MainActor @Sendable () async throws -> Void
     private let system: FamilySystemCalls
     private let router: NextReticulumWakeRouter
-    private let runtime: NextRuntimeStartup
+    typealias Startup = @MainActor () async throws -> Void
+    typealias Admission = @MainActor (FamilyCallWake, NextCallWakeContext) -> Bool
+    private let startRuntime: Startup
+    private let admitted: Admission
     private let context: Context
     private var boots: [UUID: Task<Void, Never>] = [:]
     private var cancellationPolls: [UUID: Task<Void, Never>] = [:]
@@ -18,10 +21,11 @@ final class NextCallWakeDispatcher {
     private let pollDelay: PollDelay
 
     init(system: FamilySystemCalls, router: NextReticulumWakeRouter,
-         runtime: NextRuntimeStartup, context: @escaping Context,
+         startRuntime: @escaping Startup, context: @escaping Context,
+         admitted: @escaping Admission = { _, _ in true },
          cancellationCheck: CancellationCheck? = nil,
          pollDelay: @escaping PollDelay = { try await Task.sleep(for: .seconds(2)) }) {
-        self.system = system; self.router = router; self.runtime = runtime; self.context = context
+        self.system = system; self.router = router; self.startRuntime = startRuntime; self.context = context; self.admitted = admitted
         self.cancellationCheck = cancellationCheck; self.pollDelay = pollDelay
     }
 
@@ -40,7 +44,15 @@ final class NextCallWakeDispatcher {
             reject(mustReport, finished)
             return
         }
-        if let cancellationCheck, let intent = router.pendingIntent(id) {
+        guard let intent = router.pendingIntent(id), admitted(intent, saved) else {
+            router.cancel(id)
+            Task { @MainActor [system] in
+                _ = await system.incomingAttemptCompleted(id)
+                finished.finish()
+            }
+            return
+        }
+        if let cancellationCheck {
             let pause = pollDelay
             cancellationPolls[id] = Task { @MainActor [weak self, router] in
                 defer { self?.cancellationPolls.removeValue(forKey: id) }
@@ -58,10 +70,10 @@ final class NextCallWakeDispatcher {
         }
         // Reporting is already queued by admission. Start signaling in
         // parallel, without keeping the PushKit completion open for startup.
-        boots[id] = Task { @MainActor [weak self, runtime, router] in
+        boots[id] = Task { @MainActor [weak self, startRuntime, router] in
             defer { self?.boots.removeValue(forKey: id) }
             do {
-                _ = try await runtime.callWakeSession()
+                try await startRuntime()
                 router.refresh()
             } catch { router.cancel(id) }
         }

@@ -88,6 +88,7 @@ targets:
       - path: App/NextModalPage.swift
       - path: App/NextWebLoadState.swift
       - path: App/NextRuntimeStartup.swift
+      - path: App/NextRuntimeCallWake.swift
       - path: App/NextHTTP.swift
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift
@@ -97,6 +98,7 @@ targets:
       - path: App/NextSIPAccountDraft.swift
       - path: App/NextSIPRegistration.swift
       - path: App/NextSIPCallSession.swift
+      - path: App/NextIncomingCallWakeRouting.swift
       - path: App/NextReticulumWakeRouter.swift
       - path: App/NextCallWakeDispatcher.swift
       - path: App/NextCallWakeContext.swift

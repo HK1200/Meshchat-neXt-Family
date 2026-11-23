@@ -38,6 +38,7 @@ final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotifica
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         center.delegate = self
+        FamilyCallWakeOwner.shared.restore()
         return true
     }
 
