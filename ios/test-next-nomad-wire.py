@@ -89,6 +89,19 @@ def test_standard_page_and_file_arrive_through_actual_app_routes(tmp_path):
         assert api(base, 'favourites/add', body={'destination_hash': address, 'display_name': 'Rejected without CSRF'})[0] == 403
         assert api(base, 'favourites')[1]['favourites'] == before
         for endpoint in ('/assets/frame.js', '/nomad-crash-tab.html'):
+            # The shell loads shared modules before the opaque frame. Its
+            # initial/cache-validated responses must vary too, or WebKit can
+            # reuse a no-CORS response and silently strand the renderer.
+            for headers in ({}, {'Origin': origin}):
+                with urlopen(Request(origin + endpoint, headers=headers), timeout=5) as response:
+                    assert response.headers['Vary'] == 'Origin'
+                    assert 'Access-Control-Allow-Origin' not in response.headers
+                    etag = response.headers['ETag']
+                    response.read()
+                with pytest.raises(HTTPError) as cached:
+                    urlopen(Request(origin + endpoint, headers={**headers, 'If-None-Match': etag}), timeout=5)
+                assert cached.value.code == 304
+                assert cached.value.headers['Vary'] == 'Origin'
             with urlopen(Request(origin + endpoint, headers={'Origin': 'null'}), timeout=5) as response:
                 assert response.status == 200
                 assert response.headers['Access-Control-Allow-Origin'] == 'null'
