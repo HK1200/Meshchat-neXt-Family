@@ -49,6 +49,7 @@ async def exercise(handler, monkeypatch, folder, *, started):
             self.concluded = callback
 
         def request(self, path, *, data, response_callback, failed_callback):
+            resource.link = self
             response_callback(SimpleNamespace(response=True))
             if started:
                 self.started(resource)

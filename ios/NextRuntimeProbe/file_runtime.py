@@ -36,21 +36,62 @@ class FileRuntime:
         self.links = {}
         self.reservations = {}
         self.receive_lock = threading.Lock()
+        self.receive_segments = {}
+        self.receive_links = {}
         original = self.handler._receive_resource_callback
         concluded = self.handler._receive_resource_concluded
+        def release_link(link):
+            with self.receive_lock:
+                for key in [key for key in self.reservations if key[0] == id(link)]:
+                    self.reservations.pop(key, None)
+                    self.receive_segments.pop(key, None)
+                self.receive_links.pop(id(link), None)
+        self.release_receive_link = release_link
         def reserve(advertisement):
             size = advertisement.get_data_size()
-            key = advertisement.get_hash()
-            if (self.closed or type(size) is not int or not 0 <= size <= MAX_FILE
-                    or not isinstance(key, bytes) or len(key) != 32): return False
+            segment_hash = advertisement.get_hash()
+            first_hash = getattr(advertisement, 'o', segment_hash)
+            index = getattr(advertisement, 'i', 1)
+            count = getattr(advertisement, 'l', 1)
+            link = getattr(advertisement, 'link', None)
+            if (self.closed or link is None or type(size) is not int or not 0 <= size <= MAX_FILE
+                    or not isinstance(segment_hash, bytes) or len(segment_hash) != 32
+                    or not isinstance(first_hash, bytes) or len(first_hash) != 32
+                    or type(index) is not int or type(count) is not int
+                    or not 1 <= index <= count <= MAX_FILE + 1): return False
+            key = (id(link), first_hash)
             with self.receive_lock:
-                if key in self.reservations: return False
-                if len(self.reservations) >= 2 or shutil.disk_usage(self.folder).free <= size + sum(self.reservations.values()) + RESERVE:
-                    return False
-                self.reservations[key] = size
+                previous = self.receive_segments.get(key)
+                if previous is not None:
+                    # Standard RNS announces each segment with a distinct hash,
+                    # but reserves the complete file's size on every advert.
+                    # Continue only this link's next segment of the same file.
+                    if (index != previous[0] + 1 or count != previous[1]
+                            or size != self.reservations[key]
+                            or segment_hash == previous[2]): return False
+                else:
+                    if index != 1 or first_hash != segment_hash: return False
+                    if len(self.reservations) >= 2 or shutil.disk_usage(self.folder).free <= size + sum(self.reservations.values()) + RESERVE:
+                        return False
+                    self.reservations[key] = size
+                self.receive_segments[key] = (index, count, segment_hash)
+                if id(link) not in self.receive_links:
+                    self.receive_links[id(link)] = link
+                    setter = getattr(link, 'set_link_closed_callback', None)
+                    if callable(setter):
+                        previous_closed = getattr(getattr(link, 'callbacks', None), 'link_closed', None)
+                        def closed(ended, previous_closed=previous_closed):
+                            release_link(ended)
+                            if callable(previous_closed): previous_closed(ended)
+                        setter(closed)
             return True
         def release(resource):
-            with self.receive_lock: self.reservations.pop(resource.hash, None)
+            first_hash = getattr(resource, 'original_hash', resource.hash)
+            with self.receive_lock:
+                key = (id(resource.link), first_hash)
+                self.reservations.pop(key, None)
+                self.receive_segments.pop(key, None)
+        self.release_receive_resource = release
         def receive(advertisement):
             identity = advertisement.link.get_remote_identity()
             return (identity is not None and not blocked(identity.hash.hex())
@@ -232,6 +273,7 @@ class FileRuntime:
             link = self.links.pop(task, None)
             if link is not None:
                 with contextlib.suppress(Exception): link.teardown()
+                self.release_receive_link(link)
             if acquired: self.slots.release()
             self.pending.discard(task)
             self.transfers.pop(task, None)
@@ -316,6 +358,7 @@ class FileRuntime:
             cancelled.append(key)
             if resource is not None:
                 with contextlib.suppress(Exception): resource.cancel()
+                if hasattr(resource, 'link'): self.release_receive_resource(resource)
         pending = []
         if cancel_pending:
             try: current = asyncio.current_task()
@@ -334,6 +377,10 @@ class FileRuntime:
         for link in tuple(self.links.values()):
             with contextlib.suppress(Exception): link.teardown()
         self.links.clear()
+        with self.receive_lock:
+            self.reservations.clear()
+            self.receive_segments.clear()
+            self.receive_links.clear()
         pending = tuple(task for task in self.pending if task is not asyncio.current_task())
         for task in pending: task.cancel()
         if pending: await asyncio.gather(*pending, return_exceptions=True)

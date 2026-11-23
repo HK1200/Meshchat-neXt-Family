@@ -262,7 +262,8 @@ def test_guarded_fetch_never_saves_a_cancelled_complete_resource(tmp_path, cance
             def teardown(self): self.ended = True
             def request(self, *args, **kwargs):
                 kwargs['response_callback'](SimpleNamespace(response=True))
-                assert self.callbacks['accept'](SimpleNamespace(get_data_size=lambda: 20, get_hash=lambda: key))
+                resource.link = self
+                assert self.callbacks['accept'](SimpleNamespace(link=self, get_data_size=lambda: 20, get_hash=lambda: key))
                 self.callbacks['start'](resource)
                 if cancelled: value.cancel(key.hex())
                 self.callbacks['finish'](resource)
@@ -471,3 +472,90 @@ async def _exercise_mobile_segment_completion(
 @pytest.mark.parametrize("terminal", ["complete", "failed", "cancel", "immediate"])
 def test_mobile_waits_for_full_transfer_conclusion(tmp_path, monkeypatch, terminal):
     asyncio.run(_exercise_mobile_segment_completion(tmp_path, monkeypatch, terminal))
+
+
+def test_split_receive_counts_a_file_once_and_releases_its_reservation(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler.allowed_identity_hashes = [IDENTITY]
+        link = SimpleNamespace(get_remote_identity=lambda: SimpleNamespace(hash=IDENTITY))
+        first = b'a' * 32
+        def advert(index, key, size=200):
+            return SimpleNamespace(link=link, o=first, i=index, l=3,
+                get_data_size=lambda: size, get_hash=lambda: key)
+        assert value.handler._receive_resource_callback(advert(1, first))
+        assert value.handler._receive_resource_callback(advert(2, b'b' * 32))
+        assert value.handler._receive_resource_callback(advert(3, b'c' * 32))
+        assert len(value.reservations) == 1
+        assert sum(value.reservations.values()) == 200
+        value.handler._mobile_fetch_release(SimpleNamespace(link=link, hash=b'c' * 32, original_hash=first))
+        assert not value.reservations
+        await value.close()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('change', ['duplicate', 'skip', 'size', 'count', 'other-link', 'reused-hash'])
+def test_split_receive_rejects_inconsistent_continuations(tmp_path, change):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler.allowed_identity_hashes = [IDENTITY]
+        def link(): return SimpleNamespace(get_remote_identity=lambda: SimpleNamespace(hash=IDENTITY))
+        original = link()
+        first = b'a' * 32
+        def advert(index, key, size=200, count=3, connection=original):
+            return SimpleNamespace(link=connection, o=first, i=index, l=count,
+                get_data_size=lambda: size, get_hash=lambda: key)
+        assert value.handler._receive_resource_callback(advert(1, first))
+        changes = {
+            'duplicate': advert(1, first), 'skip': advert(3, b'c' * 32),
+            'size': advert(2, b'b' * 32, size=201),
+            'count': advert(2, b'b' * 32, count=4),
+            'other-link': advert(2, b'b' * 32, connection=link()),
+            'reused-hash': advert(2, first),
+        }
+        assert not value.handler._receive_resource_callback(changes[change])
+        assert len(value.reservations) == 1 and sum(value.reservations.values()) == 200
+        # Rejection must not advance or corrupt the original transfer.
+        assert value.handler._receive_resource_callback(advert(2, b'b' * 32))
+        await value.close()
+        assert not value.reservations and not value.receive_segments and not value.receive_links
+    asyncio.run(run())
+
+
+def test_closed_receive_link_releases_capacity_and_preserves_existing_callback(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler.allowed_identity_hashes = [IDENTITY]
+        closed = []
+        class Link:
+            def __init__(self): self.callbacks = SimpleNamespace(link_closed=lambda ended: closed.append(ended))
+            def set_link_closed_callback(self, callback): self.callbacks.link_closed = callback
+            def get_remote_identity(self): return SimpleNamespace(hash=IDENTITY)
+        link = Link()
+        def advert(key): return SimpleNamespace(link=link, get_data_size=lambda: 20, get_hash=lambda: key)
+        assert value.handler._receive_resource_callback(advert(b'a' * 32))
+        assert value.handler._receive_resource_callback(advert(b'b' * 32))
+        assert not value.handler._receive_resource_callback(advert(b'c' * 32))
+        link.callbacks.link_closed(link)
+        assert closed == [link]
+        assert not value.reservations and not value.receive_segments and not value.receive_links
+        assert value.handler._receive_resource_callback(advert(b'c' * 32))
+        await value.close()
+    asyncio.run(run())
+
+
+def test_cancel_one_receive_does_not_release_another_files_reservation(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        value.handler.allowed_identity_hashes = [IDENTITY]
+        link = SimpleNamespace(get_remote_identity=lambda: SimpleNamespace(hash=IDENTITY))
+        def advert(key): return SimpleNamespace(link=link, get_data_size=lambda: 20, get_hash=lambda: key)
+        first, second = b'a' * 32, b'b' * 32
+        assert value.handler._receive_resource_callback(advert(first))
+        assert value.handler._receive_resource_callback(advert(second))
+        resource = SimpleNamespace(hash=first, original_hash=first, link=link, cancel=lambda: None)
+        value.handler.active_transfers[first.hex()] = {'status': 'receiving', 'resource': resource}
+        value.cancel(first.hex())
+        assert len(value.reservations) == 1 and (id(link), second) in value.reservations
+        await value.close()
+    asyncio.run(run())

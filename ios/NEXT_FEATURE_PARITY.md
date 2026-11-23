@@ -7,15 +7,15 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The current separate iPad build 370.1 pins the public 0.1.25 backend and
-frontend and displays 0.1.25 as its app version. Exact source `472f5be`
-passed all 103 checks on each simulator. Its same-key physical upgrade retained
-all 1,079 current non-cache support files, twelve messages, two contacts,
-identity, native preferences and four peers before first launch. Both Family
-apps remained byte-identical. The ordinary interface rendered after the prior
-369.1 cold-restart tests. The newer recipient-key recovery correction below is
-not yet qualified on the physical iPad. These results do not qualify fully
-suspended internet alerts or every remaining desktop service.
+The current separate iPad build 382.1 pins the public 0.1.26 backend and
+frontend. Exact source `e048311` passed all 111 checks on each simulator
+(105 native and six UI cases), plus both unsigned device/App Store archives.
+The same-key physical upgrade retained all 3,429 non-cache support files,
+twelve messages, two contacts, identity, native preferences and four peers.
+After the physical tests, both Family apps still had byte-identical state,
+identity and native preferences. The recipient-key restart qualification
+below passed; fully suspended internet alerts and the remaining desktop
+services are not qualified by these results.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -340,8 +340,14 @@ and no additional identity data is transmitted. The regression fails before
 the repair; afterward the relay accepts the original signed packet while the
 recipient remains offline, then delivers its exact attachment when the
 recipient reconnects. All 741 available root tests and 42 focused Python 3.11
-checks passed. The new repair still requires exact-source CI, native simulator
-and device qualification.
+checks passed. Exact source `e048311` subsequently passed CI, both full simulator suites
+and both archives. On the physical iPad, a private receiver provisioned with
+only the sender's public key received the original signed message once after
+process termination, with its exact 75,000-byte attachment and photo. The
+recipient's public key was present in the stopped process's committed journal.
+The reply and attachment/photo bytes returned correctly. Contacts and peers
+were restored. This was an authenticated backend test, not a physical picker
+or suspended-delivery qualification.
 
 
 ## Verified separate iPad preview: 369.1
@@ -386,3 +392,22 @@ call ownership/handoff, explicit opt-in, token registration, sender integration,
 APNs provisioning and locked-device tests remain. SIP needs a compatible proxy
 that holds its incoming call while waking the client; this Reticulum foundation
 does not provide SIP wakeup. Apple enrollment remains on hold.
+
+
+## Segmented receive capacity follow-up
+
+Physical build 382.1 sent an exact 2 MiB file, but fetching a three-segment
+file exposed a separate receiver bug: the mobile capacity guard reserved the
+whole file again for each segment and exhausted its two-file allowance.
+Interrupted reservations also survived a closed link. The regression rejects
+the third segment before the repair. Development source now counts a logical
+file once, binds continuations to the same link, original hash, sequence,
+size and segment count, and releases capacity after completion, cancellation
+or link closure. Duplicate and inconsistent continuations remain rejected.
+
+All 45 focused checks passed against both the pinned 0.1.26 and prepared
+0.1.27 runtimes. Private real TCP tests now send, fetch and reverse-receive
+files above 2 MiB with exact bytes and no retained capacity. The reverse
+fixture uses the standard RNS resource primitive with a final conclusion
+callback so the already documented 0.1.26 peer sender bug cannot hide a
+receiver failure. The iPad repair still needs Xcode and physical retesting.

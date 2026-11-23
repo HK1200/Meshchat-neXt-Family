@@ -9,12 +9,15 @@ import socket
 import subprocess
 import sys
 import time
+import threading
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = Path(os.environ['NEXT_TEST_BACKEND_SOURCE']).resolve()
 sys.path[:0] = [str(ROOT / 'ios/NextRuntimeProbe'), str(BACKEND)]
 import RNS
+# Deterministically exercise at least three standard resource segments.
+RNS.Resource.MAX_EFFICIENT_SIZE = 1024 * 1024
 from meshchatnext.src.backend.rncp_handler import RNCPHandler
 
 
@@ -27,13 +30,47 @@ def config(folder, kind, port):
     return value
 
 
+async def reverse_resource(identity, destination, path):
+    # Exercise receiving independently of the released 0.1.26 sender's known
+    # first-segment completion bug. This is the standard RNS wire primitive.
+    destination = bytes.fromhex(destination)
+    end = time.monotonic() + 15
+    while not RNS.Transport.has_path(destination):
+        RNS.Transport.request_path(destination)
+        assert time.monotonic() < end, 'No reverse resource route'
+        await asyncio.sleep(.1)
+    remote = RNS.Identity.recall(destination)
+    link = RNS.Link(RNS.Destination(remote, RNS.Destination.OUT, RNS.Destination.SINGLE, 'rncp', 'receive'))
+    try:
+        while link.status != RNS.Link.ACTIVE:
+            assert time.monotonic() < end, 'No reverse resource link'
+            await asyncio.sleep(.05)
+        link.identify(identity)
+        done = threading.Event()
+        terminal = []
+        def concluded(resource):
+            terminal.append(resource.status)
+            done.set()
+        resource = RNS.Resource(open(path, 'rb'), link,
+            metadata={'name': path.name.encode()}, callback=concluded, auto_compress=False)
+        end = time.monotonic() + 30
+        while not done.is_set():
+            assert time.monotonic() < end, 'Reverse resource did not finish'
+            await asyncio.sleep(.05)
+        assert terminal == [RNS.Resource.COMPLETE], terminal
+        assert resource.total_segments >= 3
+        return {'status': 'completed', 'standard_resource_segments': resource.total_segments}
+    finally:
+        link.teardown()
+
+
 async def peer(folder, port, allowed):
     reticulum = config(folder / 'rns', 'TCPServerInterface', port)
     identity = RNS.Identity()
     files = RNCPHandler(reticulum, identity, str(folder / 'files'))
     address = files.setup_receive_destination(allowed_hashes=[allowed], fetch_allowed=True)
     shared = folder / 'files/rncp_shared'
-    payload = b'Private standard RNCP fixture\x00' * 2048 + os.urandom(32)
+    payload = os.urandom(2 * 1024 * 1024) + b'Private segmented RNCP fixture'
     (shared / 'fixture.bin').write_bytes(payload)
     events = []
     def receive(event):
@@ -52,7 +89,7 @@ async def peer(folder, port, allowed):
         command = folder / 'command.json'
         if command.exists():
             value = json.loads(command.read_text()); command.unlink()
-            result = await files.send_file(bytes.fromhex(value['destination']), str(shared / 'fixture.bin'), timeout=10)
+            result = await reverse_resource(identity, value['destination'], shared / 'fixture.bin')
             (folder / 'reverse-result.json').write_text(json.dumps(result))
         await asyncio.sleep(.05)
 
@@ -107,12 +144,13 @@ async def client(folder, port, identity, ready):
                 response = await http.get('/api/v1/preview/rncp/files/' + row['id'] + '/download')
                 assert response.status == 200
                 assert hashlib.sha256(await response.read()).hexdigest() == ready['payload_sha256']
+            assert not files.reservations, 'Completed files leaked receive capacity'
             response = await http.post('/api/v1/rncp/stop', json={})
             assert response.status == 200 and not files.handler.get_listener_status()['listening']
-            proof = dict(private_loopback_only=True,public_radio_packets=False,released_unmodified_peer_engine=True,
+            proof = dict(private_loopback_only=True,public_radio_packets=False,released_unmodified_peer_receive_fetch=True,standard_resource_reverse_sender=True,
                          selected_upload_bytes=len(payload),send_bytes_match=True,fetch_bytes_match=True,
                          approved_reverse_receive_bytes_match=True,native_export_routes_match=True,
-                         listener_stops=True,receiver_source='iOS FileRuntime',actual_ipad=False)
+                         listener_stops=True,return_bytes=ready['payload_size'],receiver_source='iOS FileRuntime',actual_ipad=False)
             (folder / 'proof.json').write_text(json.dumps(proof, indent=2) + '\n'); print(json.dumps(proof))
         finally:
             await files.close()
