@@ -113,3 +113,32 @@ def test_upstream_transfer_lifetime_guards_must_remain_present():
         assert source.count(marker) == 1
         with pytest.raises(ValueError, match="transfer-lifetime protection"):
             module.rewrite(source.replace(marker, marker.replace("timeout:0", "timeout:120000")))
+
+
+@pytest.mark.parametrize('conflict',[False,True])
+def test_received_file_removal_needs_confirmation_and_keeps_a_failed_row(tmp_path,conflict):
+    execute(tmp_path, '''
+const nodes=[];
+class Element{
+ constructor(tag){this.tag=tag;this.style={};this.children=[];this.events={};nodes.push(this)}
+ set innerHTML(value){throw Error('Unsafe markup parsing')}
+ setAttribute(key,value){this[key]=value} append(...items){this.children.push(...items)}
+ addEventListener(name,fn){this.events[name]=fn} focus(){this.focused=true} remove(){this.removed=true}
+}
+global.document={activeElement:null,body:new Element('body'),getElementById:()=>null,createElement:tag=>new Element(tag)};
+let deleted=0;const conflict=CONFLICT;
+global.window={api:{get:async()=>({data:{files:[{id:'a'.repeat(32),name:'chosen.bin',size:7}]}}),delete:async path=>{
+ assert.equal(path,'/api/v1/preview/rncp/files/'+'a'.repeat(32));deleted++;
+ if(conflict)throw{response:{data:{message:'File in use'}}};return{status:204};
+}}};
+await methods.openReceiveDirectory.call({});
+const remove=nodes.find(n=>n.textContent==='Remove');remove.events.click();
+assert.equal(deleted,0);
+nodes.find(n=>n.textContent==='Keep file').events.click();assert.equal(deleted,0);assert.equal(remove.disabled,false);
+remove.events.click();
+const confirm=nodes.filter(n=>n.textContent==='Remove file').at(-1);await confirm.events.click();
+assert.equal(deleted,1);
+const row=nodes.find(n=>n.children.includes(remove));
+if(conflict){assert.notEqual(row.removed,true);assert.equal(confirm.disabled,false);assert(nodes.some(n=>n.textContent==='File in use'))}
+else{assert.equal(row.removed,true);assert(nodes.some(n=>n.textContent==='File removed.'))}
+'''.replace('CONFLICT','true' if conflict else 'false'))

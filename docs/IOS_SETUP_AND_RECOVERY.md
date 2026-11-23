@@ -333,4 +333,30 @@ announce again before an opted-in mailbox send can resume. neXt checks that
 the public key belongs to the saved LXMF address before using it. This retains
 no recipient private key and sends no additional identity data. Older pending
 records without that public key remain readable and may still need a verified
-announce. This correction remains under native/device qualification.
+announce. Exact source `e048311` passed both full simulator suites and the physical iPad restart test with the original signed message, attachment and photo. This does not qualify fully suspended delivery.
+
+
+### neXt RNCP files (development preview)
+
+RNCP is separate from ordinary chat attachments. Open **More → Tools → RNCP**.
+The receiver must start its RNCP listener, approve the sending Reticulum
+identity and supply the RNCP receive address. A contact's LXMF messaging
+address is not an RNCP receive address.
+
+Use **Browse** to select a file from Files, then send it to that receive
+address. The iOS preview imports a copy into its own storage; it does not
+request access to the device's whole filesystem. Fetching a remote file also
+requires the other side to enable fetching and share that file explicitly.
+Disabling the listener does not delete files already received.
+
+Open **Received files** to share or save a received copy. Development source
+also provides **Remove → Remove file** with confirmation; **Keep file** cancels.
+Removal affects only that copy inside neXt. A copy saved to Files or another
+app remains. A file cannot be removed while it is being sent, waiting for a
+send slot or streaming to the save/share action. Use **Refresh** after the
+transfer finishes.
+
+Keep neXt visible during large transfers. iOS may pause it when locked or in
+the background. If an interrupted transfer fails, reopen the app and retry;
+this preview does not promise resumable RNCP transfers after termination.
+These tools do not change chat attachment limits or enable mailbox delivery.

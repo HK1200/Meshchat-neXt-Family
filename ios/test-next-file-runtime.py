@@ -559,3 +559,112 @@ def test_cancel_one_receive_does_not_release_another_files_reservation(tmp_path)
         assert len(value.reservations) == 1 and (id(link), second) in value.reservations
         await value.close()
     asyncio.run(run())
+
+
+def test_remove_received_file_preserves_other_files_and_rejects_symlinks(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        chosen=value.received/'chosen.bin'; chosen.write_bytes(b'chosen bytes')
+        other=value.received/'other.bin'; other.write_bytes(b'keep this')
+        private=tmp_path/'identity'; private.write_bytes(b'private identity')
+        (value.received/'escape').symlink_to(private)
+        (value.received/'internal-link').symlink_to(other)
+        async def check(client):
+            listing=(await (await client.get('/api/v1/preview/rncp/files')).json())['files']
+            ids={r['name']:r['id'] for r in listing}
+            assert 'escape' not in ids
+            assert (await client.delete('/api/v1/preview/rncp/files/'+ids['internal-link'])).status==404
+            assert (await client.delete('/api/v1/preview/rncp/files/not-a-file-id')).status==404
+            assert (await client.delete('/api/v1/preview/rncp/files/'+ids['chosen.bin'])).status==204
+            assert not chosen.exists() and other.read_bytes()==b'keep this'
+            assert private.read_bytes()==b'private identity'
+            assert (await client.delete('/api/v1/preview/rncp/files/'+ids['chosen.bin'])).status==404
+        await with_client(value,check)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('fail', [False,True])
+def test_file_removal_waits_for_send_to_finish_or_fail(tmp_path,fail):
+    async def run():
+        value=runtime(tmp_path); source=value.received/'reply.bin';source.write_bytes(b'outgoing bytes')
+        entered=asyncio.Event();done=asyncio.Event()
+        async def send(**kwargs):
+            entered.set();await done.wait()
+            if fail:raise RuntimeError('Private fixture failure')
+            return {'status':'completed','transfer_id':'ab'*32}
+        value.handler.send_file=send
+        async def check(client):
+            key=value.inventory()[0]['id']
+            sending=asyncio.create_task(client.post('/api/v1/rncp/send',json={'destination_hash':ADDRESS,'file_path':str(source)}))
+            await entered.wait()
+            assert value.inventory()[0]['in_use']
+            response=await client.delete('/api/v1/preview/rncp/files/'+key)
+            assert response.status==409 and source.read_bytes()==b'outgoing bytes'
+            done.set();response=await sending;assert response.status==(502 if fail else 200)
+            assert not value.source_files
+            assert (await client.delete('/api/v1/preview/rncp/files/'+key)).status==204
+        await with_client(value,check)
+    asyncio.run(run())
+
+
+def test_pending_send_already_protects_its_selected_file(tmp_path):
+    async def run():
+        value=runtime(tmp_path); source=value.received/'waiting.bin';source.write_bytes(b'waiting bytes')
+        value.handler.send_file=AsyncMock(return_value={'status':'completed'})
+        await value.slots.acquire();await value.slots.acquire()
+        async def check(client):
+            key=value.inventory()[0]['id']
+            sending=asyncio.create_task(client.post('/api/v1/rncp/send',json={'destination_hash':ADDRESS,'file_path':str(source)}))
+            end=asyncio.get_running_loop().time()+.5
+            while not value.source_files:
+                assert asyncio.get_running_loop().time()<end
+                await asyncio.sleep(.001)
+            value.handler.send_file.assert_not_awaited()
+            assert (await client.delete('/api/v1/preview/rncp/files/'+key)).status==409
+            value.slots.release();value.slots.release()
+            assert (await sending).status==200
+            assert not value.source_files
+        await with_client(value,check)
+    asyncio.run(run())
+
+
+def test_streaming_download_holds_a_read_lease_for_the_whole_request(tmp_path):
+    async def run():
+        value=runtime(tmp_path);source=value.received/'export.bin';source.write_bytes(b'export bytes')
+        key=value.inventory()[0]['id'];entered=asyncio.Event();done=asyncio.Event()
+        async def request():
+            response=await value.download(SimpleNamespace(match_info={'file_id':key}))
+            assert isinstance(response,web.FileResponse)
+            entered.set();await done.wait()
+        exporting=asyncio.create_task(request());await entered.wait()
+        assert value.inventory()[0]['in_use']
+        blocked=await value.remove_file(SimpleNamespace(match_info={'file_id':key}))
+        assert blocked.status==409 and source.read_bytes()==b'export bytes'
+        done.set();await exporting;await asyncio.sleep(0)
+        assert not value.source_files
+        assert (await value.remove_file(SimpleNamespace(match_info={'file_id':key}))).status==204
+        await value.close()
+    asyncio.run(run())
+
+
+
+def test_real_http_stream_keeps_its_read_lease_until_disconnect(tmp_path):
+    async def run():
+        value=runtime(tmp_path);source=value.received/'stream.bin'
+        with source.open('wb') as stream:stream.truncate(32*1024*1024)
+        key=value.inventory()[0]['id']
+        app=web.Application();value.register(app.router)
+        async with TestClient(TestServer(app),read_bufsize=1024) as client:
+            try:
+                response=await client.get('/api/v1/preview/rncp/files/'+key+'/download')
+                assert response.status==200
+                assert value.inventory()[0]['in_use']
+                assert (await client.delete('/api/v1/preview/rncp/files/'+key)).status==409
+                response.close()
+                end=asyncio.get_running_loop().time()+5
+                while value.source_files:
+                    assert asyncio.get_running_loop().time()<end,'Closed download retained its read lease'
+                    await asyncio.sleep(.01)
+                assert (await client.delete('/api/v1/preview/rncp/files/'+key)).status==204
+            finally:await value.close()
+    asyncio.run(run())

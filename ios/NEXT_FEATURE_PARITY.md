@@ -411,3 +411,16 @@ files above 2 MiB with exact bytes and no retained capacity. The reverse
 fixture uses the standard RNS resource primitive with a final conclusion
 callback so the already documented 0.1.26 peer sender bug cannot hide a
 receiver failure. The iPad repair still needs Xcode and physical retesting.
+
+
+## Received-file removal follow-up
+
+Development source adds explicit, confirmed removal in neXt's **Received
+files** dialog. The server confines removal to actual received files, rejects
+symlinks and preserves other local data. A selected file is protected from
+removal while awaiting a send slot, finding a route, sending or streaming an
+export. The dialog retains failed rows and displays the server's reason.
+Sixty related backend/frontend checks passed, including a real blocked HTTP
+stream and disconnect cleanup. The standard three-segment send, fetch and
+reverse-receive fixture passed exact bytes, exports and explicit removal.
+Native packaging and physical-device verification remain pending.

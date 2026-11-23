@@ -144,13 +144,17 @@ async def client(folder, port, identity, ready):
                 response = await http.get('/api/v1/preview/rncp/files/' + row['id'] + '/download')
                 assert response.status == 200
                 assert hashlib.sha256(await response.read()).hexdigest() == ready['payload_sha256']
+            for row in listing['files']:
+                response = await http.delete('/api/v1/preview/rncp/files/' + row['id'])
+                assert response.status == 204
+            assert not files.inventory(), 'Explicit file removal left received files'
             assert not files.reservations, 'Completed files leaked receive capacity'
             response = await http.post('/api/v1/rncp/stop', json={})
             assert response.status == 200 and not files.handler.get_listener_status()['listening']
             proof = dict(private_loopback_only=True,public_radio_packets=False,released_unmodified_peer_receive_fetch=True,standard_resource_reverse_sender=True,
                          selected_upload_bytes=len(payload),send_bytes_match=True,fetch_bytes_match=True,
                          approved_reverse_receive_bytes_match=True,native_export_routes_match=True,
-                         listener_stops=True,return_bytes=ready['payload_size'],receiver_source='iOS FileRuntime',actual_ipad=False)
+                         listener_stops=True,received_file_removal=True,return_bytes=ready['payload_size'],receiver_source='iOS FileRuntime',actual_ipad=False)
             (folder / 'proof.json').write_text(json.dumps(proof, indent=2) + '\n'); print(json.dumps(proof))
         finally:
             await files.close()

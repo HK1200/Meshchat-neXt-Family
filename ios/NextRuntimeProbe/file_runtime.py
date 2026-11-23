@@ -115,6 +115,7 @@ class FileRuntime:
         self.events = set()
         self.pending = set()
         self.transfers = {}
+        self.source_files = {}
 
     def event(self, value):
         def schedule():
@@ -134,6 +135,7 @@ class FileRuntime:
         router.add_post('/api/v1/preview/rncp/upload', self.upload)
         router.add_get('/api/v1/preview/rncp/files', self.files)
         router.add_get('/api/v1/preview/rncp/files/{file_id}/download', self.download)
+        router.add_delete('/api/v1/preview/rncp/files/{file_id}', self.remove_file)
 
     @staticmethod
     def address(raw):
@@ -227,6 +229,8 @@ class FileRuntime:
                 try: path = self.local(raw, self.shared)
                 except ValueError: path = self.local(raw, self.received)
                 options = dict(file_path=path, no_compress=self.flag(data, 'no_compress'))
+                # Protect a selected file during pathfinding as well as sending.
+                self.source_files[task] = path
                 function = self.handler.send_file
             else:
                 remote = data.get('file_path')
@@ -277,6 +281,7 @@ class FileRuntime:
             if acquired: self.slots.release()
             self.pending.discard(task)
             self.transfers.pop(task, None)
+            self.source_files.pop(task, None)
 
     async def upload(self, request):
         if self.closed: raise web.HTTPServiceUnavailable(text='File transfers are stopped')
@@ -331,7 +336,7 @@ class FileRuntime:
         for path in self.received.iterdir():
             if path.is_file() and path.resolve().is_relative_to(self.received.resolve()):
                 relative = path.relative_to(self.received).as_posix()
-                rows.append({'id': hashlib.sha256(relative.encode()).hexdigest()[:32], 'name': path.name, 'size': path.stat().st_size, '_path': path})
+                rows.append({'id': hashlib.sha256(relative.encode()).hexdigest()[:32], 'name': path.name, 'size': path.stat().st_size, 'in_use': str(path.resolve()) in self.source_files.values(), '_path': path})
                 if len(rows) >= 1000: break
         return sorted(rows, key=lambda row: (row['name'].casefold(), row['id']))
 
@@ -343,7 +348,31 @@ class FileRuntime:
         if not re.fullmatch('[a-f0-9]{32}', identifier): raise web.HTTPNotFound()
         row = next((row for row in self.inventory() if row['id'] == identifier), None)
         if row is None: raise web.HTTPNotFound()
+        task = asyncio.current_task()
+        self.source_files[task] = str(row['_path'].resolve())
+        # aiohttp keeps this task through FileResponse.prepare/write_eof, so
+        # the copy cannot be removed before a streaming download has finished.
+        task.add_done_callback(lambda done: self.source_files.pop(done, None))
         return web.FileResponse(row['_path'], headers={'Content-Disposition': content_disposition_header('attachment', filename=row['name']), 'Cache-Control': 'no-store'})
+
+    async def remove_file(self, request):
+        if self.closed: raise web.HTTPServiceUnavailable(text='File transfers are stopped')
+        identifier = request.match_info['file_id']
+        if not re.fullmatch('[a-f0-9]{32}', identifier): raise web.HTTPNotFound()
+        row = next((row for row in self.inventory() if row['id'] == identifier), None)
+        if row is None: raise web.HTTPNotFound()
+        path = row['_path']
+        # Unlink the selected entry, never a symlink's resolved target. There
+        # is no await between checking the leases and unlinking that entry.
+        if path.is_symlink() or not path.resolve().is_relative_to(self.received.resolve()):
+            raise web.HTTPNotFound()
+        if str(path.resolve()) in self.source_files.values():
+            return web.json_response({'message': 'This file is being sent or saved. Try again when it finishes.'}, status=409)
+        try: path.unlink()
+        except FileNotFoundError: raise web.HTTPNotFound()
+        except OSError:
+            return web.json_response({'message': 'The file could not be removed. Your other files are unchanged.'}, status=503)
+        return web.Response(status=204, headers={'Cache-Control': 'no-store'})
 
     def cancel(self, transfer_id=None, *, cancel_pending=True):
         # Keep resources before the standard handler drops terminal refs, and
