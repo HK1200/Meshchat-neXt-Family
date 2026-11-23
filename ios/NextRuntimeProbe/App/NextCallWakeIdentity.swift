@@ -61,6 +61,11 @@ struct NextCallWakeIdentity {
                           address: address, voiceAddress: voiceAddress)
     }
 
+    static func messagingAddress(publicKey: Data) throws -> String {
+        guard publicKey.count == 64 else { throw Invalid.binding }
+        return destination("lxmf.delivery", publicKey)
+    }
+
     private static func destination(_ aspect: String, _ publicKey: Data) -> String {
         let name = Data(SHA256.hash(data: Data(aspect.utf8)).prefix(10))
         let identity = Data(SHA256.hash(data: publicKey).prefix(16))

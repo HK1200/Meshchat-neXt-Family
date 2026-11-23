@@ -243,4 +243,17 @@ import XCTest
         XCTAssertTrue(try f.body(2)["token"] is NSNull); XCTAssertNil(f.controller.context)
     }
 
+    func testRegistrationJournalFailureSendsNoTokenAndKeepsRecoveryInReview() async throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.store.failSave = true
+        f.controller.receivedToken(Data(repeating: 1, count: 32))
+        XCTAssertTrue(f.uploader.requests.isEmpty); XCTAssertNil(f.controller.context)
+        XCTAssertTrue(f.controller.needsReview); XCTAssertNil(f.marker)
+        f.store.failSave = false; f.controller.retry()
+        try await ready { f.uploader.requests.count == 1 && !f.controller.busy }
+        XCTAssertTrue(try f.body(0)["token"] is NSNull)
+        XCTAssertTrue(f.controller.needsReview); XCTAssertNil(f.controller.context)
+    }
+
 }

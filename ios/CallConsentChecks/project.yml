@@ -21,6 +21,7 @@ targets:
       - path: ../NextRuntimeProbe/App/NextCallWakeInstallation.swift
       - path: ../NextRuntimeProbe/App/NextCallWakeIdentity.swift
       - path: ../NextRuntimeProbe/App/NextCallWakeRegistration.swift
+      - path: ../NextRuntimeProbe/App/NextCallWakePolicy.swift
       - path: ../NextRuntimeProbe/App/NextVoIPPushDevice.swift
       - path: ../NextRuntimeProbe/App/NextPushServices.swift
       - path: ../FamilyLive/FamilyCallWake.swift
@@ -28,6 +29,7 @@ targets:
       - path: ../NextRuntimeProbe/Tests/CallWakeInstallationTests.swift
       - path: ../NextRuntimeProbe/Tests/CallWakeIdentityTests.swift
       - path: ../NextRuntimeProbe/Tests/CallWakeRegistrationTests.swift
+      - path: ../NextRuntimeProbe/Tests/CallWakePolicyTests.swift
       - path: ../NextRuntimeProbe/Tests/CallWakeTests.swift
       - path: ../NextRuntimeProbe/Tests/VoIPPushDeviceTests.swift
       - path: ../NextRuntimeProbe/Tests/call-wake-fixture.json

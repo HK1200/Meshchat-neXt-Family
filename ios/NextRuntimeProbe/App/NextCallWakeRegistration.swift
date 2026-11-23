@@ -207,8 +207,10 @@ import Foundation
             saved.mayBeRegistered = true
             do { try persist(saved) }
             catch {
-                localEnabled = false; stopDevice(); consentChanged(); try? invalidateMarker()
-                status = "Provider registration could not be saved. Review call alerts."; return
+                var paused = saved; paused.pausedForReview = true; current = paused
+                localEnabled = false; token = nil
+                stopDevice(); consentChanged(); try? invalidateMarker()
+                status = "Provider registration could not be saved. Call alerts are paused for this session; retry cleanup."; return
             }
         }
         guard let body = try? saved.subscription(token: removing ? nil : token),
