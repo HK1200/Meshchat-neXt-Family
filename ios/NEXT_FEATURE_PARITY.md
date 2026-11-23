@@ -7,24 +7,33 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The current separate iPad build 383.1 pins the public 0.1.26 backend and
-frontend with the verified segmented-transfer backports. Exact source
-`35ebeb4` passed all 111 checks on each simulator (105 native and six UI
-cases), plus both unsigned device/App Store archives. The same-key physical
-upgrade retained all 1,710 current non-cache support files, twelve messages,
-two contacts, identity, native preferences and four peers. These file counts
-are the files present immediately before this upgrade, not a comparison with
-an older build's expired runtime caches.
+The latest fully verified separate iPad build is **384.1**, exact source
+`9e81f454121a34ddb35866a491b1208d68e3023b`. It pins the public **0.1.27**
+backend and frontend, including the segmented-transfer repairs and explicit
+received-file removal. GitHub run `45120353574` passed all **111 required
+checks per simulator** (105 native and six UI cases) and both unsigned archives.
+The iPhone needed one unchanged failed-only retry after its deletion test's Send
+button query timed out; its original result and recording are retained. This
+is a successful retry, not evidence that the initial failure never happened.
 
-On the actual iPad, an original signed message with a 75 KB attachment and
-photo survived a distinct process restart and was delivered with exact bytes.
-Standard RNCP send, fetch and approved reverse reception passed with 2 MiB
-files and byte-identical downloads. These were authenticated API/backend
-checks, not physical picker or share-sheet gestures. After the physical tests,
-both Family apps still had byte-identical state, identity and native
-preferences. The 0.1.27 runtime/frontend and received-file manager are now
-undergoing separate native qualification; fully suspended internet alerts
-and the remaining desktop services are not qualified by these results.
+The same-key physical upgrade from 383.1 preserved all **2,053 current
+non-cache support files**, twelve messages, two contacts, identity, native
+preferences and four peers before first launch. File counts reflect the files
+present at that upgrade, not expired runtime caches from earlier builds.
+
+On the actual iPad, an original signed message with a **75,000-byte attachment**
+and photo survived a distinct process restart and arrived once with exact bytes.
+Standard RNCP send, fetch and approved reverse reception passed with **2 MiB**
+files and byte-identical downloads. Explicit removal affected only the synthetic
+received files. Contacts and peers were restored. These were authenticated
+API/backend checks, not physical picker or share-sheet gestures. A screenshot
+confirmed the ordinary conversation and composer rendered after the tests.
+Both Family apps retained byte-identical state, identity and native preferences.
+
+The compact accessible header and stricter production SDK metadata gate are
+undergoing their own qualification. They have not replaced build 384.1 on the
+physical iPad. Fully suspended internet alerts, physical iPhone behavior and
+the remaining desktop services are still not qualified by these results.
 
 This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
@@ -54,7 +63,7 @@ into the app; physical verification is stated separately.
 | Maps | The released map backend is integrated: offline tiles, validated imports, selection/removal, drawings, overlays and map-data catalogs. Private HTTP tests prove signed discovery/catalog transfer, exact file hashes, imports above the message-size limit and preservation across invalid uploads and restarts | Actual iPad backend import, 50 exact tile reads, malformed-input rejection and restoration passed. Visual rendering, download/share pickers and regional downloads remain unqualified |
 | Location and telemetry | Actual released telemetry routes, signed location exchange, Family frames, silent map updates, saved location-source settings and fresh outgoing fixes are integrated. Private tests prove both message directions, restart persistence, sender attribution and cancellation when sharing is disabled during pathfinding | Both simulators passed actual native GPS → signed private LXMF → verified receipt → chat Stop. Physical permission, lock/expiry and MeshCore background sharing remain unqualified |
 | Relay Chat | Actual released RRC services, signed discovery, public/password rooms, hub receipts and automatic rejoining are integrated. Private real-link tests pass both directions against the unmodified desktop hub; keys remain encrypted and rooms/history survive restart | Actual iPad backend passed bidirectional open/password-room messages, hub receipts and saved-key rejoin against the standard desktop hub. Native room UI, mentions and prolonged network-loss recovery remain |
-| RNCP file transfers | Development source connects the released RNCP send/fetch/listener contracts, streaming Files imports and native Share/Save exports. Private standard-engine tests prove send, fetch and approved reverse receive with exact bytes. Sender identities, path confinement, size/disk bounds, cancellation before saving and shutdown are tested. Chat attachment limits are unchanged | A physical 2 MiB send exposed premature completion after the first resource segment. The development repair now waits for the standard final callback, passes a paced real three-segment exchange and preserves cancellation. The pinned iOS backport passed actual iPad send/fetch/approved reverse-receive checks with 2 MiB files and exact-byte downloads on build 383.1. The separate receiver repair also prevents later segments from reserving the same file repeatedly; cancellation and link closure release the reservation. Native export-policy checks, picker/share gestures, long-radio transfers and suspension/reconnect remain unqualified. The listener is off at startup and remote fetching exposes only explicitly imported shared files |
+| RNCP file transfers | Development source connects the released RNCP send/fetch/listener contracts, streaming Files imports and native Share/Save exports. Private standard-engine tests prove send, fetch and approved reverse receive with exact bytes. Sender identities, path confinement, size/disk bounds, cancellation before saving and shutdown are tested. Chat attachment limits are unchanged | A physical 2 MiB send exposed premature completion after the first resource segment. The development repair now waits for the standard final callback, passes a paced real three-segment exchange and preserves cancellation. The pinned iOS backport passed actual iPad send/fetch/approved reverse-receive checks with 2 MiB files and exact-byte downloads on builds 383.1 and 384.1. The separate receiver repair also prevents later segments from reserving the same file repeatedly; cancellation and link closure release the reservation. Native export-policy checks, picker/share gestures, long-radio transfers and suspension/reconnect remain unqualified. The listener is off at startup and remote fetching exposes only explicitly imported shared files |
 | RNSh remote terminals | Development source connects the released session controls to the standard encrypted RNSh protocol, using the app identity and interfaces. Private standard-listener tests prove authentication, ordered multi-packet Unicode input/output, resize, received exit status, cancellation and history preservation without replaying commands. Local subprocesses and command listeners are not available on iOS; the page explains this | Native page and actual iPad qualification remain required. Fully suspended terminal sessions are not qualified. The unmodified upstream test listener currently reports raw process exit status incorrectly; the client preserves the status actually received |
 | Reticulum diagnostics | Local RNStatus, RNPath tables/rates, interface statistics and saved interface metadata are wired to the actual desktop handlers. Conversation path snapshots and explicit path request/drop controls use the released HTTP contracts. Fifty-three tests against the checksum-pinned iOS backend verify filtering, bounds, blocked requests, read-only GETs, cancellation, truthful radio battery state and the conversation header’s explicit path request/drop/wait actions | Both simulators passed all 98 native/UI checks. Actual iPad build 358.1 passed read-only status/path/interface checks, local zero-hop lookup and rejection of five invalid or transmitting GETs. Development source now also returns read-only route traces with unknown intermediate hops explicitly labelled; it does not broadcast when the page refreshes. Development source also connects RNProbe to standard bounded encrypted packets and receipt proofs, with Stop cancellation and contact-block checks; two private loopback probes passed real standard-RNS delivery proofs. The local transport-blackhole snapshot now uses the standard Reticulum getter through the released read-only endpoint; the diagnostics suite passed 54 private HTTP checks, including this snapshot without transmissions, list fetching or settings changes. Remote management and the remaining tool services still need integration; bundled menus do not qualify them |
 | Offline mailbox and push | Optional native relay-address editor and periodic receiving while running are integrated. Real encrypted relay tests prove failed writes retain messages and recovery saves once. Explicitly opted-in manual/Automatic outbound propagation now passes a real offline-recipient/file test; relay acceptance is shown as Sent | Verify the native editor; qualify opted-in outbound propagation, then qualify the new native recipient-route editor and signed sender hints. Native receiving-side enrollment, token rotation, explicit sender approvals and alert-tap retrieval are integrated in development source and await Xcode qualification. Personal-signed previews leave Apple enrollment disabled. Real suspended APNs delivery needs Apple signing entitlements, a deployed provider and device tests |
@@ -432,4 +441,8 @@ export. The dialog retains failed rows and displays the server's reason.
 Sixty related backend/frontend checks passed, including a real blocked HTTP
 stream and disconnect cleanup. The standard three-segment send, fetch and
 reverse-receive fixture passed exact bytes, exports and explicit removal.
-Native packaging and physical-device verification remain pending.
+Both full simulator suites and unsigned archives subsequently passed on source
+`9e81f45` in run `45120353574`. The actual iPad's separate build 384.1 passed
+send, fetch, reverse reception, byte-identical downloads and explicit removal
+of the synthetic received files. Native picker/share-sheet gestures and
+suspended transfers remain unverified; regular Family was untouched.
