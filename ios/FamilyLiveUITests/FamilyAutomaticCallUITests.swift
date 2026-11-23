@@ -32,9 +32,29 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         guardian.tap()
         fill(app.secureTextFields["unlock-password"], password)
         app.buttons["Unlock"].tap()
+        // The personal/simulator app exposes the explanation, but cannot enroll
+        // Apple pushes, acquire credentials or silently enable background calls.
+        let settings = app.descendants(matching: .any).matching(identifier: "guardian-settings-form").firstMatch
+        let alerts = app.buttons["family-call-alert-settings"]
+        for _ in 0..<9 where !alerts.isHittable { settings.swipeUp() }
+        XCTAssertTrue(alerts.isHittable, app.debugDescription)
+        alerts.tap()
+        XCTAssertTrue(app.staticTexts["family-call-alert-unavailable"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["family-call-alert-status"].label, "Off")
+        let enableAlerts = app.buttons["family-call-alert-enable"]
+        XCTAssertTrue(enableAlerts.exists)
+        XCTAssertFalse(enableAlerts.isEnabled)
+        let callProvider = app.textFields["family-call-alert-provider"]
+        XCTAssertTrue(callProvider.exists)
+        XCTAssertFalse(callProvider.isEnabled)
+        XCTAssertFalse(app.buttons["family-call-alert-disable"].exists)
+        let back = app.navigationBars["Incoming call alerts"].buttons.firstMatch
+        XCTAssertTrue(back.isHittable)
+        back.tap()
+        XCTAssertTrue(app.navigationBars["Guardian settings"].waitForExistence(timeout: 10))
         let add = app.buttons["Add approved contact"]
         XCTAssertTrue(add.waitForExistence(timeout: 15))
-        for _ in 0..<4 where !add.isHittable { app.swipeDown() }
+        for _ in 0..<9 where !add.isHittable { settings.swipeDown() }
         add.tap()
         let name = "Private Call Routing Fixture"
         fill(app.textFields["contact-name"], name)
