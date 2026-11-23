@@ -807,6 +807,10 @@ final class ProbeUITests: XCTestCase {
     }
 
     private func requireWebInterfaceReady(_ app: XCUIApplication) {
+        // The retained first-launch iPad recording shows this OS banner over
+        // the loading app. Remove only that known simulator notice before
+        // querying readiness; retain the real interface and retry assertions.
+        dismissSimulatorSystemNotice()
         // Query a native status while WebKit is still booting; asking for its
         // remote text fields during that phase can stall XCTest's snapshot.
         let ready = app.staticTexts.matching(NSPredicate(
