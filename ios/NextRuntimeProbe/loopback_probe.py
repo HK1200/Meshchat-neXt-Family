@@ -628,6 +628,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 card = export_contact(config["display_name"], probe.source.identity,
                     bool(voice and voice.config.telephone_enabled.get()))
                 return web.json_response({"contact_card": card}, headers={"Cache-Control": "no-store"})
+            if path == "preview/call-enrollment-state":
+                from push_receiving import call_snapshot
+                try:
+                    return web.json_response(call_snapshot(history, probe.source, voice), headers={"Cache-Control": "no-store"})
+                except ValueError:
+                    return web.json_response({"message": "The call identity is unavailable. Reopen neXt before enrolling."}, status=503, headers={"Cache-Control": "no-store"})
             if path == "preview/push-enrollment-state":
                 from push_receiving import snapshot
                 return web.json_response(snapshot(history, probe.source, mailbox), headers={"Cache-Control": "no-store"})

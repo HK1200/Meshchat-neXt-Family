@@ -53,14 +53,16 @@ into the app; physical verification is stated separately.
 The next call-wake development step now has a native admission router: it
 validates the provider's encrypted, signed payload, persists a bounded replay
 journal in the app's own Keychain, rejects expired or revoked callers, and
-matches only that approved voice identity to the pending CallKit UUID. Native
-checks are prepared. This does not register PushKit or deploy a provider;
+matches only that approved voice identity to the pending CallKit UUID. All
+140 native checks passed on each simulator in run `45175698519` (UI was
+intentionally excluded). This does not register PushKit or deploy a provider;
 explicit enrollment, sender integration, cancellation lookup and genuine APNs
 and physical-device qualification remain required before suspended call alerts
 can be described as reliable. The shared-runtime coordinator now also offers a
 15-second call-wake wait that releases a cancelled or timed-out caller without
-cancelling or reinitializing CPython. Five native tests are prepared for pending,
-ready, failed and pre-cancelled startup. This method is a dispatcher prerequisite;
+cancelling or reinitializing CPython. Five added native checks cover pending, ready, failed and pre-cancelled
+startup; all 145 native cases passed on each simulator in run `45177832745`
+(UI was intentionally excluded). This method is a dispatcher prerequisite;
 it does not register PushKit or make a suspended-call delivery claim.
 
 ## Features and remaining work
@@ -516,3 +518,15 @@ rendered its ordinary conversation and composer afterward. Both Family apps'
 state, identity and native preferences remained byte-identical. Main CI,
 Security and Scorecard passed. This is a prerequisite for call wakeups, not
 PushKit registration or a claim that suspended calls can already ring.
+
+
+## Call alert enrollment boundary
+
+Development source adds a separate authenticated call-enrollment snapshot.
+It returns only the local identity's public key, its bound messaging/voice
+addresses and saved contacts accepted by the existing incoming-call policy.
+Recalled keys with mismatched destinations are rejected. Calling off, Do Not
+Disturb, caller removal and bans cannot grant provider eligibility. No private
+key, enrollment secret, device token or message content is returned.
+This is metadata for the forthcoming explicit call-alert enrollment; it does
+not itself register PushKit, transmit enrollment or enable suspended calls.
