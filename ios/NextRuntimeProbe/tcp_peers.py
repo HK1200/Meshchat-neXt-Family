@@ -114,13 +114,53 @@ class TCPPeers:
                     self.pending.pop(row["id"], None)
 
     def retire_links(self, interface):
+        # A secure Reticulum link is bound to its receiving interface. Browser,
+        # voice and terminal links live in Transport rather than LXMF's caches.
+        # Leaving them ACTIVE would reuse a dead connection after a peer edit.
+        seen = set()
+        pending_statuses = {self.link_type.PENDING}
+        handshake = getattr(self.link_type, 'HANDSHAKE', None)
+        if handshake is not None:
+            pending_statuses.add(handshake)
+
+        def affected(link, address=None):
+            if getattr(link, 'attached_interface', None) is interface:
+                return True
+            if getattr(link, 'status', None) not in pending_statuses:
+                return False
+            if address is None:
+                address = getattr(getattr(link, 'destination', None), 'hash', None)
+            return address is not None and self.transport.next_hop_interface(address) is interface
+
+        def retire(link):
+            marker = id(link)
+            if marker not in seen:
+                seen.add(marker)
+                link.teardown()
+
+        registered = (tuple(getattr(self.transport, 'active_links', ())) +
+                      tuple(getattr(self.transport, 'pending_links', ())))
         for cache in (self.router.direct_links, self.router.backchannel_links):
             for address, link in cache.copy().items():
-                if (link.attached_interface is interface or
-                    (link.status == self.link_type.PENDING and self.transport.next_hop_interface(address) is interface)):
-                    link.teardown()
+                if affected(link, address):
+                    retire(link)
                     if cache.get(address) is link:
                         cache.pop(address, None)
+        for link in registered:
+            if affected(link):
+                retire(link)
+
+        table = getattr(self.transport, 'path_table', None)
+        table_lock = getattr(self.transport, 'path_table_lock', None)
+        if table is not None and table_lock is not None:
+            from RNS.Transport import IDX_PT_RVCD_IF
+            # Expiry alone waits for the SDK's next table sweep. Remove only
+            # retired-interface routes now so a fresh request discovers a path.
+            with table_lock:
+                for address, path in tuple(table.items()):
+                    if path[IDX_PT_RVCD_IF] is interface:
+                        table.pop(address, None)
+
     def _retire(self, interface):
         self.retire_links(interface)
         interface.detach()

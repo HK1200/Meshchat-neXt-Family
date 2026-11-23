@@ -76,6 +76,7 @@ def controller(monkeypatch):
     import RNS
     monkeypatch.syspath_prepend(str(ROOT / "app/src/main/python"))
     monkeypatch.setattr(RNS.Transport, "interfaces", [])
+    monkeypatch.setattr(RNS.Transport, "path_table", {})
     calls = []
     now = [100.0]
 
@@ -230,3 +231,43 @@ def test_custom_announce_interval_and_disabled_timer_keep_reconnect_and_manual(c
     assert manager.announce_due(0) == 1
     manager.request_announce()
     assert manager.announce_due(0) == 1
+
+
+def test_retiring_a_peer_closes_other_reticulum_service_links_on_only_that_interface(controller, monkeypatch):
+    manager, _, _ = controller
+    manager.apply(dict(peers=[row(), row('two', port=45002)]))
+    wait_for(lambda: len(manager.interfaces) == 2)
+    one, two = manager.interfaces['one'], manager.interfaces['two']
+    closed = []
+    def link(name, interface, status, address=b'node'):
+        return SimpleNamespace(attached_interface=interface, status=status,
+            destination=SimpleNamespace(hash=address), teardown=lambda: closed.append(name))
+    cached = link('cached and registered once', one, manager.link_type.ACTIVE)
+    browser = link('browser', one, manager.link_type.ACTIVE)
+    unrelated = link('unrelated', two, manager.link_type.ACTIVE)
+    pending = link('pending browser', None, manager.link_type.PENDING, b'pending')
+    other_pending = link('other pending', None, manager.link_type.PENDING, b'other')
+    manager.router.direct_links[b'cached'] = cached
+    monkeypatch.setattr(manager.transport, 'active_links', [cached, browser, unrelated])
+    monkeypatch.setattr(manager.transport, 'pending_links', [pending, other_pending])
+    monkeypatch.setattr(manager.transport, 'next_hop_interface', lambda address: one if address == b'pending' else two)
+    manager.apply(dict(peers=[row(enabled=False), row('two', port=45002)]))
+    assert sorted(closed) == sorted(['cached and registered once', 'browser', 'pending browser'])
+    assert manager.interfaces['two'] is two and two.online
+    assert manager.router.direct_links == {}
+
+
+def test_retiring_a_peer_removes_only_routes_received_on_that_interface(controller):
+    from RNS.Transport import IDX_PT_RVCD_IF
+    manager, _, _ = controller
+    manager.apply(dict(peers=[row(), row('two', port=45002)]))
+    wait_for(lambda: len(manager.interfaces) == 2)
+    one, two = manager.interfaces['one'], manager.interfaces['two']
+    def route(interface):
+        value = [None] * (IDX_PT_RVCD_IF + 1)
+        value[IDX_PT_RVCD_IF] = interface
+        return value
+    keep = route(two)
+    manager.transport.path_table.update({b'retired-browser': route(one), b'other-peer': keep})
+    manager.apply(dict(peers=[row(enabled=False), row('two', port=45002)]))
+    assert manager.transport.path_table == {b'other-peer': keep}

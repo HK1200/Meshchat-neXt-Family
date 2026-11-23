@@ -22,6 +22,7 @@ from aiohttp import web
 from messaging_probe import MessagingProbe, decode_reply_fields, reply_fields_for
 import attachment_fields
 from runtime_access import RuntimeAccess, COOKIE, CSP
+from nomad_frame import public_frame_resource, build_nomad_crash_tab_csp
 from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
 import mailbox_push
@@ -556,13 +557,24 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def local_only(request, handler):
         if request.host != authority:
             raise web.HTTPBadRequest()
-        if request.headers.get("Origin") not in (None, f"http://{authority}"):
+        opaque_static = (request.headers.get("Origin") == "null" and request.method in ("GET", "HEAD")
+                         and public_frame_resource(request.path))
+        if request.headers.get("Origin") not in (None, f"http://{authority}") and not opaque_static:
             raise web.HTTPForbidden()
         if (request.path.startswith("/api/") or request.path == "/ws") and not access.allowed(request):
             raise web.HTTPForbidden(text="This local session is unavailable")
         if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
-        return await handler(request)
+        response = await handler(request)
+        if opaque_static:
+            response.headers["Access-Control-Allow-Origin"] = "null"
+            response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+            response.headers["Vary"] = "Origin"
+        if request.path == "/nomad-crash-tab.html":
+            response.headers["Content-Security-Policy"] = build_nomad_crash_tab_csp(authority)
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     async def api(request):
         path = request.match_info["path"]

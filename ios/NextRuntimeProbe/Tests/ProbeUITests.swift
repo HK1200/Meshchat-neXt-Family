@@ -292,7 +292,7 @@ final class ProbeUITests: XCTestCase {
         let app = XCUIApplication()
         app.terminate()
         app.launchArguments = []
-        app.launch()
+        app.terminate(); app.launch()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
         requireWebInterfaceReady(app)
         let ownAddress = app.staticTexts["my-lxmf-address"].label

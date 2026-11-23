@@ -51,6 +51,9 @@ def server(folder, ready, settings, pipe):
     from nomad_runtime import NomadRuntime
     frontend = folder / 'frontend'; frontend.mkdir()
     (frontend / 'index.html').write_text('<html>Private Nomad fixture</html>')
+    (frontend / 'assets').mkdir()
+    (frontend / 'assets/frame.js').write_text('export const fixture = true;')
+    (frontend / 'nomad-crash-tab.html').write_text('<html>Private opaque renderer</html>')
     asyncio.run(serve(ready, frontend, settings, device=True, nomad_factory=NomadRuntime))
 
 
@@ -85,6 +88,21 @@ def test_standard_page_and_file_arrive_through_actual_app_routes(tmp_path):
         before = api(base, 'favourites')[1]['favourites']
         assert api(base, 'favourites/add', body={'destination_hash': address, 'display_name': 'Rejected without CSRF'})[0] == 403
         assert api(base, 'favourites')[1]['favourites'] == before
+        for endpoint in ('/assets/frame.js', '/nomad-crash-tab.html'):
+            with urlopen(Request(origin + endpoint, headers={'Origin': 'null'}), timeout=5) as response:
+                assert response.status == 200
+                assert response.headers['Access-Control-Allow-Origin'] == 'null'
+                assert 'Access-Control-Allow-Credentials' not in response.headers
+                if endpoint.endswith('.html'):
+                    assert "default-src 'none'" in response.headers['Content-Security-Policy']
+                    assert response.headers['X-Frame-Options'] == 'SAMEORIGIN'
+            with pytest.raises(HTTPError) as denied:
+                urlopen(Request(origin + endpoint, headers={'Origin': 'https://example.invalid'}), timeout=5)
+            assert denied.value.code == 403
+        for endpoint in ('/api/v1/config', '/ws'):
+            with pytest.raises(HTTPError) as denied:
+                urlopen(Request(origin + endpoint, headers={'Origin': 'null', 'X-neXt-Session': SESSIONS[urlsplit(base).netloc]}), timeout=5)
+            assert denied.value.code == 403
         token = api(base, 'auth/csrf')[1]['csrf_token']
         assert api(base, 'favourites/add', body={'destination_hash': address, 'display_name': 'Saved node'}, token=token)[0] == 200
         assert api(base, 'favourites?aspect=nomadnetwork.node')[1]['favourites'][0]['destination_hash'] == address
@@ -95,11 +113,11 @@ def test_standard_page_and_file_arrive_through_actual_app_routes(tmp_path):
             origin = 'http://' + urlsplit(base).netloc
             async with aiohttp.ClientSession(headers={'X-neXt-Session': SESSIONS[urlsplit(base).netloc]}) as session:
                 async with session.ws_connect(origin + '/ws') as ws:
-                    async def download(kind, field, path_key, path, request, private=True):
+                    async def download(kind, field, path_key, path, request, private=True, timeout=60):
                         await ws.send_json({'type': kind, 'request_id': request,
                             field: {'destination_hash': address, path_key: path, 'private': private}})
                         chunks = []
-                        async with asyncio.timeout(60):
+                        async with asyncio.timeout(timeout):
                             while True:
                                 row = await ws.receive_json()
                                 if row.get('request_id') != request: continue
@@ -120,11 +138,19 @@ def test_standard_page_and_file_arrive_through_actual_app_routes(tmp_path):
                     assert api(base, 'nomadnet/archives')[1]['archives'] == [], 'Private browsing must not create page archives'
                     public = await download('nomadnet.page.download', 'nomadnet_page_download', 'page_path', '/page/index.mu', 'public', private=False)
                     assert public['page_content'] == PAGE
+                    original = [{key: row[key] for key in ('id', 'host', 'port', 'enabled')}
+                        for row in api(base, 'preview/reticulum-connections')[1]['peers']]
+                    assert len(original) == 1 and original[0]['enabled']
+                    assert api(base, 'preview/reticulum-connections', body={'peers': [dict(original[0], enabled=False)]}, token=token)[0] == 200
+                    assert api(base, 'preview/reticulum-connections', body={'peers': original}, token=token)[0] == 200
+                    wait(lambda: api(base, 'preview/reticulum-connections')[1]['peers'][0]['online'], timeout=5)
+                    recovered = await download('nomadnet.page.download', 'nomadnet_page_download', 'page_path', '/page/index.mu', 'after-peer-reconnect', private=False, timeout=5)
+                    assert recovered['page_content'] == PAGE
         asyncio.run(exchange())
         assert len(api(base, 'nomadnet/archives')[1]['archives']) == 1
         observed = [json.loads(line) for line in (tmp_path / 'node/requests.jsonl').read_text().splitlines()]
-        assert len(observed) == 3
+        assert len(observed) == 4
         assert all(row['identity'] is None for row in observed[:2]), 'Private browsing must override saved identification'
         import RNS
         expected = RNS.Identity.from_file(str(folder / 'reticulum/identity')).hash.hex()
-        assert observed[-1]['identity'] == expected, 'Ordinary browsing identifies only after explicit opt-in'
+        assert all(row['identity'] == expected for row in observed[2:]), 'Ordinary browsing identifies only after explicit opt-in'

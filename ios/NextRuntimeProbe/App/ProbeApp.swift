@@ -736,7 +736,9 @@ private struct ProbeWebView: UIViewRepresentable {
             if action.shouldPerformDownload {
                 decisionHandler(downloads.allows(target) ? .download : .cancel)
             } else if downloads.isLocal(target) {
-                decisionHandler(action.targetFrame?.isMainFrame == true ? .allow : .cancel)
+                let ownSandbox = action.targetFrame?.isMainFrame == false &&
+                    NextNomadFramePolicy.allows(target, base: downloads.base)
+                decisionHandler(action.targetFrame?.isMainFrame == true || ownSandbox ? .allow : .cancel)
             } else if NextExternalLinks.allows(target, userActivated: action.navigationType == .linkActivated), let target {
                 // Pass only the URL to the system browser. Never forward the
                 // app's authenticated URLRequest, cookies or session headers.

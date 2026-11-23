@@ -170,6 +170,8 @@ opens the native Save/share screen and contains only the selected search/node
 results. Nomad file downloads support the standard 10 MiB limit. Direct-message
 attachment limits remain as described below.
 
+The renderer remains an opaque sandbox without access to the private API or native bridge. Only its bundled document and public code assets receive the frame/CORS exceptions. Disabling a TCP peer retires its secure service links and stale paths without dropping connections on another peer.
+
 This integration has private host protocol tests. Both simulator UI runs and
 physical browser/export checks are still required; local page hosting and
 crawling are not implemented by this mobile adapter. See
