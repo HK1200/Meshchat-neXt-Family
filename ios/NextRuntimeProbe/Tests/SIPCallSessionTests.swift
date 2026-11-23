@@ -39,6 +39,18 @@ private final class SIPCallSystemDriver: FamilySystemCallDriver {
     func ended(_ id: UUID, failed: Bool) { ends.append(id) }
 }
 
+@MainActor
+private final class SIPTestWakeRouter: NextIncomingCallWakeRouting {
+    let peer: String
+    let pending: FamilySystemCallKey
+    var adoptions: [(FamilySystemCallKey, FamilySystemCallKey)] = []
+    init(peer: String, pending: FamilySystemCallKey) { self.peer = peer; self.pending = pending }
+    func pendingIncoming(peer: String, service: FamilySystemCallKey.Service) -> FamilySystemCallKey? {
+        peer == self.peer && service == pending.service ? pending : nil
+    }
+    func attached(_ pending: FamilySystemCallKey, to key: FamilySystemCallKey) { adoptions.append((pending, key)) }
+}
+
 final class SIPCallSessionTests: XCTestCase {
     @MainActor
     private func settle() async { for _ in 0..<20 { await Task.yield() } }
@@ -207,6 +219,62 @@ final class SIPCallSessionTests: XCTestCase {
         XCTAssertEqual(rnsDriver.commands.map { $0.0 }, [3])
         XCTAssertFalse(sipDriver.commands.contains { $0.0 == 3 })
         sip.close(); rns.close()
+    }
+
+    @MainActor
+    func testAuthenticatedTransportAdoptsReservedWakeAndCompletesItsEarlyAnswerOnce() async throws {
+        let driver = SIPCallDriver(), audio = SIPCallAudio(), systemDriver = SIPCallSystemDriver()
+        let system = FamilySystemCalls(driver: systemDriver, preferences: nil, enabled: true)
+        let peer = String(repeating: "a1", count: 16)
+        let pending = FamilySystemCallKey(service: .reticulum, id: "private-pending-wake")
+        let id = UUID()
+        let placeholder = FamilySystemCallActions(prepareAudio: { XCTFail("Do not prepare before the real transport"); return false },
+            start: { false }, answer: { XCTFail("Do not answer a placeholder"); return false }, end: {}, mute: { _ in false })
+        XCTAssertTrue(system.reserveIncoming(pending, id: id, name: "Approved caller", actions: placeholder))
+        let router = SIPTestWakeRouter(peer: peer, pending: pending)
+        let call = NextSIPCallSession(driver: driver, system: system, audio: audio, observeAudio: false,
+            service: .reticulum, normalizePeer: { $0 }, wakeRouter: router) { _ in }
+        var completed: Bool?
+        let answering = Task { let result = await system.systemAnswer(id); completed = result; return result }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(completed); XCTAssertEqual(audio.preparations, 0); XCTAssertTrue(driver.commands.isEmpty)
+        call.receive("incoming", peer: peer, code: 0, id: "private-arrived-transport")
+        let accepted = await answering.value
+        XCTAssertTrue(accepted)
+        system.systemAudioActivated(); await settle()
+        XCTAssertEqual(audio.preparations, 1)
+        XCTAssertEqual(driver.commands.filter { $0.0 == 2 }.count, 1)
+        XCTAssertEqual(router.adoptions.count, 1)
+        XCTAssertFalse(system.contains(pending))
+        XCTAssertTrue(system.contains(FamilySystemCallKey(service: .reticulum, id: "private-arrived-transport")))
+        XCTAssertEqual(systemDriver.incomingCalls, [id])
+        call.receive("incoming", peer: peer, code: 0, id: "private-arrived-transport")
+        await settle()
+        XCTAssertEqual(router.adoptions.count, 1); XCTAssertEqual(systemDriver.incomingCalls, [id])
+        XCTAssertTrue(call.perform(["op": "hangup", "call_id": "private-arrived-transport"]))
+        await settle(); XCTAssertFalse(system.hasCall); call.close()
+    }
+
+    @MainActor
+    func testOtherIncomingPeerCannotTakeOverAnApprovedReservedWake() async throws {
+        let driver = SIPCallDriver(), audio = SIPCallAudio(), systemDriver = SIPCallSystemDriver()
+        let system = FamilySystemCalls(driver: systemDriver, preferences: nil, enabled: true)
+        let peer = String(repeating: "a1", count: 16), other = String(repeating: "b2", count: 16)
+        let pending = FamilySystemCallKey(service: .reticulum, id: "private-approved-wake")
+        let id = UUID()
+        XCTAssertTrue(system.reserveIncoming(pending, id: id, name: "Approved caller",
+            actions: FamilySystemCallActions(prepareAudio: { false }, start: { false }, answer: { false }, end: {}, mute: { _ in false })))
+        let router = SIPTestWakeRouter(peer: peer, pending: pending)
+        let call = NextSIPCallSession(driver: driver, system: system, audio: audio, observeAudio: false,
+            service: .reticulum, normalizePeer: { $0 }, wakeRouter: router) { _ in }
+        call.receive("incoming", peer: other, code: 0, id: "private-other-transport")
+        XCTAssertFalse(call.hasActiveCall); XCTAssertTrue(system.contains(pending)); XCTAssertTrue(router.adoptions.isEmpty)
+        XCTAssertEqual(driver.commands.last?.0, 3); XCTAssertEqual(driver.commands.last?.2, "private-other-transport")
+        call.receive("incoming", peer: peer, code: 0, id: "private-approved-transport")
+        await settle()
+        XCTAssertTrue(call.hasActiveCall); XCTAssertEqual(router.adoptions.count, 1)
+        XCTAssertEqual(systemDriver.incomingCalls, [id])
+        call.close(); await settle(); XCTAssertFalse(system.hasCall)
     }
 
 }

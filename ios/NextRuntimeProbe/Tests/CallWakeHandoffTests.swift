@@ -166,7 +166,10 @@ final class CallWakeHandoffTests: XCTestCase {
         let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
         XCTAssertTrue(calls.reserveIncoming(pending, id: id, name: "Approved caller", actions: actions()))
         try await ready { driver.reportGate != nil }
-        let acknowledgment = Task { await calls.incomingReportCompleted(id) }
+        var completed: Bool?
+        let acknowledgment = Task { let result = await calls.incomingReportCompleted(id); completed = result; return result }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(completed)
         calls.finish(pending)
         let accepted = await acknowledgment.value
         XCTAssertFalse(accepted)
