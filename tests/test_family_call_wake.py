@@ -487,6 +487,8 @@ def test_native_fixture_is_reproducible_from_public_test_keys():
     )
     recipient = RNS.Identity.from_bytes(bytes(range(64)))
     caller = RNS.Identity.from_bytes(bytes(range(64, 128)))
+    assert fixture["recipientPublicKey"] == recipient.get_public_key().hex()
+    assert fixture["recipientMessaging"] == destination_hash("lxmf.delivery", recipient.get_public_key())
     assert fixture["recipient"] == voice_hash(recipient.get_public_key())
     assert fixture["caller"] == voice_hash(caller.get_public_key())
     for name, issued, cancel, forged in [

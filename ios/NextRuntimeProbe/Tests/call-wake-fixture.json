@@ -48,5 +48,7 @@
         "cipher": "FuV/QreV7ZkqJkIc0zjuynrMuz7L2QERRj6Hk/+7F903KS856C6bWnpNP9JfhqpxUDP1IA7eaMLkfZy6GAAco/Ssj+4A9oKyD4J/1P5nR6rlSf/9boETsfzKaOb9n4PJQKp1Ymp+mlRGCPA7ogsZEtSEs+Vf2kNaXJf0KcjTNijOOiq3SjxkW9UuwsBIgZ/cCzVy3ZWKRHINCV+CcsTwwLmn8MwMkhF9XhBwC9SkgQ3R0Yc+aaizeeiXjuSJYjP2xomLB6lOXH+HCCmOBl6geLfjV7K/TiLSEX+Ty9UHsE5Gn8H5EQaFyGv/wxeliYC2Amz3Ni7n/v7wX5HYGALyPNEwJ0Epuu9GjwScA4Vt+ggRrwHUNbNL9WLjuOqjJwKVI2VYo8kpkYf7zmMyrQrb8JW9DRMuodIclimSvMb5LPOwRmeLsFfq3SmPCmsTxna4vXT4mcBYfYcaeJvwdx+gsgEGvGsM35mFJ/S9Hk3EAHH255PVinl/Pa3U1s1ppMvSVkiz5aqW7gjHi6ddWS2bWF7KrQ=="
       }
     }
-  }
+  },
+  "recipientPublicKey": "8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
+  "recipientMessaging": "fae321c442e3c9bdcd7a3e79d850e03c"
 }

@@ -560,3 +560,15 @@ and the [required-report legacy callback](https://developer.apple.com/documentat
 on earlier supported versions. Explicit enrollment, native key caching, token
 upload, sender routes and real APNs/device qualification still need completing;
 this adapter is not started by the current app interface.
+
+
+Native identity loading is prepared for explicit enrollment. It reads only the
+existing `reticulum/identity` below the app's own Application Support directory,
+requires a regular owner-private 64-byte file, rejects descendant symlinks and
+binds both derived public addresses to the authenticated enrollment snapshot.
+Only the 32-byte agreement key and public identity survive the decode; the
+signing seed is not copied into call enrollment. The material is not Codable
+or exposed through the web bridge. Six native tests are prepared, including
+decryption of the Python-generated signed fixture, malformed files, symlink
+rejection and nonblocking rejection of directories/named pipes. The fixture's public identity and both addresses passed the host
+interoperability check. Native qualification and opt-in Keychain caching remain.

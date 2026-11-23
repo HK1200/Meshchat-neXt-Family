@@ -99,6 +99,7 @@ targets:
       - path: App/NextReticulumWakeRouter.swift
       - path: App/NextCallWakeDispatcher.swift
       - path: App/NextVoIPPushDevice.swift
+      - path: App/NextCallWakeIdentity.swift
       - path: App/FamilyCallWake.swift
       - path: App/FamilySystemCalls.swift
       - path: App/FamilyCallKitDriver.swift
