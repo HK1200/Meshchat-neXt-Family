@@ -592,3 +592,33 @@ fixture link relative to its visible document and retains every export,
 filename and share-control assertion. The production download policy and
 budgets are unchanged. Debug-only diagnostics report only schemes and decision
 flags, never URLs, filenames or file contents. Full simulator reruns are required.
+
+
+### Native call-alert consent safeguards (qualification pending)
+
+`NextCallWakeEnrollment` separates the private native consent record from the
+public provider subscription. The provider DTO contains only `recipient_key`,
+`token` and `callers`; it cannot include an enrollment bearer, contact names,
+installation marker or private agreement key. The Keychain service is scoped to
+the actual app bundle and uses After First Unlock, This Device Only access.
+Missing enrollment is distinguished from an inaccessible Keychain.
+
+The record checks the recipient agreement/public-key binding, every selected
+caller’s voice-address binding, duplicate/bounded caller lists, record size,
+provider URL and the signed protocol’s audience alphabet. Beginning revocation
+removes the agreement key immediately; remote-removal metadata can remain while
+the provider is unavailable. A record marked for removal cannot create a wake
+context, and its provider request contains a null token and no callers.
+
+`NextCallWakeInstallation` adds a random, app-container marker only during
+explicit foreground opt-in. Cold-start reads never create one. Reinstalling the
+app therefore cannot silently reuse consent left in the Keychain. Symlinks,
+named pipes, malformed or publicly readable markers fail closed. Creation uses
+exclusive, owner-only files with Until First User Authentication protection.
+
+These are integration prerequisites with new native regression tests. They do
+not yet add a consent screen, provider enrollment controller or sender route,
+and no installed personal preview registers APNs through them. Actual Apple
+push delivery and a locked physical iPhone remain separate release gates.
+The workflow offers GitHub’s `macos-26-intel` runner for capacity recovery while
+retaining the default Arm runner and all test assertions.

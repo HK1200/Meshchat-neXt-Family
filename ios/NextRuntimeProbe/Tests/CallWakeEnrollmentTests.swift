@@ -62,6 +62,14 @@ import XCTest
             XCTAssertThrowsError(try NextCallWakeEnrollment.decode(JSONSerialization.data(withJSONObject: json), installation: marker), provider)
         }
     }
+    func testAudienceUsesTheSameAlphabetAsTheSignedProtocol() throws {
+        let original = try record().encoded(installation: marker)
+        for audience in ["", "bad/audience", "emoji-🙂", "bad\nvalue", String(repeating: "a", count: 129)] {
+            var json = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+            json["audience"] = audience
+            XCTAssertThrowsError(try NextCallWakeEnrollment.decode(JSONSerialization.data(withJSONObject: json), installation: marker))
+        }
+    }
     func testRevokingRecordsCannotRetainPrivateAgreementMaterial() throws {
         var value = try record(); value.revoking = true
         XCTAssertNil(value.context(installation: marker))
