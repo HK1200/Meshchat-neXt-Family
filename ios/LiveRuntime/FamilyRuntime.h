@@ -2,6 +2,7 @@
 #define FAMILY_RUNTIME_H
 
 #include "FamilySIP.h"
+#include "FamilyCallWakeGate.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

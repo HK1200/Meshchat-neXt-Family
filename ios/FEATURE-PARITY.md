@@ -360,3 +360,29 @@ closed track, and neXt **0.1.21 / code 26 in review**. Each app had ten opted-in
 testers, below the twelve required continuously for fourteen days before
 production access. These are point-in-time observations, not an approved
 production release. Apple enrollment remains on hold.
+
+
+## Family call-wake admission foundation — November 23, 2026
+
+The separate native approval reader and encrypted-intent admission passed all
+89 focused native cases on each simulator at `57b0689`. Those results include
+current individual contact permissions, public messaging/voice key binding,
+identity-file restrictions, signed provider fixtures, expiry and revocation.
+Both unsigned Family archives passed. These are prerequisites, not a claim
+that Family currently receives suspended calls through Apple.
+
+The next integration adds a native-only, one-use incoming window, limited to
+one selected voice address for at most 30 seconds. It can be armed before
+CPython starts, avoiding a cold-start signaling race. The embedded Python
+module can consume that window, but exposes no way to arm it. JSON actions
+cannot enable it. Contact approval is still checked before consumption, and
+outgoing background calling remains blocked. Foreground calls and Android's
+existing call gate keep their previous behavior.
+
+The clock includes device sleep on Apple platforms, following Apple's
+[continuous-clock documentation](https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time).
+Native host tests cover expiry, stale cancellation, wrong caller, parallel
+consumption, clock failure and the real embedded-Python boundary. The test clock
+override is absent from production objects. The guardian opt-in, PushKit owner
+and CallKit transport handoff still need to be wired before this window is
+armed by an actual app. No installed personal preview has enabled Apple push.

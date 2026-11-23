@@ -166,6 +166,18 @@ def map_tile(key,z,x,y):return _maps.tile(key,z,x,y) if _maps else None
 
 def map_source(z,x,y):return _maps.source(z,x,y) if _maps else ''
 
+def _ios_voice_incoming(identity_hash):
+    if _ios_voice_foreground:return True
+    try:
+        import RNS
+        from _family_native_calls import consume
+        address=RNS.Destination.hash_from_name_and_identity('lxst.telephony',identity_hash).hex()
+        return consume(address) is True
+    except Exception:
+        # No native window exists in Android, ordinary host tests or a personal
+        # preview that has never accepted an authenticated call wake.
+        return False
+
 def _password(value):
     return hashlib.pbkdf2_hmac('sha256',value.encode(),bytes.fromhex(_state['password_salt']),200000).hex()
 
@@ -196,7 +208,7 @@ def _start():
             _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
         elif _ios_voice:
             from family_voice import FamilyVoice
-            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,route_context=_voice_route_context)
+            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,incoming_gate=_ios_voice_incoming,route_context=_voice_route_context)
         try:
             from family_rooms import FamilyRooms
             if _rooms_enabled:

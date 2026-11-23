@@ -70,8 +70,8 @@ def check_default_codec(profiles):
 
 
 class FamilyVoice:
- def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True):
-  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
+ def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True,incoming_gate=None):
+  self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.incoming_gate=incoming_gate;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
   self.last_incoming='';self.last_playback_activity=float('-inf');self.playback_rms=0.0
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
@@ -83,6 +83,9 @@ class FamilyVoice:
   gate=jclass('org.meshchat.family.preview.FamilyCallGate')
   if acquire:return bool(gate.acquire(_context,'reticulum'))
   gate.release('reticulum');return True
+ def _acquire_incoming(self,identity_hash):
+  if self.incoming_gate is not None:return bool(self.incoming_gate(identity_hash))
+  return self._gate(True)
  def _contact(self,identity_hash):
   import RNS
   address=RNS.Destination.hash_from_name_and_identity('lxst.telephony',identity_hash).hex()
@@ -224,7 +227,7 @@ class FamilyVoice:
    if not contact or not self.allowed(identity.hash):
     if self.gate is not None:self.last_incoming='Incoming call approval changed.'
     threading.Thread(target=self.hangup,daemon=True).start();return
-   if not self._gate(True):
+   if not self._acquire_incoming(identity.hash):
     if self.gate is not None:self.last_incoming='Approved call arrived while Family was unavailable.'
     threading.Thread(target=self.hangup,daemon=True).start();return
    if self.gate is not None:self.last_incoming='Incoming call rang.'

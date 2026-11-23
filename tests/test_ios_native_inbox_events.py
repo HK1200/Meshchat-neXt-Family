@@ -115,7 +115,14 @@ def voice_push(*a): pass
 def voice_pull(*a): return b""
 def request(raw):
     action = json.loads(raw)["action"]
-    if action == "emit": _family_native_events.inbox_changed()
+    if action == "wake":
+        import _family_native_calls
+        assert not hasattr(_family_native_calls, "arm")
+        assert not hasattr(_family_native_calls, "reset")
+        assert _family_native_calls.consume("b"*32) is False
+        assert _family_native_calls.consume("a"*32) is True
+        assert _family_native_calls.consume("a"*32) is False
+    elif action == "emit": _family_native_events.inbox_changed()
     elif action == "worker":
         t = threading.Thread(target=_family_native_events.inbox_changed)
         t.start(); t.join(timeout=3)
@@ -144,9 +151,13 @@ static void changed(void) {
 static void replacement(void) { atomic_fetch_add(&replaced,1); }
 int main(int argc, char **argv) {
     family_runtime_set_inbox_changed(changed);
+    if (!family_call_wake_arm("0123456789abcdef0123456789abcdef", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 30)) return 4;
     if (!family_runtime_start(NULL, argv[1], argv[2])) return 1;
     family_runtime_set_inbox_changed(replacement);
     const char *requests[] = {"{\"action\":\"emit\"}","{\"action\":\"worker\"}","{\"action\":\"payload\"}"};
+    char *wake=family_runtime_request("{\"action\":\"wake\"}");
+    if (!wake || !strstr(wake,"true")) return 5;
+    free(wake);
     for (int i=0;i<3;i++) {
         char *reply=family_runtime_request(requests[i]);
         if (!reply || !strstr(reply,"true")) return 2;
@@ -160,7 +171,7 @@ int main(int argc, char **argv) {
     binary = tmp_path / 'bridge-proof'
     compile_result = subprocess.run(['cc', '-std=c11', *flags,
         '-I'+str(HERE / 'ios/LiveRuntime'), '-I'+str(ROOT / 'ios/LiveRuntime'),
-        str(HERE / 'ios/LiveRuntime/FamilyRuntime.c'), str(harness), '-o', str(binary), *libs, '-lpthread'],
+        str(HERE / 'ios/LiveRuntime/FamilyRuntime.c'), str(HERE / 'ios/LiveRuntime/FamilyCallWakeGate.c'), str(harness), '-o', str(binary), *libs, '-lpthread'],
         capture_output=True, text=True, timeout=30)
     assert compile_result.returncode == 0, compile_result.stderr
     proof = subprocess.run([str(binary), str(modules), str(tmp_path / 'state')], capture_output=True, text=True, timeout=10)

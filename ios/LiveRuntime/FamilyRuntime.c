@@ -104,6 +104,27 @@ static struct PyModuleDef inbox_module = {
 };
 static PyObject *init_inbox(void) { return PyModule_Create(&inbox_module); }
 
+/* Python may consume only the exact native-approved voice window. It cannot
+ * create one or alter its lifetime through a JSON action or module method. */
+static PyObject *consume_call_wake(PyObject *self, PyObject *args) {
+    (void)self;
+    const char *voice;
+    if (!PyArg_ParseTuple(args, "s", &voice)) return NULL;
+    bool allowed;
+    Py_BEGIN_ALLOW_THREADS
+    allowed = family_call_wake_consume(voice);
+    Py_END_ALLOW_THREADS
+    return PyBool_FromLong(allowed);
+}
+static PyMethodDef call_wake_methods[] = {
+    {"consume", consume_call_wake, METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+static struct PyModuleDef call_wake_module = {
+    PyModuleDef_HEAD_INIT, "_family_native_calls", NULL, -1, call_wake_methods
+};
+static PyObject *init_call_wake(void) { return PyModule_Create(&call_wake_module); }
+
 #if defined(TARGET_OS_IOS) && TARGET_OS_IOS
 #define STRINGIFY_VALUE(value) #value
 #define STRINGIFY(value) STRINGIFY_VALUE(value)
@@ -125,6 +146,7 @@ static PyStatus append_path(PyConfig *config, const char *home, const char *suff
 
 bool family_runtime_start(const char *python_home, const char *modules, const char *state) {
     if (!modules || !state || Py_IsInitialized()) return false;
+    if (PyImport_AppendInittab("_family_native_calls", init_call_wake) != 0) return false;
     if (https_post && PyImport_AppendInittab("_family_native_https", init_https) != 0) return false;
     if (inbox_changed && PyImport_AppendInittab("_family_native_events", init_inbox) != 0) return false;
 
