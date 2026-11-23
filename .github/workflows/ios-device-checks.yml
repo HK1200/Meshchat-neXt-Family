@@ -1,11 +1,16 @@
 name: Build isolated iPad device checks
 on:
   workflow_dispatch:
+    inputs:
+      macos_runner:
+        type: choice
+        options: [macos-26-intel, macos-26]
+        default: macos-26-intel
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26-intel' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
