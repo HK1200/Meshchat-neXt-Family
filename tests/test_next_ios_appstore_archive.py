@@ -17,6 +17,7 @@ def archive(tmp_path):
     info = dict(CFBundleIdentifier=module.BUNDLE, CFBundleShortVersionString='0.1.27',
                 CFBundleVersion='1.1', CFBundleExecutable='NextRuntimeProbe',
                 CFBundleSupportedPlatforms=['iPhoneOS'], UIDeviceFamily=[1, 2],
+                DTSDKName='iphoneos26.2', DTXcode='2620',
                 MinimumOSVersion='17.0', UIBackgroundModes=['audio', 'voip', 'location', 'bluetooth-central'])
     for key in ('NSMicrophoneUsageDescription', 'NSBluetoothAlwaysUsageDescription',
                 'NSLocalNetworkUsageDescription', 'NSCameraUsageDescription',
@@ -43,6 +44,7 @@ def archive(tmp_path):
 def test_accepts_only_unsigned_production_metadata(archive):
     result = module.verify(archive[0])
     assert result['iphone_and_ipad'] and not result['release_ready']
+    assert result['submission_toolchain_verified'] and result['sdk']=='iphoneos26.2' and result['xcode']=='2620'
     assert not result['apple_enrollment_performed'] and not result['app_store_submission_performed']
 
 
@@ -72,4 +74,20 @@ def test_rejects_developer_web_inspection_in_production_executable(archive):
     target = archive[1] / 'NextRuntimeProbe'
     target.write_bytes(target.read_bytes() + b'--inspect-web-interface')
     with pytest.raises(AssertionError, match='Web Inspector'):
+        module.verify(archive[0])
+
+
+@pytest.mark.parametrize('key,value', [
+    ('DTSDKName', 'iphoneos18.5'), ('DTSDKName', 'iphonesimulator26.2'),
+    ('DTSDKName', ''), ('DTSDKName', None), ('DTSDKName', 'iphoneos26garbage'),
+    ('DTXcode', '1640'), ('DTXcode', ''), ('DTXcode', None),
+    ('DTXcode', '26.2'), ('DTXcode', True),
+])
+def test_rejects_older_missing_or_malformed_submission_toolchain(archive, key, value):
+    target=archive[1]/'Info.plist'
+    info=plistlib.loads(target.read_bytes())
+    if value is None: info.pop(key)
+    else: info[key]=value
+    target.write_bytes(plistlib.dumps(info))
+    with pytest.raises(AssertionError, match='SDK|Xcode'):
         module.verify(archive[0])

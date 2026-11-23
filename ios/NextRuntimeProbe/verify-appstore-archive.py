@@ -3,6 +3,7 @@
 import hashlib
 import json
 import plistlib
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,13 @@ def verify(archive):
     assert info['CFBundleVersion'] == properties['CFBundleVersion'] and info['CFBundleVersion']
     assert info['CFBundleExecutable'] == 'NextRuntimeProbe'
     assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS']
+    # Apple's submission minimum effective April 28, 2026. Check the built
+    # artifact, not merely the runner image or the app's deployment target.
+    sdk = info.get('DTSDKName', '')
+    toolchain = info.get('DTXcode', '')
+    match = re.fullmatch(r'iphoneos(\d+)(?:\.\d+){0,2}', sdk) if isinstance(sdk, str) else None
+    assert match and int(match[1]) >= 26, 'App Store archive requires the iOS 26 SDK or later'
+    assert isinstance(toolchain, str) and re.fullmatch(r'\d{4,6}', toolchain) and int(toolchain) >= 2600, 'App Store archive requires Xcode 26 or later'
     assert sorted(info['UIDeviceFamily']) == [1, 2]
     assert tuple(map(int, info['MinimumOSVersion'].split('.'))) >= (17, 0)
     assert info.get('NextPushEnvironment', '') == ''
@@ -48,7 +56,8 @@ def verify(archive):
     assert not any(path.name in fixtures or path.suffix in ('.xctest', '.xctestrun')
                    for path in app.rglob('*')), 'Test fixture included in production archive'
     return dict(bundle_identifier=BUNDLE, version=info['CFBundleShortVersionString'],
-                build=info['CFBundleVersion'], unsigned=True, personal_profile_absent=True,
+                build=info['CFBundleVersion'], sdk=sdk, xcode=toolchain, submission_toolchain_verified=True,
+                unsigned=True, personal_profile_absent=True,
                 simulator_fixtures_absent=True, developer_web_inspection_absent=True, iphone_and_ipad=True,
                 privacy_manifest_present=True, native_runtime_and_notices_present=True,
                 executable_sha256=hashlib.file_digest((app / 'NextRuntimeProbe').open('rb'), 'sha256').hexdigest(),

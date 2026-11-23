@@ -360,3 +360,19 @@ Keep neXt visible during large transfers. iOS may pause it when locked or in
 the background. If an interrupted transfer fails, reopen the app and retry;
 this preview does not promise resumable RNCP transfers after termination.
 These tools do not change chat attachment limits or enable mailbox delivery.
+
+### App Store toolchain qualification
+
+Apple currently requires Xcode 26 or later and the iOS 26 SDK or later for
+App Store Connect uploads, effective April 28, 2026. See
+[Apple's submission requirements](https://developer.apple.com/news/upcoming-requirements/?id=04282026a).
+The supported iOS version for installing an app is a separate setting: building
+with a newer SDK does not require raising the current iOS 17 deployment target.
+
+Family's archive script rejects an older SDK before building. neXt's production
+archive verifier also checks the finished app's SDK and Xcode metadata, rejecting
+missing, malformed, simulator or older-toolchain metadata. The actual unsigned
+neXt archive from source `e82803c` passed this gate with iOS SDK 26.5 and Xcode
+26.6. This is toolchain evidence, not Apple signing, enrollment, APNs delivery,
+TestFlight qualification or App Store approval. Recheck Apple's current minimum
+before submitting a release.
