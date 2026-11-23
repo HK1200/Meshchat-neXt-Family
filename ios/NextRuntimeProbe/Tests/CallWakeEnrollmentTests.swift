@@ -86,4 +86,14 @@ import XCTest
         XCTAssertNoThrow(try value.encoded(installation: marker))
     }
 
+    func testPausedConsentRetainsTheSelectionButCannotRingOrRegisterAToken() throws {
+        var value = try record(); let selected = value.selectedCallers
+        value.pausedForReview = true
+        XCTAssertNil(value.context(installation: marker))
+        let saved = try NextCallWakeEnrollment.decode(value.encoded(installation: marker), installation: marker)
+        XCTAssertEqual(saved.selectedCallers, selected); XCTAssertNotNil(saved.agreementPrivateKey)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: value.subscription(token: Data(repeating: 1, count: 32))) as? [String: Any])
+        XCTAssertTrue(body["token"] is NSNull); XCTAssertEqual(body["callers"] as? [String], [])
+    }
+
 }

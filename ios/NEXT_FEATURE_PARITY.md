@@ -644,3 +644,29 @@ kept its link name, received the exact 36-byte file, and passed a warm reload.
 The iOS UI test again requires normal link hittability and a standard tap,
 followed by the native filename and sharing controls. Its simulator/device
 qualification remains pending; no failed candidate is installed or released.
+
+
+### Explicit call-alert enrollment lifecycle (not yet exposed)
+
+The next native controller serializes registrations, persists the possibility
+of provider registration before an upload, and checks current consent, token,
+permissions and installation again immediately before a queued request starts.
+Local turn-off stops only the VoIP registry and clears the agreement secret;
+a separate installation-marker invalidation prevents an old Keychain record
+from silently restoring consent if a later save fails. Removal retries keep
+only the metadata necessary to finish unsubscribing.
+
+Policy changes pause alerts and preserve the chosen public contacts for an
+explicit review. They never approve a new contact automatically. Provider
+rejections are distinguished from connectivity errors, and a rotated removal
+code can complete an existing unsubscribe without restoring call consent.
+The production registry, dispatcher, normal message-push registration and
+Reticulum runtime remain independent.
+
+The simulator-only `CallConsentChecks` target compiles actual production source
+and the same regression tests without the Python/audio build. It has no radio,
+network enrollment, APNs entitlement or USB-device target. Its result verifier
+requires every selected case to pass with no skipped tests and records source
+digests. Complete app qualification remains separate. Controller tests and
+App-delegate/UI/policy-hook wiring are still required; this code has not enabled
+push alerts on either installed iPad app or changed regular Family.

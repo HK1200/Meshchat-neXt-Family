@@ -49,4 +49,25 @@ final class CallWakeInstallationTests: XCTestCase {
         XCTAssertThrowsError(try NextCallWakeInstallation.read(support: root))
         XCTAssertThrowsError(try NextCallWakeInstallation.createForOptIn(support: root))
     }
+    func testRevocationRemovesOnlyItsMarkerAndNeverFollowsAnOutsideSymlink() throws {
+        let root = try directory(), outside = try directory()
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: outside) }
+        let original = try NextCallWakeInstallation.createForOptIn(support: outside)
+        let identity = root.appendingPathComponent("identity")
+        try Data(repeating: 42, count: 64).write(to: identity)
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent(markerName), withDestinationURL: outside.appendingPathComponent(markerName))
+        try NextCallWakeInstallation.invalidate(support: root)
+        XCTAssertNil(try NextCallWakeInstallation.read(support: root))
+        XCTAssertEqual(try NextCallWakeInstallation.read(support: outside), original)
+        XCTAssertEqual(try Data(contentsOf: identity), Data(repeating: 42, count: 64))
+    }
+    func testRevocationLeavesColdStartEmptyUntilAnotherExplicitOptIn() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let original = try NextCallWakeInstallation.createForOptIn(support: root)
+        try NextCallWakeInstallation.invalidate(support: root)
+        XCTAssertNil(try NextCallWakeInstallation.read(support: root))
+        XCTAssertNoThrow(try NextCallWakeInstallation.invalidate(support: root))
+        XCTAssertNotEqual(try NextCallWakeInstallation.createForOptIn(support: root), original)
+    }
+
 }

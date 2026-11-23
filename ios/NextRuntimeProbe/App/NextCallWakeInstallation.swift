@@ -36,6 +36,15 @@ struct NextCallWakeInstallation {
         return Data(bytes.prefix(count))
     }
 
+    /// Remove only this app's reserved marker. unlinkat never follows a
+    /// replacement symlink, so its destination and all other files survive.
+    static func invalidate(support: URL) throws {
+        let directory = Darwin.open(support.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard directory >= 0 else { throw Invalid.unavailable }
+        defer { Darwin.close(directory) }
+        if unlinkat(directory, name, 0) != 0 && errno != ENOENT { throw Invalid.unavailable }
+    }
+
     /// Only call from explicit foreground opt-in, never from cold-start load.
     static func createForOptIn(support: URL) throws -> Data {
         if let existing = try read(support: support) { return existing }

@@ -5,7 +5,7 @@ import Security
 
 /// Native-only consent. This record must never be returned by the loopback
 /// API, placed in a QR, or encoded as a provider request.
-struct NextCallWakeEnrollment: Codable {
+struct NextCallWakeEnrollment: Codable, Equatable {
     struct Caller: Codable, Equatable {
         let publicKey: Data
         let voiceAddress: String
@@ -22,6 +22,7 @@ struct NextCallWakeEnrollment: Codable {
     let policyDigest: String
     var revoking = false
     var mayBeRegistered = false
+    var pausedForReview: Bool? = false
 
     enum Invalid: Error { case record }
     static let maximumBytes = 196_608
@@ -53,7 +54,7 @@ struct NextCallWakeEnrollment: Codable {
     }
 
     func context(installation: Data) -> NextCallWakeContext? {
-        guard let valid = try? validated(installation: installation), !valid.revoking,
+        guard let valid = try? validated(installation: installation), !valid.revoking, valid.pausedForReview != true,
               let secret = valid.agreementPrivateKey else { return nil }
         return NextCallWakeContext(recipientPrivateKey: secret, recipientPublicKey: recipientPublicKey,
             audience: audience, approvedNames: Dictionary(uniqueKeysWithValues: selectedCallers.map { ($0.voiceAddress, $0.name) }))
@@ -83,9 +84,10 @@ struct NextCallWakeEnrollment: Codable {
             }
         }
         let hex: (Data) -> String = { $0.map { String(format: "%02x", $0) }.joined() }
-        return try JSONEncoder().encode(Subscription(recipient_key: hex(valid.recipientPublicKey),
-            token: valid.revoking ? nil : token.map(hex),
-            callers: valid.revoking ? [] : valid.selectedCallers.map(\.voiceAddress).sorted()))
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(Subscription(recipient_key: hex(valid.recipientPublicKey),
+            token: valid.revoking || valid.pausedForReview == true ? nil : token.map(hex),
+            callers: valid.revoking || valid.pausedForReview == true || token == nil ? [] : valid.selectedCallers.map(\.voiceAddress).sorted()))
     }
 
     static func decode(_ data: Data, installation: Data) throws -> Self {
