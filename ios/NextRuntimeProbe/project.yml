@@ -96,6 +96,7 @@ targets:
       - path: App/NextSIPAccountDraft.swift
       - path: App/NextSIPRegistration.swift
       - path: App/NextSIPCallSession.swift
+      - path: App/NextReticulumWakeRouter.swift
       - path: App/FamilyCallWake.swift
       - path: App/FamilySystemCalls.swift
       - path: App/FamilyCallKitDriver.swift

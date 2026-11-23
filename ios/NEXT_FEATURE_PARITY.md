@@ -50,6 +50,15 @@ desktop services are still not qualified by these results.
 This checkpoint is dated November 23, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
+The next call-wake development step now has a native admission router: it
+validates the provider's encrypted, signed payload, persists a bounded replay
+journal in the app's own Keychain, rejects expired or revoked callers, and
+matches only that approved voice identity to the pending CallKit UUID. Native
+checks are prepared. This does not register PushKit or deploy a provider;
+explicit enrollment, sender integration, cancellation lookup and genuine APNs
+and physical-device qualification remain required before suspended call alerts
+can be described as reliable.
+
 ## Features and remaining work
 
 | Feature | Current implementation and verification | Remaining work |

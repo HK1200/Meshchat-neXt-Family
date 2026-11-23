@@ -126,6 +126,7 @@ final class NextReticulumBridge {
                 audio: NextReticulumAudio(driver), service: .reticulum,
                 normalizePeer: { $0.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil ? $0.lowercased() : nil },
                 displayName: { [weak driver] peer in driver?.names[peer] ?? "Reticulum caller" },
+                wakeRouter: NextReticulumWakeRouter.shared,
                 emit: { [weak driver] event in
                     if event["state"] as? String == "ended", let id = event["native_id"] as? String {
                         driver?.enqueue("hangup", id: id)
