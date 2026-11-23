@@ -26,7 +26,7 @@ import Foundation
         gate: FamilyNativeCallWakeGate(), directory: {
             try FileManager.default.url(for: .applicationSupportDirectory,
                 in: .userDomainMask, appropriateFor: nil, create: false)
-        }, eligible: { Self.liveEligible },
+        }, eligible: { FamilyCallWakeOwner.liveEligible },
         permissions: { AVAudioApplication.shared.recordPermission == .granted },
         store: NextCallWakeEnrollmentKeychain(), uploader: NextPushHTTPS(), query: NextCallWakeQuery())
 }

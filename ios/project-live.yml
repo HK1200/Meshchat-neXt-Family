@@ -32,6 +32,7 @@ targets:
       - path: NextRuntimeProbe/App/NextCallWakeIdentity.swift
       - path: NextRuntimeProbe/App/NextCallWakeRegistration.swift
       - path: NextRuntimeProbe/App/NextCallWakeCancellation.swift
+      - path: NextRuntimeProbe/App/NextCallWakePolicy.swift
       - path: NextRuntimeProbe/App/NextCallWakeQuery.swift
       - path: NextRuntimeProbe/App/NextCallWakeDispatcher.swift
       - path: NextRuntimeProbe/App/NextReticulumWakeRouter.swift
