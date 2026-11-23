@@ -104,6 +104,7 @@ import XCTest
         f.dispatcher.stop()
         try await ready { !f.driver.pending.isEmpty }
         XCTAssertEqual(completions, 0); XCTAssertFalse(f.system.hasCall)
+        XCTAssertEqual(f.engine.calls, 0)
         f.driver.release(); try await ready { completions == 1 }
         XCTAssertEqual(f.driver.reports.count, 1)
     }

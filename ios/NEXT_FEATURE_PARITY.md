@@ -546,3 +546,17 @@ start the runtime or report a call. Nine new native lifecycle checks are prepare
 This remains an opt-in integration prerequisite. No PushKit registry or real
 provider enrollment is enabled by this change, and no APNs or locked-device
 qualification is claimed. Apple enrollment remains on hold.
+
+
+The concrete VoIP registration adapter is now prepared behind the push-enabled
+build flag and an explicit start. Personal-signing previews cannot create an
+APNs registry. It owns a separate PushKit token and does not unregister ordinary
+message alerts. Stopping keeps already queued deliveries routable through the
+consent-checking dispatcher, while stale token callbacks are rejected. Five
+fake-registry tests cover these paths without contacting Apple.
+
+The adapter uses Apple's [OS-supplied reporting metadata on iOS 26.4 and later](https://developer.apple.com/documentation/pushkit/pkpushregistrydelegate/pushregistry(_:didreceiveincomingvoippushwith:metadata:withcompletionhandler:))
+and the [required-report legacy callback](https://developer.apple.com/documentation/pushkit/pkpushregistrydelegate/pushregistry(_:didreceiveincomingpushwith:for:completion:))
+on earlier supported versions. Explicit enrollment, native key caching, token
+upload, sender routes and real APNs/device qualification still need completing;
+this adapter is not started by the current app interface.

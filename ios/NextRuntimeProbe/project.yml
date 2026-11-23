@@ -98,6 +98,7 @@ targets:
       - path: App/NextSIPCallSession.swift
       - path: App/NextReticulumWakeRouter.swift
       - path: App/NextCallWakeDispatcher.swift
+      - path: App/NextVoIPPushDevice.swift
       - path: App/FamilyCallWake.swift
       - path: App/FamilySystemCalls.swift
       - path: App/FamilyCallKitDriver.swift

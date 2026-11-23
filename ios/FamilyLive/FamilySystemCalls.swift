@@ -137,8 +137,9 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         return report(key, name: name, incoming: true, actions: actions, systemID: id)
     }
 
-    /// A required VoIP push must not complete before the real CallKit report.
-    /// UUID lookup also survives an earlier authenticated transport adoption.
+    /// Call-liveness acknowledgement, including transport adoption. Cancellation
+    /// releases this waiter immediately; OS push completions must instead use
+    /// incomingAttemptCompleted, which awaits the actual driver callback.
     func incomingReportCompleted(_ id: UUID) async -> Bool {
         guard let entry, entry.id == id, entry.incoming, !entry.ending else { return false }
         if let result = entry.reportResult { return result }

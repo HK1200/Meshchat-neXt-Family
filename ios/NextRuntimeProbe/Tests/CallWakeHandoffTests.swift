@@ -142,7 +142,7 @@ final class CallWakeHandoffTests: XCTestCase {
         calls.systemActionTimedOut(id)
         XCTAssertTrue(calls.contains(arrived)); calls.finish(arrived)
     }
-    func testRequiredPushWaitsForActualCallKitReportBeforeCompletion() async throws {
+    func testLiveCallAcknowledgementWaitsForCallKitAndSurvivesTransportAdoption() async throws {
         let driver = WakeHandoffDriver(), id = UUID()
         driver.pauseReport = true
         let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
@@ -160,7 +160,7 @@ final class CallWakeHandoffTests: XCTestCase {
         XCTAssertTrue(alreadyReported)
         calls.finish(arrived)
     }
-    func testCancelledWakeReleasesReportAcknowledgmentBeforeLateReportReturns() async throws {
+    func testCancelledCallReleasesLivenessAcknowledgmentBeforeLateReportReturns() async throws {
         let driver = WakeHandoffDriver(), id = UUID()
         driver.pauseReport = true
         let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
@@ -176,7 +176,7 @@ final class CallWakeHandoffTests: XCTestCase {
         driver.reportGate?.resume(); driver.reportGate = nil
         XCTAssertFalse(calls.hasCall)
     }
-    func testFailedCallKitReportCannotAcknowledgeARequiredPushAsReported() async throws {
+    func testFailedCallKitReportCannotAcknowledgeALiveCall() async throws {
         let driver = WakeHandoffDriver(), id = UUID()
         driver.failReport = true
         let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
