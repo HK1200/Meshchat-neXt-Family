@@ -608,6 +608,7 @@ final class ProbeUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["tcp-connections"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, ownAddress)
         XCTAssertTrue(web.staticTexts[reply].waitForExistence(timeout: 60), app.debugDescription)
         waitForNativeTheme("dark", in: app)
@@ -629,14 +630,21 @@ final class ProbeUITests: XCTestCase {
         var previous = CGRect.zero
         var stableSamples = 0
         var target: CGRect?
-        let deadline = Date().addingTimeInterval(10)
+        // A WebKit accessibility round trip can itself take longer than
+        // ten seconds on a busy runner. Sample only the frame until stable,
+        // then resolve hit testing and the containing views once. Retain all
+        // four matching samples and the real one-tap navigation below.
+        let deadline = Date().addingTimeInterval(60)
         while Date() < deadline {
             let frame = button.frame.integral
-            if button.isHittable && frame.width > 0 && frame.height > 0 &&
-                web.frame.contains(frame) && app.frame.contains(frame) {
+            if frame.width > 0 && frame.height > 0 {
                 stableSamples = frame == previous ? stableSamples + 1 : 0
                 previous = frame
-                if stableSamples >= 3 { target = frame; break }
+                if stableSamples >= 3 && button.isHittable &&
+                    web.frame.contains(frame) && app.frame.contains(frame) {
+                    target = frame
+                    break
+                }
             } else { stableSamples = 0 }
             Thread.sleep(forTimeInterval: 0.15)
         }
