@@ -51,6 +51,21 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
     private let preferences: UserDefaults?
     private static let preferenceKey = "family.systemCallControls"
     private var entry: Entry?
+    private var incomingAttempts: [UUID: IncomingAttempt] = [:]
+    private final class IncomingAttempt {
+        var result: Bool?
+        var waiters: [CheckedContinuation<Bool, Never>] = []
+        func finish(_ success: Bool) {
+            guard result == nil else { return }
+            result = success
+            let pending = waiters; waiters.removeAll()
+            for continuation in pending { continuation.resume(returning: success) }
+        }
+        func wait() async -> Bool {
+            if let result { return result }
+            return await withCheckedContinuation { waiters.append($0) }
+        }
+    }
 
     private final class Entry {
         let id: UUID
@@ -130,6 +145,24 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         return await withCheckedContinuation { entry.reportWaiters.append($0) }
     }
 
+    /// Unlike call-liveness waiters, an OS push completion must wait for the
+    /// actual report callback even when the call is cancelled in the meantime.
+    func incomingAttemptCompleted(_ id: UUID) async -> Bool {
+        guard let attempt = incomingAttempts[id] else { return false }
+        return await attempt.wait()
+    }
+
+    /// PushKit can require a CallKit report even after consent was revoked or
+    /// the signed intent became unusable. Report then end a fresh generic UUID;
+    /// never borrow, answer or finish the real call currently owned by entry.
+    /// This path does not authorize signaling, start audio or change settings.
+    func reportUnusableWake() async {
+        let id = UUID()
+        do { try await driver.incoming(id, name: "Unavailable call") }
+        catch { return }
+        driver.ended(id, failed: true)
+    }
+
     /// Adopt one authenticated arriving call without reporting a second CallKit call.
     @discardableResult
     func attachIncoming(_ pending: FamilySystemCallKey, to key: FamilySystemCallKey,
@@ -149,19 +182,31 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
             return entry.key == key && !entry.ending && (systemID == nil || systemID == entry.id)
         }
         let value = Entry(key: key, incoming: incoming, actions: actions, systemID: systemID)
+        let attempt: IncomingAttempt?
+        if incoming, systemID != nil {
+            incomingAttempts = incomingAttempts.filter { $0.value.result == nil }
+            guard incomingAttempts.count < 32 else { return false }
+            let receipt = IncomingAttempt()
+            incomingAttempts[value.id] = receipt
+            attempt = receipt
+        } else { attempt = nil }
         entry = value
         audioReady = false
         error = ""
         Task {
-            guard self.entry === value, !value.ending else { return }
+            // A required wake report cannot disappear if cancellation wins
+            // before this queued task runs. It is still reported, then ended.
+            guard attempt != nil || (self.entry === value && !value.ending) else { return }
             do {
                 if incoming { try await driver.incoming(value.id, name: name) }
                 else { try await driver.start(value.id, name: name) }
+                attempt?.finish(true)
                 if self.entry !== value || value.ending {
                     value.resolveReport(false)
                     driver.ended(value.id, failed: false)
                 } else { value.resolveReport(true) }
             } catch {
+                attempt?.finish(false)
                 value.resolveReport(false)
                 guard self.entry === value else { return }
                 self.error = "iOS could not show this call. Please try again."

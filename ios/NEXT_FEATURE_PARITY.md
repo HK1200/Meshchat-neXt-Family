@@ -530,3 +530,19 @@ Disturb, caller removal and bans cannot grant provider eligibility. No private
 key, enrollment secret, device token or message content is returned.
 This is metadata for the forthcoming explicit call-alert enrollment; it does
 not itself register PushKit, transmit enrollment or enable suspended calls.
+
+
+## Call wake dispatch and report completion
+
+Development source connects signed wake admission to the bounded shared-runtime
+starter and actual CallKit report receipts. Starting signaling does not keep the
+push completion open while CPython starts. Cancellation, consent changes and
+startup failure cannot release a required push before the OS report callback;
+even cancellation before the report task starts still invokes the report.
+Unusable OS-required pushes report and end a fresh generic UUID without
+replacing or ending an existing approved call. Optional unusable pushes do not
+start the runtime or report a call. Nine new native lifecycle checks are prepared.
+
+This remains an opt-in integration prerequisite. No PushKit registry or real
+provider enrollment is enabled by this change, and no APNs or locked-device
+qualification is claimed. Apple enrollment remains on hold.
