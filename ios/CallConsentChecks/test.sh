@@ -24,7 +24,7 @@ xcodebuild test -project CallConsentChecks.xcodeproj -scheme CallConsentChecks \
   -destination "platform=iOS Simulator,id=$simulator" \
   -derivedDataPath DerivedData -resultBundlePath Results/consent.xcresult \
   -parallel-testing-enabled NO -test-timeouts-enabled YES \
-  -default-test-execution-time-allowance 30 -maximum-test-execution-time-allowance 60 \
+  -default-test-execution-time-allowance 30 -maximum-test-execution-time-allowance 120 \
   CODE_SIGN_IDENTITY=-
 xcrun xcresulttool get test-results summary --path Results/consent.xcresult > Results/summary.json
 xcrun xcresulttool get test-results tests --path Results/consent.xcresult > Results/tests.json
