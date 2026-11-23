@@ -83,6 +83,7 @@ targets:
       - path: App/NextWebPreferences.swift
       - path: App/NextWebPreferencesBridge.swift
       - path: App/NextExternalLinks.swift
+      - path: App/NextNomadFramePolicy.swift
       - path: App/NextModalPage.swift
       - path: App/NextWebLoadState.swift
       - path: App/NextRuntimeStartup.swift
