@@ -4,6 +4,10 @@ import UIKit
 
 @MainActor
 final class ModalPageTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        executionTimeAllowance = 120
+    }
     /// A detached WKWebView may be suspended by iPadOS before navigation.
     /// Host real WebKit in a visible test-owned window; restore the app's key
     /// window afterward. This does not substitute a DOM mock or skip readiness.
@@ -15,11 +19,15 @@ final class ModalPageTests: XCTestCase {
             previous = scene.windows.first(where: \.isKeyWindow)
             window = UIWindow(windowScene: scene)
             let controller = UIViewController()
+            window.frame = scene.coordinateSpace.bounds
             window.rootViewController = controller
+            controller.view.frame = window.bounds
             view.frame = controller.view.bounds
             view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             controller.view.addSubview(view)
             window.makeKeyAndVisible()
+            controller.view.layoutIfNeeded()
+            view.layoutIfNeeded()
         }
         func close() {
             window.isHidden = true; window.rootViewController = nil
@@ -30,11 +38,27 @@ final class ModalPageTests: XCTestCase {
     private final class Navigation: NSObject, WKNavigationDelegate {
         let ready: XCTestExpectation
         var error: Error?
+        private var finished = false
         init(_ ready: XCTestExpectation) { self.ready = ready }
-        func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) { ready.fulfill() }
-        func webView(_ view: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            self.error = error; ready.fulfill()
+        private func finish(_ error: Error? = nil) {
+            guard !finished else { return }
+            finished = true; self.error = error; ready.fulfill()
         }
+        func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) { finish() }
+        func webView(_ view: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { finish(error) }
+        func webView(_ view: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finish(error) }
+        func webViewWebContentProcessDidTerminate(_ view: WKWebView) { finish(URLError(.networkConnectionLost)) }
+    }
+
+    private func requireLoaded(_ navigation: Navigation, _ ready: XCTestExpectation) async throws {
+        // The first WebKit extension launch on an ephemeral hosted simulator
+        // can exceed 30 seconds. Keep a bounded wait, and never evaluate DOM
+        // assertions on the blank document after a timeout or process failure.
+        let result = await XCTWaiter.fulfillment(of: [ready], timeout: 90)
+        XCTAssertEqual(result, .completed)
+        guard result == .completed else { throw URLError(.timedOut) }
+        XCTAssertNil(navigation.error)
+        if let error = navigation.error { throw error }
     }
 
     private func javascript(_ view: WKWebView, _ script: String,
@@ -48,7 +72,9 @@ final class ModalPageTests: XCTestCase {
     }
 
     func testInterfaceReadinessRequiresTheRenderedAppNotAnEmptyDocument() async throws {
-        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640))
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640), configuration: configuration)
         let ready = expectation(description: "Synthetic app document loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
@@ -56,8 +82,7 @@ final class ModalPageTests: XCTestCase {
         defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='app'></div></body></html>", baseURL: nil)
-        await fulfillment(of: [ready], timeout: 30)
-        XCTAssertNil(navigation.error)
+        try await requireLoaded(navigation, ready)
         let empty = try await javascript(view, NextWebLoadState.pageReadyScript)
         XCTAssertEqual(empty as? Bool, false)
         _ = try await javascript(view, "document.getElementById('app').appendChild(document.createElement('main')); return true;")
@@ -66,7 +91,9 @@ final class ModalPageTests: XCTestCase {
     }
 
     func testMountedAppBehindStartupSplashIsNotReadyUntilSplashDisappears() async throws {
-        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640))
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640), configuration: configuration)
         let ready = expectation(description: "Synthetic startup document loaded")
         let navigation = Navigation(ready)
         view.navigationDelegate = navigation
@@ -74,8 +101,7 @@ final class ModalPageTests: XCTestCase {
         defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Getting things ready</div><div id='app'><main>Messages</main></div></body></html>", baseURL: nil)
-        await fulfillment(of: [ready], timeout: 30)
-        XCTAssertNil(navigation.error)
+        try await requireLoaded(navigation, ready)
         let stalled = try await javascript(view, NextWebLoadState.pageReadyScript)
         XCTAssertEqual(stalled as? Bool, false)
         _ = try await javascript(view, "document.getElementById('meshchatnext-boot-splash').hidden = true; return true;")
@@ -104,8 +130,7 @@ final class ModalPageTests: XCTestCase {
         defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Loading</div><div id='app'><textarea id='draft'>Private draft</textarea></div></body></html>", baseURL: nil)
-        await fulfillment(of: [ready], timeout: 30)
-        XCTAssertNil(navigation.error)
+        try await requireLoaded(navigation, ready)
         let initiallyHidden = try await javascript(view, "return document.documentElement.inert && document.documentElement.getAttribute('aria-hidden') === 'true';")
         XCTAssertEqual(initiallyHidden as? Bool, true)
         let loading = try await javascript(view, NextWebLoadState.pageReadyScript)
@@ -141,8 +166,7 @@ final class ModalPageTests: XCTestCase {
         defer { host.close() }
         defer { view.stopLoading(); view.navigationDelegate = nil }
         view.loadHTMLString("<html \(attributes)><body><textarea id='draft'>Unsent private draft</textarea></body></html>", baseURL: nil)
-        await fulfillment(of: [ready], timeout: 30)
-        XCTAssertNil(navigation.error)
+        try await requireLoaded(navigation, ready)
         for _ in 0..<2 {
             let active = try await javascript(view, NextModalPage.script, arguments: ["active": true], isolated: true)
             XCTAssertEqual(active as? Bool, true)

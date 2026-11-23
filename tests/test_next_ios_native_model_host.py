@@ -79,3 +79,20 @@ def test_integration_keeps_native_testroot_beside_built_products():
     script=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/test-simulators.sh').read_text()
     assert 'native_test_run="$(dirname -- "${test_runs[0]}")/native-models.xctestrun"' in script
     assert 'native_test_arguments=(-xctestrun "$native_test_run")' in script
+
+
+def test_codec_integration_explicitly_starts_the_shared_runtime():
+    source=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/Tests/VoiceCodecTests.swift').read_text()
+    assert '@testable import NextRuntimeProbe' in source
+    assert 'await NextRuntimeProbe.NextRuntimeLauncher.shared.session(configuration: nil)' in source
+    assert source.index('session(configuration: nil)') < source.index('next_probe_check_voice_codecs()')
+    assert 'XCTAssertEqual(report.checks.count, 10)' in source
+
+
+def test_webkit_fixture_requires_loaded_document_before_any_readiness_script():
+    source=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/Tests/ModalPageTests.swift').read_text()
+    assert source.count('try await requireLoaded(navigation, ready)')==4
+    assert 'guard result == .completed else { throw URLError(.timedOut) }' in source
+    assert 'webViewWebContentProcessDidTerminate' in source
+    assert 'window.frame = scene.coordinateSpace.bounds' in source
+    assert 'XCTAssertEqual(rendered as? Bool, true)' in source
