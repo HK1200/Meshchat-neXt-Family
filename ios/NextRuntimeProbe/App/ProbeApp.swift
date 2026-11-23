@@ -24,7 +24,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location, callAlerts
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location, callAlerts, recipientCallAlerts
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -268,12 +268,18 @@ private struct ProbeScreen: View {
                             Label("Incoming call alerts", systemImage: "phone.badge.waveform")
                                 .frame(minHeight: 44)
                         }.accessibilityIdentifier("next-call-alert-settings")
+                        Button { panel = .recipientCallAlerts } label: {
+                            Label("Recipient call alerts", systemImage: "phone.arrow.up.right")
+                                .frame(minHeight: 44)
+                        }.accessibilityIdentifier("next-recipient-call-alert-settings")
                     }
                     .navigationTitle("Calling")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Done") { panel = nil } }
                     }
                 }
+            case .recipientCallAlerts:
+                if let url { NextRecipientCallAlerts(base: url).interactiveDismissDisabled() }
             case .callAlerts:
                 if let url { NextCallWakeSettings(base: url, registration: NextCallWakeOwner.shared.registration) }
             case .location:

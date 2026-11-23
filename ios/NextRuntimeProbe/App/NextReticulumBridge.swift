@@ -136,8 +136,7 @@ final class NextReticulumBridge {
         }
         guard session == identifier, let calls, let driver else { return ["ok": false] }
         if operation == "call_policy_invalid" {
-            NextCallWakeOwner.shared.registration.pauseForReview()
-            return ["ok": true]
+            return ["ok": NextCallWakeOwner.shared.registration.pauseForReview()]
         }
         if operation == "call_policy" {
             guard let digest = value["digest"] as? String,

@@ -1,6 +1,7 @@
 """Serve the released neXt frontend with an embedded LXMF backend."""
 
 import asyncio
+import contextlib
 from datetime import datetime, timezone
 import json
 import os
@@ -26,6 +27,7 @@ from nomad_frame import public_frame_resource, build_nomad_crash_tab_csp
 from durable_inbox import DurableInbox
 from offline_mailbox import OfflineMailbox
 import mailbox_push
+import call_alerts
 import durable_outbox
 from loopback_listener import ResumableListener
 from conversation_organization import ConversationOrganization
@@ -401,6 +403,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     clients = set()
     tasks = set()
     voice = None
+    call_sender = None
     maps = None
     relay = None
     telemetry = None
@@ -553,6 +556,18 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                                 history.contacts, meshcore_broadcast, device=device)
                 if meshcore_factory else None)
 
+    def before_call_policy_change():
+        # Pause and persist native consent BEFORE SQLite can change. If the
+        # process dies before the post-write digest arrives, a cold push still
+        # cannot reuse the old permission snapshot.
+        if not device or voice is None: return
+        try:
+            result = voice.request("call_policy_invalid")
+        except Exception:
+            raise web.HTTPServiceUnavailable(text="Call-alert permissions could not be saved; no policy change was made") from None
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise web.HTTPServiceUnavailable(text="Call-alert permissions could not be saved; no policy change was made")
+
     @web.middleware
     async def local_only(request, handler):
         if request.host != authority:
@@ -568,6 +583,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         try:
             response = await handler(request)
         finally:
+            if call_sender and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+                call_sender.refresh_contacts()
             # A handler may save an edit before a later response/broadcast
             # fails. Revocation must still reach native code in that case.
             if device and voice and voice.available and request.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -609,6 +626,37 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             except (TypeError, ValueError):
                 return web.json_response({"message": "Use at most 256 distinct public contact keys."}, status=400, headers={"Cache-Control": "no-store"})
             return web.json_response(value, headers={"Cache-Control": "no-store"})
+        call_alert_route = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})/call-alert-route", path)
+        if call_alert_route:
+            contact_id = int(call_alert_route[1])
+            entry = next((row for row in history.contacts().values() if row["id"] == contact_id), None)
+            if entry is None: raise web.HTTPNotFound()
+            recipient = entry["lxmf_address"]
+            if blocks.denies(recipient): raise web.HTTPForbidden()
+            try:
+                if request.method == "GET":
+                    route = call_alerts.route_for(ready_file.parent, recipient)
+                elif request.method in ("POST", "DELETE"):
+                    proposed = None
+                    if request.method == "POST":
+                        raw = bytearray()
+                        async for chunk in request.content.iter_chunked(4096):
+                            raw.extend(chunk)
+                            if len(raw) > 4096: raise ValueError("Call-alert settings are too large")
+                        body = json.loads(raw)
+                        if type(body) is not dict or body.keys() != {"route"} or type(body["route"]) is not dict:
+                            raise ValueError("Enter the provider, audience and bound contact key only")
+                        proposed = body["route"]
+                    current = history.contacts().get(recipient)
+                    if current is None or current["id"] != contact_id or blocks.denies(recipient): raise web.HTTPNotFound()
+                    route = call_alerts.save_route(ready_file.parent, recipient, proposed)
+                else:
+                    raise web.HTTPMethodNotAllowed(request.method, ["GET", "POST", "DELETE"])
+                return web.json_response({"route": None if route is None else dict(
+                    provider=route.provider, audience=route.audience, public_key=route.public_key)},
+                    headers={"Cache-Control": "no-store"})
+            except (ValueError, TypeError):
+                return web.json_response({"message": "Use an HTTPS provider, audience and this contact's public key."}, status=400)
         alert_route = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})/mailbox-alert-route", path)
         if alert_route:
             contact_id = int(alert_route[1])
@@ -776,11 +824,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 else:
                     entry = next((item for item in history.contacts().values() if item["id"] == int(contact_path[1])), None)
                     if entry is None: raise KeyError(contact_path[1])
+                    before_call_policy_change()
                     if location:
                         try: await location.contact_removed(entry["lxmf_address"])
                         except (RuntimeError, OSError, sqlite3.Error):
                             return web.json_response({"message": "Location sharing could not be revoked; the contact was preserved."}, status=503)
                     mailbox_push.save_route(ready_file.parent, entry["lxmf_address"], None)
+                    with contextlib.suppress(OSError, ValueError):
+                        call_alerts.save_route(ready_file.parent, entry["lxmf_address"], None)
                     history.remove_contact(int(contact_path[1]))
             except KeyError:
                 raise web.HTTPNotFound() from None
@@ -892,6 +943,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     return web.json_response({"message": "Unblock this Reticulum destination before adding it"}, status=403)
                 if address.lower() in contacts:
                     return web.json_response({"message": "That LXMF address is already saved"}, status=409)
+                before_call_policy_change()
                 history.ensure_contact(address.lower(), name.strip())
                 with history.db:
                     history.db.execute("DELETE FROM hidden_conversations WHERE peer = ?", (address.lower(),))
@@ -1156,6 +1208,12 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     except (RuntimeError, ConnectionError): clients.discard(client)
             track(broadcast_voice_settings())
         voice.on_settings = voice_settings_changed
+        voice.before_policy_change = before_call_policy_change
+        call_sender = call_alerts.CallAlerts(ready_file.parent, probe.source.identity, history.contacts, blocks.denies)
+        voice.on_call_start = call_sender.started
+        voice.on_call_end = call_sender.ended
+        async def stop_call_hints(_): call_sender.close()
+        app.on_cleanup.insert(0, stop_call_hints)
         config.update(voice.settings_snapshot())
         voice.destination_blocked = blocks.denies
         voice.register(app.router)
@@ -1225,6 +1283,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         for key in keys:
             if location: await location.contact_removed(key)
             mailbox_push.save_route(ready_file.parent, key, None)
+            with contextlib.suppress(OSError, ValueError): call_alerts.save_route(ready_file.parent, key, None)
 
     async def blocks_changed():
         if nomad: nomad.reconcile_blocks()
@@ -1235,13 +1294,13 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if voice.call and blocks.denies(voice.call.peer): voice.schedule_end(voice.call.id)
         await meshcore_broadcast({"type":"blocked_destinations", "blocked_destinations":blocks.snapshot()})
 
-    BlockRuntime(blocks, history, organization, revoke_blocked, blocks_changed).register(app.router)
+    BlockRuntime(blocks, history, organization, revoke_blocked, blocks_changed, before_change=before_call_policy_change).register(app.router)
     async def imported_contact_changed():
         contacts.clear(); contacts.update(history.contacts())
         if voice: voice.refresh_call_contacts()
         if relay: relay.refresh_contacts()
 
-    ContactImport(history, blocks, own, imported_contact_changed).register(app.router)
+    ContactImport(history, blocks, own, imported_contact_changed, before_change=before_call_policy_change).register(app.router)
     app.router.add_route("*", "/api/v1/{path:.*}", api)
     app.router.add_get("/ws", websocket)
     app.router.add_get("/", index)

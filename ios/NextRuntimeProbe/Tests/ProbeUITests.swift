@@ -586,6 +586,47 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["tcp-connections"].exists)
     }
 
+    func testRecipientCallAlertsRequireExplicitSaveAndCanBeRemoved() {
+        executionTimeAllowance = 240
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
+        let address = app.staticTexts["my-lxmf-address"].label
+        app.buttons["next-calling-menu"].tap()
+        let open = app.buttons["next-recipient-call-alert-settings"]
+        XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
+        open.tap()
+        let form = app.collectionViews["next-recipient-call-alert-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 15), app.debugDescription)
+        let status = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@",
+            "next-recipient-call-alert-status", "Off")).firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 20), app.debugDescription)
+        let save = app.buttons["next-recipient-call-alert-save"]
+        XCTAssertFalse(save.isEnabled)
+        let provider = app.textFields["next-recipient-call-alert-provider"]
+        reveal(provider, in: form); replace(provider, with: "https://example.invalid", in: app)
+        let audience = app.textFields["next-recipient-call-alert-audience"]
+        reveal(audience, in: form); replace(audience, with: "private-calls", in: app)
+        let doneTyping = app.buttons["next-recipient-call-alert-done-typing"]
+        XCTAssertTrue(doneTyping.waitForExistence(timeout: 10), app.debugDescription)
+        doneTyping.tap()
+        reveal(save, in: form)
+        XCTAssertTrue(save.isEnabled, app.debugDescription)
+        save.tap()
+        let saved = app.staticTexts["Recipient call alerts saved."]
+        XCTAssertTrue(saved.waitForExistence(timeout: 20), app.debugDescription)
+        let remove = app.buttons["next-recipient-call-alert-remove"]
+        reveal(remove, in: form); XCTAssertTrue(remove.isEnabled)
+        remove.tap()
+        XCTAssertTrue(app.staticTexts["Recipient call alerts removed."].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(status.waitForExistence(timeout: 10), app.debugDescription)
+        app.navigationBars["Recipient call alerts"].buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, address)
+    }
+
     func testSetupPermissionCheckupDoesNotRequestOptionalAccess() {
         continueAfterFailure = false
         let app = XCUIApplication()

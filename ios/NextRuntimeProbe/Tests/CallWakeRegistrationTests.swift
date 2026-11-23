@@ -32,12 +32,16 @@ import XCTest
     let store = CallConsentStore(), uploader = CallConsentUploader()
     var marker: Data? = Data(repeating: 7, count: 32)
     var eligible = true, permitted = true
+    var failInvalidate = false
     var starts = 0, stops = 0, changes = 0
     var controller: NextCallWakeRegistration!
     init() {
         controller = NextCallWakeRegistration(store: store, uploader: uploader,
             marker: { [weak self] in self?.marker },
-            invalidateMarker: { [weak self] in self?.marker = nil },
+            invalidateMarker: { [weak self] in
+                if self?.failInvalidate == true { throw URLError(.cannotWriteToFile) }
+                self?.marker = nil
+            },
             eligible: { [weak self] in self?.eligible == true },
             permitted: { [weak self] in self?.permitted == true },
             startDevice: { [weak self] in self?.starts += 1; return true },
@@ -96,6 +100,33 @@ import XCTest
         XCTAssertNil(f.controller.callStateRequest(UUID()))
         f.permitted = true; f.marker = nil
         XCTAssertNil(f.controller.callStateRequest(UUID()))
+    }
+
+    func testPolicyPauseCanUseTheInstallMarkerWhenKeychainWritingFails() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.store.failSave = true
+        XCTAssertTrue(f.controller.pauseForReview())
+        XCTAssertNil(f.marker)
+        XCTAssertNil(f.controller.context)
+    }
+    func testPolicyPauseRefusesToAuthorizeAnEditWhenBothDurableWritesFail() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        f.store.failSave = true; f.failInvalidate = true
+        XCTAssertFalse(f.controller.pauseForReview())
+        XCTAssertNotNil(f.marker)
+        XCTAssertNil(f.controller.context)
+        XCTAssertNotEqual(try f.saved().pausedForReview, true)
+    }
+    func testAnUnreadableOldEnrollmentStillRequiresDurableRevocationBeforePolicyEdits() {
+        let f = CallConsentFixture(); defer { f.close() }
+        f.store.failLoad = true; f.failInvalidate = true
+        f.controller.restore()
+        XCTAssertFalse(f.controller.pauseForReview())
+        f.failInvalidate = false
+        XCTAssertTrue(f.controller.pauseForReview())
+        XCTAssertNil(f.marker)
     }
 
     func testNothingRegistersWithoutConsentOrInAnIneligibleBuild() throws {

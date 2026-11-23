@@ -7,12 +7,13 @@ from family_cards import parse, validate_public_key
 
 
 class ContactImport:
-    def __init__(self, history, blocks, own, changed, remember=None):
+    def __init__(self, history, blocks, own, changed, remember=None, before_change=None):
         self.history, self.blocks, self.own, self.changed = history, blocks, own, changed
         if remember is None:
             import RNS
             remember = lambda address, key:RNS.Identity.remember(None, bytes.fromhex(address), bytes.fromhex(key))
         self.remember = remember
+        self.before_change = before_change
         with history.db:
             history.db.execute('CREATE TABLE IF NOT EXISTS next_contact_import_keys (address TEXT PRIMARY KEY, public_key TEXT NOT NULL)')
             history.db.execute('CREATE TRIGGER IF NOT EXISTS next_remove_import_key AFTER DELETE ON contacts BEGIN DELETE FROM next_contact_import_keys WHERE address = OLD.lxmf_address; END')
@@ -81,6 +82,7 @@ class ContactImport:
                 name = self.history.contact_name(body['name'])
                 if value['key'] and self.history.db.execute('SELECT COUNT(*) FROM next_contact_import_keys').fetchone()[0] >= 10000:
                     raise ValueError('At most 10,000 contact public keys may be saved')
+                if self.before_change: self.before_change()
                 with self.history.db:
                     self.history.db.execute('INSERT INTO contacts(lxmf_address,name) VALUES (?,?)', (value['address'],name))
                     self.history.db.execute('DELETE FROM hidden_conversations WHERE peer = ?', (value['address'],))

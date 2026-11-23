@@ -531,3 +531,68 @@ def test_capture_status_uses_only_recent_audio_from_the_current_call():
             assert voice.snapshot()["capture_status"]==waiting
         finally:await voice.close();db.close()
     asyncio.run(run())
+
+
+def test_call_hint_lifecycle_runs_only_after_native_dial_acceptance_and_before_end():
+    async def run():
+        voice, native, db = fixture(); events = []
+        voice.on_call_start = lambda call: events.append(("start", call.id, call.phase))
+        voice.on_call_end = lambda call: events.append(("end", call.id, call.phase))
+        try:
+            await voice.configure(True)
+            native.allow = False
+            with pytest.raises(RuntimeError): await voice.dial("a" * 32)
+            assert events == []
+            native.allow = True
+            await voice.dial("a" * 32)
+            identity = voice.call.id
+            assert events == [("start", identity, "preparing")]
+            await voice.end(identity)
+            assert events[-1] == ("end", identity, "ending")
+        finally: await voice.close(); db.close()
+    asyncio.run(run())
+
+
+def test_optional_hint_failure_cannot_break_an_ordinary_call():
+    async def run():
+        voice, native, db = fixture()
+        def failed(_): raise RuntimeError("Private fixture only")
+        voice.on_call_start = voice.on_call_end = failed
+        try:
+            await voice.configure(True)
+            await voice.dial("a" * 32)
+            identity = voice.call.id
+            await voice.end(identity)
+            assert voice.call is None
+        finally: await voice.close(); db.close()
+    asyncio.run(run())
+
+
+def test_native_policy_pause_must_finish_before_any_policy_or_enabled_value_changes():
+    async def run():
+        voice, native, db = fixture()
+        attempts = []
+        def pause():
+            attempts.append(True)
+            raise ValueError("Consent could not be made durable")
+        try:
+            voice.before_policy_change = pause
+            with pytest.raises(ValueError): voice.set_call_policy({"do_not_disturb_enabled": True})
+            assert voice.call_policy["do_not_disturb_enabled"] is False
+            with pytest.raises(ValueError): await voice.configure(True)
+            assert voice.config.telephone_enabled.get() is False
+            assert attempts == [True, True]
+        finally: await voice.close(); db.close()
+    asyncio.run(run())
+
+
+def test_unchanged_call_permissions_do_not_pause_call_alerts():
+    async def run():
+        voice, native, db = fixture(); attempts = []
+        voice.before_policy_change = lambda: attempts.append(True)
+        try:
+            voice.set_call_policy({"do_not_disturb_enabled": False})
+            await voice.configure(False)
+            assert attempts == []
+        finally: await voice.close(); db.close()
+    asyncio.run(run())

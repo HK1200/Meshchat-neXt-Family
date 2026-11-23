@@ -96,6 +96,7 @@ cp "$probe/rnode_settings.py" "$family_ios/../app/src/main/python/family_radios.
 cp "$family_ios/../app/src/main/python/family_tcp.py" "$family_ios/../app/src/main/python/lxmf_reconnect.py" staged/
 test -s staged/lxmf_reconnect.py
 cp "$family_ios/../app/src/main/python/mailbox_push.py" staged/mailbox_push.py
+cp "$family_ios/../app/src/main/python/family_call_wake.py" "$probe/call_alerts.py" staged/
 cp "$probe/voice_codec_probe.py" staged/voice_codec_probe.py
 cp "$probe/voice_runtime.py" staged/voice_runtime.py
 cp "$probe/blocked_destinations.py" "$probe/block_runtime.py" "$probe/contact_import.py" staged/

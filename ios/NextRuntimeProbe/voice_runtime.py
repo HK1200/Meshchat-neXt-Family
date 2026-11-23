@@ -175,6 +175,9 @@ class ReticulumVoice:
         self.poller = None
         self.available = False
         self.on_settings = None
+        self.on_call_start = None
+        self.on_call_end = None
+        self.before_policy_change = None
         self.refresh_call_contacts()
         try:
             self.native(dict(op="open", session=self.session))
@@ -315,6 +318,8 @@ class ReticulumVoice:
         if not isinstance(blocked, list) or len(blocked) > 10000:
             raise ValueError("Use a list of blocked Reticulum addresses")
         blocked = sorted({address(value) for value in blocked})
+        changed = blocked != self.blocked_callers or any(self.call_policy[key] != value for key, value in payload.items() if key != "blocked_callers")
+        if changed and self.before_policy_change: self.before_policy_change()
         self.refresh_call_contacts()
         self.call_policy.update({key: value for key, value in payload.items() if key != "blocked_callers"})
         self.blocked_callers = blocked
@@ -323,6 +328,7 @@ class ReticulumVoice:
 
     async def configure(self, enabled):
         if type(enabled) is not bool: raise ValueError("Choose whether Reticulum calling is enabled")
+        if enabled != self.config.telephone_enabled.get() and self.before_policy_change: self.before_policy_change()
         self.config.telephone_enabled.value = enabled
         self.error = ""
         self.save()
@@ -357,6 +363,8 @@ class ReticulumVoice:
         except Exception:
             self.call = None
             raise
+        if self.on_call_start:
+            with contextlib.suppress(Exception): self.on_call_start(call)
         return self.snapshot()
 
     def transport_event(self, engine, event, identity):
@@ -471,6 +479,8 @@ class ReticulumVoice:
         if call is None: return
         self.ending = asyncio.current_task()
         call.phase = "ending"
+        if self.on_call_end:
+            with contextlib.suppress(Exception): self.on_call_end(call)
         self.client = None
         with self.pcm_lock:
             self.pcm_ready = False; self.pcm_call = ""; self.received.clear(); self.playing = False

@@ -22,6 +22,21 @@ final class CallWakeCancellationTests: XCTestCase {
     private func check(_ reply: [String: Any], wake: FamilyCallWake, audience: String = "private-calls", now: Int = 1000) throws -> Bool {
         NextCallWakeCancellation.verified(try JSONSerialization.data(withJSONObject: reply), wake: wake, audience: audience, now: now)
     }
+    func testPythonProviderCancellationVerifiesAgainstItsActualSealedWake() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "call-wake-fixture", withExtension: "json"))
+        let fixture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let vectors = try XCTUnwrap(fixture["vectors"] as? [String: Any])
+        let agreement = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: Data((0..<32).map(UInt8.init)))
+        let signing = try Curve25519.Signing.PrivateKey(rawRepresentation: Data((32..<64).map(UInt8.init)))
+        let publicKey = agreement.publicKey.rawRepresentation + signing.publicKey.rawRepresentation
+        let payload = try JSONSerialization.data(withJSONObject: XCTUnwrap(vectors["valid"]))
+        let wake = try FamilyCallWake.decode(payload, recipientPrivateKey: agreement.rawRepresentation,
+            recipientPublicKey: publicKey, audience: "private-calls",
+            approvedCallers: [try XCTUnwrap(fixture["caller"] as? String)], now: 1000)
+        let response = try JSONSerialization.data(withJSONObject: XCTUnwrap(fixture["cancelState"]))
+        XCTAssertTrue(NextCallWakeCancellation.verified(response, wake: wake, audience: "private-calls", now: 1000))
+    }
+
     func testOriginalCallerCanCancelOnlyItsPendingIntent() throws {
         let (wake, reply) = try sample()
         XCTAssertTrue(try check(reply, wake: wake))

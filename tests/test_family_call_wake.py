@@ -491,6 +491,8 @@ def test_native_fixture_is_reproducible_from_public_test_keys():
     assert fixture["recipientMessaging"] == destination_hash("lxmf.delivery", recipient.get_public_key())
     assert fixture["recipient"] == voice_hash(recipient.get_public_key())
     assert fixture["caller"] == voice_hash(caller.get_public_key())
+    assert fixture["cancelState"] == {"state": "cancelled", "hint": build_hint(
+        caller, fixture["recipient"], "private-calls", call_id="03" * 16, issued=1000, cancel=True)}
     for name, issued, cancel, forged in [
         ("valid", 1000, False, False),
         ("expired", 969, False, False),

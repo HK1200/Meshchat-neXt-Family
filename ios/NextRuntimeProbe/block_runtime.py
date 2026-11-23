@@ -5,9 +5,10 @@ from aiohttp import web
 
 
 class BlockRuntime:
-    def __init__(self, blocks, history, organization, revoke, changed):
+    def __init__(self, blocks, history, organization, revoke, changed, before_change=None):
         self.blocks, self.history, self.organization = blocks, history, organization
         self.revoke, self.changed = revoke, changed
+        self.before_change = before_change
 
     def register(self, router):
         router.add_get('/api/v1/blocked-destinations', self.api)
@@ -28,6 +29,8 @@ class BlockRuntime:
                 if not isinstance(body, dict) or set(body) != {'destination_hash'}:
                     raise ValueError('Choose the Reticulum destination to block')
                 keys = self.blocks.checked_aliases(body['destination_hash'])
+                # Make native consent durable before changing its backing policy.
+                if self.before_change: self.before_change()
                 # Revoke local sending consent before removing its contact.
                 await self.revoke(keys)
                 self.blocks.add(body['destination_hash'])
@@ -38,6 +41,7 @@ class BlockRuntime:
                     self.history.db.executemany('DELETE FROM contacts WHERE lxmf_address = ?', [(key,) for key in keys])
                     self.history.db.executemany('DELETE FROM destination_names WHERE address = ?', [(key,) for key in keys])
             else:
+                if self.before_change: self.before_change()
                 self.blocks.remove(request.match_info['peer'])
             await self.changed()
             return web.json_response({'message':'ok'})

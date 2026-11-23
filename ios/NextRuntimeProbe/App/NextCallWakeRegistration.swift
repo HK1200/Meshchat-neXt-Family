@@ -145,17 +145,24 @@ import Foundation
         pauseForReview()
     }
 
-    func pauseForReview() {
-        guard var saved = current, !saved.revoking else { return }
+    /// Return false if neither the Keychain nor the separate installation
+    /// marker can make this durable. Callers must not commit a permission edit
+    /// in that case: a later cold start could otherwise reuse stale consent.
+    @discardableResult func pauseForReview() -> Bool {
+        guard var saved = current else {
+            return !unreadable || (try? invalidateMarker()) != nil
+        }
         localEnabled = false; token = nil
-        saved.pausedForReview = true; current = saved
+        if !saved.revoking { saved.pausedForReview = true }
+        current = saved
         stopDevice(); consentChanged()
         var durable = true
         do { try persist(saved) }
         catch { durable = (try? invalidateMarker()) != nil }
-        status = durable ? "Call alerts paused. Review the allowed callers." :
+        status = durable ? (saved.revoking ? "Call alerts are off. Provider removal is pending." : "Call alerts paused. Review the allowed callers.") :
             "Call alerts are paused for this session. Retry to save that choice."
         retryAfter = .distantPast; synchronize()
+        return durable
     }
 
     func disable() {

@@ -50,5 +50,15 @@
     }
   },
   "recipientPublicKey": "8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f29acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7",
-  "recipientMessaging": "fae321c442e3c9bdcd7a3e79d850e03c"
+  "recipientMessaging": "fae321c442e3c9bdcd7a3e79d850e03c",
+  "cancelState": {
+    "state": "cancelled",
+    "hint": {
+      "recipient": "5e41bd9341efb57befe5b42d0d02a6ad",
+      "call": "03030303030303030303030303030303",
+      "sender": "79a631eede1bf9c98f12032cdeadd0e7a079398fc786b88cc846ec89af85a51a174553b456dddfc6908ecab1c101fe6ab21e2baa0617795b7d43a63482993fd5",
+      "issued": 1000,
+      "signature": "581f07f3f81041e31765fc45f84aa8fef7b1c23e9ed44f255f24ba09da8d7c91a9ab583fa4b974b9e866151cc086be807080f02f0bc328a89b5dae59aaa48306"
+    }
+  }
 }

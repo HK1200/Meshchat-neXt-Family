@@ -226,6 +226,8 @@ def run_native_policy_server(folder, ready, settings, pipe):
                     log.write(json.dumps(value) + "\n")
                 if value["op"] == "call_policy" and (folder / "reject-native-update").exists():
                     return {"ok": False}
+                if value["op"] == "call_policy_invalid" and (folder / "reject-native-before-change").exists():
+                    return {"ok": False}
             return {"ok": True, "events": []}
         return ReticulumVoice(*args, native=native)
     asyncio.run(serve(ready, frontend, settings, device=True, voice_factory=factory))
@@ -279,3 +281,44 @@ def test_rejected_native_update_pauses_alerts_and_leaves_saved_messaging_runtime
         assert status == 200 and config["config"]["do_not_disturb_enabled"] is True
         rejection.unlink()
         assert api(base, "config", body={"do_not_disturb_enabled": False}, token=token, method="PATCH")[0] == 200
+
+
+@pytest.mark.parametrize("operation", ["add", "delete", "import", "dnd", "enable", "block"])
+def test_permission_edits_cannot_commit_until_native_consent_is_durably_paused(tmp_path, operation):
+    import json
+    from contextlib import ExitStack
+    from test_next_ios_tcp_integration import api, backend, start, wait
+    import call_alerts
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"peers": [{"id": "off", "host": "127.0.0.1", "port": 9, "enabled": False}]}))
+    ready = tmp_path / "backend.url"
+    peer = RNS.Identity(); address = source(peer).hash.hex()
+    route = dict(provider="https://example.invalid", audience="private-calls", public_key=peer.get_public_key().hex())
+    with ExitStack() as stack:
+        start(stack, run_native_policy_server, tmp_path, ready, settings); wait(ready.exists)
+        base = backend(ready); token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "telephone/contacts", body={"name": "Existing approval", "lxmf_address": address}, token=token)[0] == 200
+        contact = api(base, "telephone/contacts")[1]["contacts"][0]
+        path = f"telephone/contacts/{contact['id']}/call-alert-route"
+        assert api(base, path, body={"route": route}, token=token)[0] == 200
+        original = api(base, "telephone/contacts")[1]["contacts"]
+        (tmp_path / "reject-native-before-change").touch()
+        if operation == "add":
+            result = api(base, "telephone/contacts", body={"name": "New approval", "lxmf_address": source(RNS.Identity()).hash.hex()}, token=token)
+        elif operation == "delete":
+            result = api(base, f"telephone/contacts/{contact['id']}", method="DELETE", token=token)
+        elif operation == "import":
+            other = RNS.Identity(); code = 'lxma://' + source(other).hash.hex() + ':' + other.get_public_key().hex()
+            result = api(base, "preview/contact-import/save", body={"code": code, "name": "New import"}, token=token)
+        elif operation == "dnd":
+            result = api(base, "config", method="PATCH", body={"do_not_disturb_enabled": True}, token=token)
+        elif operation == "enable":
+            result = api(base, "preview/reticulum-calling", body={"enabled": True}, token=token)
+        else:
+            result = api(base, "blocked-destinations", body={"destination_hash": address}, token=token)
+        assert result[0] == 503, result
+        assert api(base, "telephone/contacts")[1]["contacts"] == original
+        config = api(base, "config")[1]["config"]
+        assert config["do_not_disturb_enabled"] is False and config["telephone_enabled"] is False
+        assert api(base, "blocked-destinations")[1]["blocked_destinations"] == []
+        assert call_alerts.route_for(tmp_path, address) is not None
