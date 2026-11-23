@@ -8,8 +8,8 @@ import hashlib
 from pathlib import Path
 
 CHUNKS = {
-    "app-XqUPnGAC.js": "f51574645745492139b1362ee2f4e8efc17bb201d98d358a53d1a20fa89f8883",
-    "CallPage-BYV_elZB.js": "cf64ab7e89407e0518f93eac3d11d20f0233b4b77e320888be720233548b20ab",
+    "app-Cw2_MGRd.js": "2f43b757ea89bd8383b0d257dea8b5ce1650bad26dbcc61d1156ab9d3c2f4b08",
+    "CallPage-CVDUwFqv.js": "6e75ce07c379a8814e0796cf1e56fef2927844808f1e953c3f5227caffc5799e",
 }
 
 

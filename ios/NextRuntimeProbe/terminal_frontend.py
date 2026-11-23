@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/RNSHManagerPage-lLPkRtCV.js'
-SHA256 = '7bf77a34eae1fb0b208d14ec87a036f211c1d6039115bb4f6ace0ba7d223c200'
+CHUNK = 'assets/RNSHManagerPage-CE9wwp8c.js'
+SHA256 = 'dd199e9b61bf4224b349d2da8833b603d2d84f48b4d682e069dcd9bcf4f97dd2'
 BEFORE = 'return C(),F("div",L,['
 NOTICE = ('Connect to remote RNSh hosts using this app’s identity and interfaces. '
           'Sessions run while neXt is active. Hosting a local shell requires desktop neXt. '

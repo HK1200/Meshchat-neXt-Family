@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/RNCPPage-CL36DXE1.js'
-SHA256 = '7203de41da753b92f91de15dc69d9a1aa8302a284f358b8c5f1568153049a502'
+CHUNK = 'assets/RNCPPage-CdpkWydr.js'
+SHA256 = '7e4c7a429bc99e56e922046d100db2e8a836a874debef20ad64a00f63cf521ad'
 UPLOAD_BEFORE = 'onWebSendFilePicked(e){const t=e.target.files?.[0];e.target.value="",t&&(this.sendFilePath="",s.alert(this.$t("rncp.web_path_hint")))}'
 UPLOAD_AFTER = '''async onWebSendFilePicked(e){const t=e.target.files?.[0];e.target.value="";if(!t)return;this.sendFilePath="";this.sendInProgress=true;try{const f=new FormData();f.append("file",t,t.name);const r=await window.api.post("/api/v1/preview/rncp/upload",f,{headers:{"Content-Type":undefined},timeout:0});if(typeof r.data.file_path!=="string")throw new Error("Could not import the selected file.");this.sendFilePath=r.data.file_path}catch(x){await s.alert(x.response?.data?.message||x.message||"Could not import the selected file.")}finally{this.sendInProgress=false}}'''
 FILES_BEFORE = 'async openReceiveDirectory(){this.receiveDirectory||await this.syncListenerStatusFromServer(),this.receiveDirectory&&(await l.openDirectoryOrCopy(this.receiveDirectory,()=>c.success(this.$t("common.copied")))||s.alert(this.receiveDirectory))}'

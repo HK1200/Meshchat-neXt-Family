@@ -9,7 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('terminal_frontend', ROOT / 'ios/NextRuntimeProbe/terminal_frontend.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-SOURCE = (ROOT / 'tests/fixtures/next-026-rnsh-page.js.txt').read_text()
+SOURCE = (ROOT / 'tests/fixtures/next-027-rnsh-page.js.txt').read_text()
 
 
 def test_exact_released_terminal_page_keeps_controls_with_visible_mobile_guidance(tmp_path):

@@ -22,7 +22,7 @@ targets:
       path: ProbeInfo.plist
       properties:
         CFBundleDisplayName: Meshchat neXt
-        CFBundleShortVersionString: "0.1.26"
+        CFBundleShortVersionString: "0.1.27"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         NextPushEnvironment: "$(NEXT_APNS_ENVIRONMENT)"
