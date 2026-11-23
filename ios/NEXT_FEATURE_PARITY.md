@@ -50,20 +50,33 @@ desktop services are still not qualified by these results.
 This checkpoint is dated November 23, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
-The next call-wake development step now has a native admission router: it
-validates the provider's encrypted, signed payload, persists a bounded replay
-journal in the app's own Keychain, rejects expired or revoked callers, and
-matches only that approved voice identity to the pending CallKit UUID. All
-140 native checks passed on each simulator in run `45175698519` (UI was
-intentionally excluded). This does not register PushKit or deploy a provider;
-explicit enrollment, sender integration, cancellation lookup and genuine APNs
-and physical-device qualification remain required before suspended call alerts
-can be described as reliable. The shared-runtime coordinator now also offers a
-15-second call-wake wait that releases a cancelled or timed-out caller without
-cancelling or reinitializing CPython. Five added native checks cover pending, ready, failed and pre-cancelled
-startup; all 145 native cases passed on each simulator in run `45177832745`
-(UI was intentionally excluded). This method is a dispatcher prerequisite;
-it does not register PushKit or make a suspended-call delivery claim.
+## Current call-alert integration
+
+Development source now wires the native PushKit registry, explicit caller
+selection, private enrollment, CallKit report/handoff, replay protection,
+identity checks and signed cancellation reconciliation. The sending side is
+also integrated in neXt's Android/desktop backend and iOS runtime: a saved,
+identity-bound recipient route sends a signed wake intent before path lookup
+and an ordered cancellation when the call ends. Provider failure does not
+prevent an ordinary Reticulum call.
+
+A private HTTPS test has exercised the real shared sender through the actual
+provider, encrypted callback and native-compatible payload validation. It also
+checks cancellation after a lost HTTP acknowledgment. This proves protocol
+interoperability with the mock delivery callback, not delivery through Apple.
+The full current-source Xcode/UI qualification remains a release gate.
+
+Personal-signed previews keep Apple push enrollment disabled. Neither installed
+iPad app has qualified suspended internet call delivery. Real APNs credentials,
+a deployed provider, appropriate signing and locked-device tests, including an
+iPhone, are still required. SIP requires its own compatible provider wake path.
+Family currently has mailbox alerts; its separate native call-alert owner and
+guardian integration remain unfinished. The new Family cold-start approval
+reader is a prerequisite only and does not enable a provider or change consent.
+
+Earlier sections below record historical implementation checkpoints; their
+“not yet integrated” statements describe those earlier sources. This section
+and the installed-build baseline above state the current qualification level.
 
 ## Features and remaining work
 

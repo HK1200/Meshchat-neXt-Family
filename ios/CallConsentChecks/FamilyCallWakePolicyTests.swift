@@ -147,4 +147,58 @@ final class FamilyCallWakePolicyTests: XCTestCase {
         try write(Data("{".utf8), "state.json", at: root)
         XCTAssertThrowsError(try FamilyCallWakePolicy.load(support: root))
     }
+    private func fixturePayload(_ vector: String = "valid") throws -> Data {
+        let path = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "call-wake-fixture", withExtension: "json"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any])
+        let vectors = try XCTUnwrap(json["vectors"] as? [String: Any])
+        return try JSONSerialization.data(withJSONObject: XCTUnwrap(vectors[vector]))
+    }
+    func testRealPythonProviderIntentUsesOnlyTheCurrentSelectedGuardianContact() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let (state, voice) = try sample(); let allowed = try approval(state, [voice])
+        try write(bytes(state), "state.json", at: root); try write(own, "identity", at: root)
+        let admitted = try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "private-calls", selected: [voice],
+            approvalDigest: allowed.digest, now: 1000)
+        XCTAssertEqual(admitted.wake.callerVoice, voice)
+        XCTAssertEqual(admitted.name, "Approved radio")
+        XCTAssertEqual(admitted.approvalDigest, allowed.digest)
+    }
+    func testColdSavedConsentCannotOverrideARevokedOrRenamedContact() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let (state, voice) = try sample(); let allowed = try approval(state, [voice])
+        try write(own, "identity", at: root)
+        var changed = state
+        var rows = try XCTUnwrap(state["contacts"] as? [[String: Any]])
+        rows[0]["name"] = "Changed by guardian"; changed["contacts"] = rows
+        try write(bytes(changed), "state.json", at: root)
+        XCTAssertThrowsError(try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "private-calls", selected: [voice],
+            approvalDigest: allowed.digest, now: 1000))
+        changed["contacts"] = []; try write(bytes(changed), "state.json", at: root)
+        XCTAssertThrowsError(try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "private-calls", selected: [voice],
+            approvalDigest: allowed.digest, now: 1000))
+    }
+    func testAdmissionRejectsExpiredAndWrongAudienceProviderIntents() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let (state, voice) = try sample(); let allowed = try approval(state, [voice])
+        try write(bytes(state), "state.json", at: root); try write(own, "identity", at: root)
+        XCTAssertThrowsError(try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "other-provider", selected: [voice],
+            approvalDigest: allowed.digest, now: 1000))
+        XCTAssertThrowsError(try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "private-calls", selected: [voice],
+            approvalDigest: allowed.digest, now: 1100))
+    }
+    func testGuardianDisablingVoiceRejectsAnOtherwiseValidProviderIntent() throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        var (state, voice) = try sample(); let allowed = try approval(state, [voice])
+        state["voiceEnabled"] = false
+        try write(bytes(state), "state.json", at: root); try write(own, "identity", at: root)
+        XCTAssertThrowsError(try FamilyCallWakePolicy.admit(fixturePayload(), support: root,
+            recipientPublicKey: publicKey(own), audience: "private-calls", selected: [voice],
+            approvalDigest: allowed.digest, now: 1000))
+    }
+
 }

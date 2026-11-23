@@ -85,12 +85,19 @@ and define their retention before deploying the service.
 ## Private incoming-call provider foundation
 
 `call_service.py` is a separate, opt-in VoIP provider for development. It does
-not enable calls in existing app builds. A shared native decoder verifies the encrypted payload, address binding, caller
-approval and signature; deterministic provider/native interoperability tests are
-prepared for Xcode. Native PushKit registration, immediate CallKit reporting and
-transport handoff still need integration and live tests.
-Do not deploy it as a working background-call feature. A free personal-signing
-profile cannot qualify live Apple push delivery; enrollment remains on hold.
+not enable calls in existing installed previews. Development neXt source now
+connects its native decoder, separate PushKit registry, explicit enrollment,
+CallKit reporting/handoff and authenticated cancellation checks. Its Android,
+desktop and iOS senders use individually saved recipient routes. A private
+HTTPS integration test verifies the actual sender and provider with an encrypted
+mock delivery callback, including cancellation after a lost acknowledgment.
+
+Full current-source app qualification, a deployed APNs provider and real
+locked-device tests remain required. Family's call-alert owner and guardian
+integration remain unfinished; its mailbox enrollment does not grant call
+permission. Do not deploy this as a proven background-call feature. A free
+personal-signing profile cannot qualify live Apple push delivery; Apple
+enrollment remains on hold.
 
 The service accepts genuine signed Reticulum call intents only, not mailbox
 messages or location updates. A registration binds the recipient's public key

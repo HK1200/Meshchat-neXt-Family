@@ -15,6 +15,11 @@ struct FamilyCallWakePolicy {
         let callers: [Caller]
         let digest: String
     }
+    struct Intent: Equatable {
+        let wake: FamilyCallWake
+        let name: String
+        let approvalDigest: String
+    }
     private struct State: Decodable {
         struct Contact: Decodable {
             let name: String
@@ -57,6 +62,25 @@ struct FamilyCallWakePolicy {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let bytes = try encoder.encode(Digest(recipient: recipientPublicKey, callers: callers))
         return Approval(callers: callers, digest: Self.hex(Data(SHA256.hash(data: bytes))))
+    }
+
+    /// Native admission for a previously enrolled selection. The original
+    /// consent digest must still match disk before and after decryption. No
+    /// private key is retained in the result or passed to a provider.
+    static func admit(_ payload: Data, support: URL, recipientPublicKey: Data,
+                      audience: String, selected: Set<String>, approvalDigest: String,
+                      now: Int) throws -> Intent {
+        guard payload.count <= 5120, !selected.isEmpty, selected.count <= 256,
+              approvalDigest.range(of: #"\A[a-f0-9]{64}\z"#, options: .regularExpression) != nil else { throw Invalid.approval }
+        let before = try load(support: support).approval(selected: selected, recipientPublicKey: recipientPublicKey)
+        guard before.digest == approvalDigest else { throw Invalid.approval }
+        let privateKey = try identity(support: support, expectedPublicKey: recipientPublicKey)
+        let wake = try FamilyCallWake.decode(payload, recipientPrivateKey: privateKey,
+            recipientPublicKey: recipientPublicKey, audience: audience,
+            approvedCallers: Set(before.callers.map(\.voiceAddress)), now: now)
+        guard let caller = before.callers.first(where: { $0.voiceAddress == wake.callerVoice }),
+              try load(support: support).approval(selected: selected, recipientPublicKey: recipientPublicKey) == before else { throw Invalid.approval }
+        return Intent(wake: wake, name: caller.name, approvalDigest: before.digest)
     }
 
     static func load(support: URL) throws -> Self {
