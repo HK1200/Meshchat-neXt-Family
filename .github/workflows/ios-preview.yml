@@ -3,6 +3,11 @@ name: Family iOS simulator
 on:
   workflow_dispatch:
     inputs:
+      macos_runner:
+        description: Use Intel when Apple's ARM hosted runners cannot be acquired
+        type: choice
+        options: [macos-26, macos-26-intel]
+        default: macos-26
       sip_signaling:
         description: Run only the private native SIP registration and call-signaling tests
         type: boolean
@@ -146,7 +151,7 @@ jobs:
   next-runtime-probe:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.next_runtime_probe || inputs.next_unit_tests) }}
     name: ${{ matrix.device }} neXt native and Messages
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     # Full native tests, seven cold-start UI cases and retained diagnostics.
     timeout-minutes: 50
     strategy:
@@ -175,7 +180,7 @@ jobs:
 
   next-device:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_device }}
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -194,7 +199,7 @@ jobs:
 
   next-appstore-archive:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_appstore_archive }}
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -218,7 +223,7 @@ jobs:
 
   store-screenshots:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.store_screenshots }}
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -245,7 +250,7 @@ jobs:
 
   device-archive:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.device_archive && !inputs.testflight }}
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -266,7 +271,7 @@ jobs:
 
   appstore-archive:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.appstore_archive && !inputs.testflight }}
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -297,7 +302,7 @@ jobs:
   internal-testflight:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight && github.ref == 'refs/heads/feature/family-ios' }}
     environment: ios-beta
-    runs-on: macos-26
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
