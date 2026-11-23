@@ -1,11 +1,12 @@
 import XCTest
 import Darwin
+@testable import NextRuntimeProbe
 
 final class VoiceCodecTests: XCTestCase {
     func testBundledLXSTEncodesAndDecodesAllMobileVoiceProfiles() async throws {
         // This is an explicit bundled-runtime integration test. Model-test
         // hosts intentionally do not start CPython as a view side effect.
-        _ = try await NextRuntimeLauncher.shared.session(configuration: nil)
+        _ = try await NextRuntimeProbe.NextRuntimeLauncher.shared.session(configuration: nil)
         struct Check: Decodable {
             let codec: String
             let setting: Int

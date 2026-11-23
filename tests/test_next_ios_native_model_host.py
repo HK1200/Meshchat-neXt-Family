@@ -83,7 +83,8 @@ def test_integration_keeps_native_testroot_beside_built_products():
 
 def test_codec_integration_explicitly_starts_the_shared_runtime():
     source=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/Tests/VoiceCodecTests.swift').read_text()
-    assert 'await NextRuntimeLauncher.shared.session(configuration: nil)' in source
+    assert '@testable import NextRuntimeProbe' in source
+    assert 'await NextRuntimeProbe.NextRuntimeLauncher.shared.session(configuration: nil)' in source
     assert source.index('session(configuration: nil)') < source.index('next_probe_check_voice_codecs()')
     assert 'XCTAssertEqual(report.checks.count, 10)' in source
 
