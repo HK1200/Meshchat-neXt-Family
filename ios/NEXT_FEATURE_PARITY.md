@@ -622,3 +622,25 @@ and no installed personal preview registers APNs through them. Actual Apple
 push delivery and a locked physical iPhone remain separate release gates.
 The workflow offers GitHub’s `macos-26-intel` runner for capacity recovery while
 retaining the default Arm runner and all test assertions.
+
+
+### Nomad actionable-link accessibility repair
+
+The retained iPad recording and hierarchy showed a plain screen-reader span
+positioned after its visible link text. WebKit used that clipped child as the
+accessible link location. This could make a visible file link untappable
+through accessibility, especially in a narrow browser panel.
+
+The shared parser repair puts that same plain name on the link itself and
+hides the redundant clipped child from accessibility. Explicit names and label
+references, visible font glyphs, destinations, roles and keyboard activation
+remain intact. The iOS adapter verifies the pinned parser checksum before
+carrying the same helper into the released frontend. The opaque renderer's
+sandbox, CSP and private API boundaries are unchanged.
+
+Three new frontend regressions failed before the repair. All 151 related
+frontend tests passed afterward, and real local WebKit loaded the signed page,
+kept its link name, received the exact 36-byte file, and passed a warm reload.
+The iOS UI test again requires normal link hittability and a standard tap,
+followed by the native filename and sharing controls. Its simulator/device
+qualification remains pending; no failed candidate is installed or released.

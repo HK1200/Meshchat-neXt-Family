@@ -80,6 +80,7 @@ python3 "$probe/rncp_frontend.py" staged/frontend
 python3 "$probe/terminal_frontend.py" staged/frontend
 node --test "$probe/test-native-archive-export.mjs"
 python3 "$probe/nomad_frontend.py" staged/frontend
+python3 "$probe/nomad_accessibility.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.27/meshchat_next-0.1.27-py3-none-any.whl \
     --output next-backend.whl

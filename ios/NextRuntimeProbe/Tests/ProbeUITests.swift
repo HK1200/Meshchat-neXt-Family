@@ -99,17 +99,9 @@ final class ProbeUITests: XCTestCase {
         let download = web.links["Download Nomad sample"].firstMatch
         XCTAssertTrue(download.waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(download.isHittable, app.debugDescription)
-        // On iOS 26.5, the opaque frame's link AX rect is shifted by its
-        // text width. The retained recording shows the visible fixture link
-        // at the leading edge while its reported centre misses the text.
-        // Use a real touch on this known left-aligned fixture line; retain
-        // every page, link, native export, filename and share assertion.
-        let document = web.otherElements["document"].firstMatch
-        XCTAssertTrue(document.waitForExistence(timeout: 10), app.debugDescription)
-        let y = download.frame.midY - document.frame.minY
-        XCTAssertGreaterThan(y, 0)
-        XCTAssertLessThan(y, document.frame.height)
-        document.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 12, dy: y)).tap()
+        // The accessible name belongs to the link itself. Keep the real
+        // hittability check and standard tap; never bypass a broken hit area.
+        download.tap()
         let exported = app.staticTexts["export-attachment-name"]
         XCTAssertTrue(exported.waitForExistence(timeout: 60), app.debugDescription)
         XCTAssertEqual(exported.label, "nomad-test.txt")
