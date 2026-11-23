@@ -428,11 +428,15 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(button.exists)
         button.tap()
         let web = app.webViews.firstMatch
-        XCTAssertTrue(web.staticTexts["MeshCore settings"].waitForExistence(timeout: 20), app.debugDescription)
+        // This native route starts a fresh WebKit document. Keep the actual
+        // MeshCore heading assertion, with the same bounded startup allowance
+        // as the initial interface instead of treating a cold load as a tap.
+        XCTAssertTrue(web.staticTexts["MeshCore settings"].waitForExistence(timeout: 75), app.debugDescription)
         XCTAssertTrue(web.staticTexts["Disconnected"].waitForExistence(timeout: 10), app.debugDescription)
         // Viewing an unconfigured radio must not request Bluetooth or transmit.
         XCTAssertFalse(app.alerts.firstMatch.exists, app.debugDescription)
         button.tap()
+        requireWebInterfaceReady(app)
         XCTAssertTrue(web.textViews.firstMatch.waitForExistence(timeout: 20), app.debugDescription)
     }
 
@@ -794,7 +798,9 @@ final class ProbeUITests: XCTestCase {
         let ready = NSPredicate(format: "exists == true AND enabled == true AND hittable == true")
         expectation(for: ready, evaluatedWith: done)
         waitForExpectations(timeout: 20)
-        done.tap()
+        // The toolbar can finish its sheet transition after becoming hittable.
+        // Settle its frame and send exactly one tap; never retry dismissal.
+        tapSettledButton(done, in: app, app: app)
         XCTAssertTrue(app.navigationBars["Location sharing"].waitForNonExistence(timeout: 20), app.debugDescription)
         XCTAssertTrue(app.collectionViews["next-location-form"].waitForNonExistence(timeout: 5), app.debugDescription)
     }
