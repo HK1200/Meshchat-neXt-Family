@@ -85,6 +85,7 @@ targets:
       - path: App/NextExternalLinks.swift
       - path: App/NextModalPage.swift
       - path: App/NextWebLoadState.swift
+      - path: App/NextRuntimeStartup.swift
       - path: App/NextHTTP.swift
       - path: App/NextSIPNetwork.swift
       - path: App/NextSIPNativeDriver.swift

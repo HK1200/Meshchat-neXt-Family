@@ -479,3 +479,20 @@ and both unsigned archives. The actual iPad's build 389.1 passed the twelve
 private outage checks described above, preserving the original packet hashes
 and restoring its saved contacts and peers. Location/privacy checks also
 passed; this is not a claim of suspended delivery or public-peer availability.
+
+
+## One runtime for the screen and call wakeups
+
+Development source extracts neXt's actual native runtime startup into a
+process-wide coordinator. Concurrent callers share the same pending startup,
+loopback origin and identity. Leaving a screen does not cancel initialization,
+and a failed initialization cannot re-enter partially initialized CPython.
+Peer changes continue through the running settings API rather than replacing
+configuration from a second caller's snapshot. The native C entry also has
+a process-lifetime atomic guard against duplicate Python initialization.
+
+The host regression races 32 threads against the production C guard and checks
+a negative control. Four native tests cover concurrent callers, retained
+sessions, caller cancellation and retained failures. Native Xcode verification
+is pending. This is a prerequisite for call wakeups, not PushKit registration
+or a claim that suspended calls can already ring.

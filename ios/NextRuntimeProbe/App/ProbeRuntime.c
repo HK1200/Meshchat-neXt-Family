@@ -1,3 +1,4 @@
+#include "NextRuntimeStartGuard.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python/Python.h>
 #include "ProbeRuntime.h"
@@ -254,7 +255,10 @@ static PyStatus append_bundle_path(PyConfig *config, const char *home, const cha
     return status;
 }
 
+static NextRuntimeStartGuard runtime_start_guard = NEXT_RUNTIME_START_GUARD_INIT;
+
 void next_probe_run(const char *home, const char *modules, const char *ready_file) {
+    if (!next_runtime_claim_start(&runtime_start_guard)) return;
     if (!next_prepare_process_signals()) {
         fprintf(stderr, "Could not configure safe TCP write handling\n");
         return;
