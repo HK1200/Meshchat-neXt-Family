@@ -15,10 +15,11 @@ def verify(text, control, expected, exit_code):
     suites = re.findall(r'^\[suite\]\s+finish\s+PreviewChecks\s+(.+)$', text, re.M)
     if len(suites) != 1:
         raise ValueError('A single completed device suite is required')
-    counts = {key: int(value) for key, value in re.findall(r'\b(run|fail|skip|exp_fail|unc)=(\d+)\b', suites[0])}
-    if counts != dict(run=len(expected), fail=0, skip=0, exp_fail=0, unc=0):
+    fields = re.findall(r'\b(run|fail|une|skip|exp_fail|unc)=(\d+)\b', suites[0])
+    counts = {key: int(value) for key, value in fields}
+    if len(fields) != 6 or counts != dict(run=len(expected), fail=0, une=0, skip=0, exp_fail=0, unc=0):
         raise ValueError('The completed device suite must contain no missing, skipped or failed cases')
-    if not re.search(r'\[IDE\]\s+didFinishExecutingTestPlan\b', control):
+    if not re.search(r'^\[plan\] finish\s*$', text, re.M) or not re.search(r'\[IDE\]\s+didFinishExecutingTestPlan\b', control):
         raise ValueError('The paired test service did not confirm plan completion')
     return dict(passed=True, source_cases_verified=len(expected), passed_test_count=len(cases),
                 actual_device_results=True, regular_family_targeted=False)
