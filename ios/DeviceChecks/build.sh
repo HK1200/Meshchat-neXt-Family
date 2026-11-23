@@ -20,6 +20,16 @@ for name in ('reticulum', 'identity', 'next-runtime-info.json', 'sip-account.jso
     assert not list(root.rglob(name)), 'Unexpected private runtime input in runner'
 PY
 mkdir -p Package/Payload
-cp -R "$runner" Package/Payload/
+# Xcode can place debug-symbol companions beside the test plug-in. Those
+# are retained in DerivedData for diagnostics, not shipped as app code.
+python3 - "$runner" <<'PYTHON'
+import shutil, sys
+from pathlib import Path
+source = Path(sys.argv[1])
+target = Path("Package/Payload") / source.name
+shutil.copytree(source, target, symlinks=True, ignore=shutil.ignore_patterns("*.dSYM"))
+assert not list(target.rglob("*.dSYM")), "Debug symbols must not be embedded in the device IPA"
+assert (target / "PlugIns/NextDeviceChecks.xctest/NextDeviceChecks").is_file()
+PYTHON
 (cd Package && zip -qry ../neXt-Device-Checks-unsigned.ipa Payload)
 shasum -a 256 neXt-Device-Checks-unsigned.ipa > neXt-Device-Checks-unsigned.ipa.sha256
