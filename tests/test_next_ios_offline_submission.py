@@ -7,15 +7,22 @@ import socket
 import sqlite3
 import time
 
+import pytest
+
 from next_gated_tcp import GatedProxy
 from test_next_ios_tcp_integration import api, backend, run_hub, run_server, start, wait
 
 
-def test_known_contact_message_is_saved_while_tcp_is_down_then_delivered_once(tmp_path):
+def run_released_peer(folder, ports, pipe):
+    run_hub(folder, ports, pipe, released_recovery=True)
+
+
+@pytest.mark.parametrize('released_peer', [False, True], ids=['standard-lxmf', 'released-next'])
+def test_known_contact_message_is_saved_while_tcp_is_down_then_delivered_once(tmp_path, released_peer):
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0)); target = listener.getsockname()[1]
     with ExitStack() as stack:
-        _, hub = start(stack, run_hub, tmp_path/'receiver', [target])
+        _, hub = start(stack, run_released_peer if released_peer else run_hub, tmp_path/'receiver', [target])
         assert hub.poll(10); address = hub.recv()
         proxy = GatedProxy(0, target).start()
         stack.callback(lambda: proxy.close() if proxy.thread.is_alive() else None)
@@ -35,39 +42,45 @@ def test_known_contact_message_is_saved_while_tcp_is_down_then_delivered_once(tm
                 hub.send({'announce': True}); last_request = time.monotonic()
             return any(x['destination_hash']==address for x in api(base, 'announces')[1]['announces'])
         wait(announced)
-        warmup = dict(lxmf_message=dict(destination_hash=address, content='Private warmup'))
-        assert api(base, 'lxmf-messages/send', body=warmup, token=token)[0] == 200
-        wait(lambda: any(x['content']=='Echo: Private warmup' for x in
-             api(base, 'lxmf-messages/conversation/'+address)[1]['lxmf_messages']))
-        proxy.close()
-        wait(lambda: not api(base, 'preview/reticulum-connections')[1]['peers'][0]['online'])
-        content = 'Queued before path recovery: Привет 🌲'
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            submitted = pool.submit(api, base, 'lxmf-messages/send',
-                body=dict(lxmf_message=dict(destination_hash=address, content=content)), token=token)
-            wait(submitted.done, timeout=3)
-            status, response = submitted.result()
-        assert status == 200, response
-        saved = response['lxmf_message']; assert saved['state']=='sending'
-        database = folder/('messages-'+own+'.sqlite3')
-        with sqlite3.connect(database) as db:
-            assert db.execute('SELECT state FROM messages WHERE hash=?', (saved['hash'],)).fetchone()==('sending',)
-            assert db.execute('SELECT COUNT(*) FROM next_pending_messages WHERE hash=?', (saved['hash'],)).fetchone()==(1,)
-        proxy = GatedProxy(proxy.port, target).start()
-        wait(lambda: api(base, 'preview/reticulum-connections')[1]['peers'][0]['online'])
-        # The standard transport requests the route. Do not edit the peer or
-        # manually submit the saved message again after reconnection.
-        def completed():
+        # A raw SDK counterpart tests first-link interoperability. Repeated
+        # cached-link outages use the actual released receiver's recovery.
+        if released_peer:
+            warmup = dict(lxmf_message=dict(destination_hash=address, content='Private warmup'))
+            assert api(base, 'lxmf-messages/send', body=warmup, token=token)[0] == 200
+            wait(lambda: any(x['content']=='Echo: Private warmup' for x in
+                 api(base, 'lxmf-messages/conversation/'+address)[1]['lxmf_messages']))
+        hashes = []
+        for cycle in range(3 if released_peer else 1):
+            proxy.close()
+            wait(lambda: not api(base, 'preview/reticulum-connections')[1]['peers'][0]['online'])
+            content = 'Queued before path recovery '+str(cycle)+': Привет 🌲'
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                submitted = pool.submit(api, base, 'lxmf-messages/send',
+                    body=dict(lxmf_message=dict(destination_hash=address, content=content)), token=token)
+                wait(submitted.done, timeout=3)
+                status, response = submitted.result()
+            assert status == 200, response
+            saved = response['lxmf_message']; assert saved['state']=='sending'
+            database = folder/('messages-'+own+'.sqlite3')
+            with sqlite3.connect(database) as db:
+                assert db.execute('SELECT state FROM messages WHERE hash=?', (saved['hash'],)).fetchone()==('sending',)
+                assert db.execute('SELECT COUNT(*) FROM next_pending_messages WHERE hash=?', (saved['hash'],)).fetchone()==(1,)
+            proxy = GatedProxy(proxy.port, target).start()
+            wait(lambda: api(base, 'preview/reticulum-connections')[1]['peers'][0]['online'])
+            # The standard transport requests the route. Do not edit the peer or
+            # manually submit the saved message again after reconnection.
+            def completed():
+                rows = api(base, 'lxmf-messages/conversation/'+address)[1]['lxmf_messages']
+                return (any(x['hash']==saved['hash'] and x['state']=='delivered' for x in rows)
+                    and any(x['content']=='Echo: '+content and not x['is_outbound'] for x in rows))
+            wait(completed, timeout=90)
             rows = api(base, 'lxmf-messages/conversation/'+address)[1]['lxmf_messages']
-            return (any(x['hash']==saved['hash'] and x['state']=='delivered' for x in rows)
-                and any(x['content']=='Echo: '+content and not x['is_outbound'] for x in rows))
-        wait(completed, timeout=90)
-        rows = api(base, 'lxmf-messages/conversation/'+address)[1]['lxmf_messages']
-        assert sum(x['hash']==saved['hash'] for x in rows)==1
-        assert sum(x['content']=='Echo: '+content for x in rows)==1
-        with sqlite3.connect(database) as db:
-            assert db.execute('SELECT COUNT(*) FROM next_pending_messages').fetchone()==(0,)
+            assert sum(x['hash']==saved['hash'] for x in rows)==1
+            assert sum(x['content']=='Echo: '+content for x in rows)==1
+            with sqlite3.connect(database) as db:
+                assert db.execute('SELECT COUNT(*) FROM next_pending_messages').fetchone()==(0,)
+            hashes.append(saved['hash'])
         (tmp_path/'proof.json').write_text(json.dumps(dict(
             known_identity=True, saved_before_route=True, original_hash=saved['hash'],
             delivered_once=True, signed_echo=True, private_loopback_only=True,
-            actual_ipad=False), indent=2)+'\n')
+            actual_ipad=False, outages=len(hashes), original_hashes=hashes, peer_uses_released_recovery=released_peer), indent=2)+'\n')

@@ -7,35 +7,46 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The latest fully verified separate iPad build is **384.1**, exact source
-`9e81f454121a34ddb35866a491b1208d68e3023b`. It pins the public **0.1.27**
-backend and frontend, including the segmented-transfer repairs and explicit
-received-file removal. GitHub run `45120353574` passed all **111 required
-checks per simulator** (105 native and six UI cases) and both unsigned archives.
-The iPhone needed one unchanged failed-only retry after its deletion test's Send
-button query timed out; its original result and recording are retained. This
-is a successful retry, not evidence that the initial failure never happened.
+The latest fully verified separate iPad build is **389.1**, exact source
+`852b6f440025b721500b7ea3047affbbab523552`, pinned to public **0.1.27**.
+GitHub run `45137171591` passed all **111 required checks per simulator**
+(105 native and six UI cases) on their first attempts, plus both unsigned
+archives. The earlier compact-header candidate's iPhone contact-QR navigation
+failure was retained and that package was never installed. The same QR flow
+passed in the final both-device run without weakening its assertions.
 
-The same-key physical upgrade from 383.1 preserved all **2,053 current
+The same-key physical upgrade from 384.1 preserved all **1,121 current
 non-cache support files**, twelve messages, two contacts, identity, native
-preferences and four peers before first launch. File counts reflect the files
-present at that upgrade, not expired runtime caches from earlier builds.
+preferences and four peers before first launch. Counts reflect the files
+present at this upgrade, not expired runtime caches from earlier builds.
 
 On the actual iPad, an original signed message with a **75,000-byte attachment**
 and photo survived a distinct process restart and arrived once with exact bytes.
 Standard RNCP send, fetch and approved reverse reception passed with **2 MiB**
 files and byte-identical downloads. Explicit removal affected only the synthetic
-received files. Contacts and peers were restored. These were authenticated
-API/backend checks, not physical picker or share-sheet gestures. A screenshot
-confirmed the ordinary conversation and composer rendered after the tests.
+received files. A clean private TCP test then queued messages during **twelve
+connection outages**: every original identifier was delivered once, every signed
+echo returned, and no message was manually submitted again. The counterpart used
+the byte-verified recovery already in public neXt 0.1.27 from startup.
+
+An initial bare-SDK receiver stalled in its own known Sending/no-destination
+state despite an active link. Receiver-side tracing captured that state;
+enabling the existing released recovery only in that disposable receiver
+unblocked its reply without changing the iPad. That diagnostic run and its
+original failures are retained separately from the clean twelve-outage result.
+The permanent regression now tests a raw-SDK first-link exchange and three
+repeated outages with the released counterpart's recovery; ordinary protocol
+interoperability coverage remains in place.
+
+Original contacts and peers were restored. A screenshot confirmed the ordinary
+conversation, composer and compact native header rendered after all tests.
 Both Family apps retained byte-identical state, identity and native preferences.
+These are authenticated private LAN/API tests, not physical Wi-Fi switching,
+public-provider reliability, picker/share-sheet gestures or locked-screen proof.
+Fully suspended internet alerts, physical iPhone behavior and the remaining
+desktop services are still not qualified by these results.
 
-The compact accessible header and stricter production SDK metadata gate are
-undergoing their own qualification. They have not replaced build 384.1 on the
-physical iPad. Fully suspended internet alerts, physical iPhone behavior and
-the remaining desktop services are still not qualified by these results.
-
-This checkpoint is dated November 22, 2026. “Integrated” means the code is wired
+This checkpoint is dated November 23, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
 ## Features and remaining work
@@ -463,5 +474,8 @@ checks, attachment bounds and the existing restart journal still apply.
 Location and telemetry retain live-path checks and cannot enter this offline
 queue. The regression verifies prompt durable submission while disconnected,
 automatic reconnection, the original delivered hash and a signed echo without
-resubmission. This follow-up still needs its own native and physical-device
-qualification; it is not part of the verified 384.1 package.
+resubmission. Exact source `852b6f4` subsequently passed both full 111-case simulator suites
+and both unsigned archives. The actual iPad's build 389.1 passed the twelve
+private outage checks described above, preserving the original packet hashes
+and restoring its saved contacts and peers. Location/privacy checks also
+passed; this is not a claim of suspended delivery or public-peer availability.

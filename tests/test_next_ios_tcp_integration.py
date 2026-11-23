@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_hub(folder, ports, pipe):
+def run_hub(folder, ports, pipe, *, released_recovery=False):
     import LXMF
     import RNS
     folder.mkdir()
@@ -37,6 +37,12 @@ def run_hub(folder, ports, pipe):
         interface.ingress_control = False
     identity = RNS.Identity()
     router = LXMF.LXMRouter(identity=identity, storagepath=str(folder / "lxmf"), autopeer=False)
+    if released_recovery:
+        # Match the released neXt/Family counterpart for repeated outages.
+        # Keep the default raw-SDK peer for protocol interoperability tests.
+        sys.path.insert(0, str(ROOT / "app/src/main/python"))
+        from lxmf_reconnect import install_reconnect_recovery
+        assert install_reconnect_recovery(router)
     source = router.register_delivery_identity(identity, display_name="Private neXt echo", stamp_cost=0)
     def received(message):
         if not message.signature_validated:
