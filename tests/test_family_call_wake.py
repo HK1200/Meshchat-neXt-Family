@@ -17,9 +17,10 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "app/src/main/python"), str(ROOT / "ios/push-provider")]
-from family_call_wake import build_hint, destination_hash, voice_hash
-from call_provider import CallProvider, SEAL_INFO
-from provider import Unavailable
+# Select this checkout before importing its unpackaged app/provider modules.
+from family_call_wake import build_hint, destination_hash, voice_hash  # noqa: E402
+from call_provider import CallProvider, SEAL_INFO  # noqa: E402
+from provider import Unavailable  # noqa: E402
 
 
 @pytest.fixture
@@ -339,7 +340,12 @@ def test_voip_transport_has_immediate_expiry_and_keeps_token_out_of_arguments(
     assert "apns-push-type: voip" in config and "apns-expiration: 0" in config
     assert "apns-collapse-id" not in config and hint(s)["sender"] not in config
     assert json.loads(json.loads(config.split("data = ")[1])) == payload
-    assert "api.sandbox.push.apple.com" in config
+    configured_urls = [
+        json.loads(line.removeprefix("url = "))
+        for line in config.splitlines()
+        if line.startswith("url = ")
+    ]
+    assert configured_urls == [f"https://api.sandbox.push.apple.com/3/device/{token}"]
 
 
 def test_private_http_enrollment_call_lookup_and_cancel_without_another_push(setup):
