@@ -572,3 +572,23 @@ or exposed through the web bridge. Six native tests are prepared, including
 decryption of the Python-generated signed fixture, malformed files, symlink
 rejection and nonblocking rejection of directories/named pipes. The fixture's public identity and both addresses passed the host
 interoperability check. Native qualification and opt-in Keychain caching remain.
+
+
+The call-enrollment snapshot now also retains the saved roster separately from
+currently eligible callers and exposes a stable policy digest. Previously
+selected public keys can be supplied through a bounded, authenticated,
+CSRF-protected read-only refresh after a cold start. Their derived addresses
+must still match saved contacts and pass the actual incoming-call policy;
+unknown contacts are not approved and no keys enter Reticulum's routing cache.
+DND, removal and blocks change the digest, while a missing recall entry or codec
+change does not. All 49 focused enrollment/provider/message checks passed.
+The native consent-update and opt-in controller still need wiring.
+
+The combined Nomad UI run on `00f9bb3` passed visible page and link assertions
+but failed its native export assertion. The retained recording shows the
+simulator's accessibility link rectangle shifted right by its text width; the
+test tapped empty page space. The test now touches the known left-aligned
+fixture link relative to its visible document and retains every export,
+filename and share-control assertion. The production download policy and
+budgets are unchanged. Debug-only diagnostics report only schemes and decision
+flags, never URLs, filenames or file contents. Full simulator reruns are required.

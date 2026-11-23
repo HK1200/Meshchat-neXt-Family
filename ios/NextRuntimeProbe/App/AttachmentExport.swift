@@ -66,6 +66,9 @@ final class NextAttachmentDownloads: NSObject, WKDownloadDelegate {
 
     func start(_ download: WKDownload) {
         guard active == nil else { download.cancel { _ in }; return }
+        #if DEBUG
+        print("neXt export received: scheme=\(download.originalRequest?.url?.scheme ?? "none") allowed=\(allows(download.originalRequest?.url))")
+        #endif
         guard let allowed = downloadLimit(for: download.originalRequest?.url) else { download.cancel { _ in }; return }
         limit = allowed
         active = download

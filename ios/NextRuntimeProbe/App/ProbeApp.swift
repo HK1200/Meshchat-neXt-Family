@@ -733,6 +733,11 @@ private struct ProbeWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             let target = action.request.url
+            #if DEBUG
+            if action.shouldPerformDownload || target?.scheme == "blob" {
+                print("neXt export navigation: scheme=\(target?.scheme ?? "none") requested=\(action.shouldPerformDownload)")
+            }
+            #endif
             if action.shouldPerformDownload {
                 decisionHandler(downloads.allows(target) ? .download : .cancel)
             } else if downloads.isLocal(target) {
