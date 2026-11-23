@@ -111,8 +111,10 @@ private struct ProbeScreen: View {
                         Button { panel = .calling } label: {
                             Label("Calling", systemImage: "phone").labelStyle(.iconOnly).frame(width: 44, height: 44)
                         }.accessibilityIdentifier("next-calling-menu")
-                        Button("TCP connections") { panel = .connections }
-                            .accessibilityIdentifier("tcp-connections")
+                        Button { panel = .connections } label: {
+                            Label("TCP connections", systemImage: "network")
+                                .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                        }.accessibilityIdentifier("tcp-connections")
                     }.padding(.horizontal)
                     if let address {
                         HStack {
@@ -127,6 +129,7 @@ private struct ProbeScreen: View {
                                     .labelStyle(.iconOnly).frame(width: 44, height: 44)
                             }.accessibilityIdentifier("next-location-settings")
                             Text("My LXMF address")
+                                .font(.caption).lineLimit(1)
                             Spacer()
                             Button { panel = .myContact } label: {
                                 Label("Show my contact QR code", systemImage: "qrcode")
@@ -135,7 +138,10 @@ private struct ProbeScreen: View {
                                     .contentShape(Rectangle())
                             }
                             .accessibilityIdentifier("show-my-contact-qr")
-                            ShareLink(item: address)
+                            ShareLink(item: address) {
+                                Label("Share my LXMF address", systemImage: "square.and.arrow.up")
+                                    .labelStyle(.iconOnly).frame(width: 44, height: 44)
+                            }.accessibilityIdentifier("share-my-lxmf-address")
                         }
                         .padding(.horizontal)
                         Text(address).font(.caption.monospaced()).textSelection(.enabled)

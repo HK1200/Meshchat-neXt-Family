@@ -21,6 +21,22 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
         requireWebInterfaceReady(app)
         let own = app.staticTexts["my-lxmf-address"].label
+        let connectionControl = app.buttons["tcp-connections"]
+        XCTAssertEqual(connectionControl.label, "TCP connections")
+        for identifier in ["next-message-alerts", "next-rnode-settings", "next-meshcore-settings",
+                           "next-calling-menu", "tcp-connections", "next-mailbox-settings",
+                           "next-location-settings", "show-my-contact-qr", "share-my-lxmf-address"] {
+            let control = app.buttons[identifier]
+            XCTAssertTrue(control.exists && control.isHittable, identifier)
+            XCTAssertGreaterThanOrEqual(control.frame.width, 44, identifier)
+            XCTAssertGreaterThanOrEqual(control.frame.height, 44, identifier)
+            XCTAssertGreaterThanOrEqual(control.frame.minX, app.frame.minX, identifier)
+            XCTAssertLessThanOrEqual(control.frame.maxX, app.frame.maxX, identifier)
+        }
+        let header = XCTAttachment(screenshot: app.screenshot())
+        header.name = "Compact native header"
+        header.lifetime = .keepAlways
+        add(header)
         // The first interface paint can still settle native header geometry.
         // Use one tap at its stable visible frame, just as for web navigation.
         tapSettledButton(app.buttons["show-my-contact-qr"], in: app, app: app, native: true)
