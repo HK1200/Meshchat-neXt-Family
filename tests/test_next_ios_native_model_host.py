@@ -60,3 +60,22 @@ def test_cli_refuses_to_overwrite_the_original_run_file(tmp_path):
     source=tmp_path/'original.xctestrun';raw=plistlib.dumps({row['BlueprintName']:row for row in targets()});source.write_bytes(raw)
     result=subprocess.run([sys.executable,spec.origin,str(source),str(source),str(tmp_path/'proof.json')],capture_output=True,timeout=15)
     assert result.returncode!=0 and source.read_bytes()==raw
+
+
+def test_cli_rejects_relocation_that_would_break_xcode_testroot(tmp_path):
+    import plistlib, subprocess, sys
+    products=tmp_path/'DerivedData/Build/Products'; products.mkdir(parents=True)
+    source=products/'original.xctestrun'
+    rows=targets()
+    rows[0]['TestHostPath']='__TESTROOT__/Debug-iphonesimulator/NextRuntimeProbe.app'
+    raw=plistlib.dumps({'TestConfigurations':[{'TestTargets':rows}]});source.write_bytes(raw)
+    output=tmp_path/'native.xctestrun'
+    result=subprocess.run([sys.executable,spec.origin,str(source),str(output),str(tmp_path/'proof.json')],capture_output=True,timeout=15)
+    assert result.returncode!=0 and not output.exists() and source.read_bytes()==raw
+    assert b'beside its original built products' in result.stderr
+
+
+def test_integration_keeps_native_testroot_beside_built_products():
+    script=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/test-simulators.sh').read_text()
+    assert 'native_test_run="$(dirname -- "${test_runs[0]}")/native-models.xctestrun"' in script
+    assert 'native_test_arguments=(-xctestrun "$native_test_run")' in script
