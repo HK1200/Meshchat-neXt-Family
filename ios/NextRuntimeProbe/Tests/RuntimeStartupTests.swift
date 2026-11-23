@@ -16,6 +16,18 @@ private final class StartupEngine {
 }
 
 @MainActor
+private final class WakeStartupDeadline {
+    var waiting: CheckedContinuation<Void, Error>?
+    var cancelled = false
+    func pause() async throws {
+        try Task.checkCancellation()
+        try await withCheckedThrowingContinuation { waiting = $0 }
+        cancelled = Task.isCancelled
+    }
+    func fire() { let continuation = waiting; waiting = nil; continuation?.resume() }
+}
+
+@MainActor
 final class RuntimeStartupTests: XCTestCase {
     private var result: NextRuntimeSession {
         NextRuntimeSession(url: URL(string: "http://127.0.0.1:44242/#/messages")!, address: String(repeating: "a1", count: 16))
@@ -84,4 +96,74 @@ final class RuntimeStartupTests: XCTestCase {
         }
         XCTAssertEqual(calls, 1)
     }
+
+    func testCallWakeDeadlineDoesNotWaitForOrCancelTheSharedInitialization() async throws {
+        let engine = StartupEngine(), deadline = WakeStartupDeadline(), expected = result
+        let startup = NextRuntimeStartup(start: engine.start, wakeDelay: deadline.pause)
+        let wake = Task { try await startup.callWakeSession() }
+        try await ready { engine.waiting != nil && deadline.waiting != nil }
+        deadline.fire()
+        do { _ = try await wake.value; XCTFail("A stalled wake must time out") }
+        catch let error as URLError { XCTAssertEqual(error.code, .timedOut) }
+        let screen = Task { try await startup.session(configuration: Data("must not replace saved settings".utf8)) }
+        engine.waiting?.resume(returning: expected)
+        let actual = try await screen.value
+        XCTAssertEqual(actual, expected); XCTAssertEqual(engine.configurations.count, 1)
+        XCTAssertNil(engine.configurations[0]); XCTAssertFalse(engine.cancellationObserved)
+    }
+
+    func testCancelledWakeReturnsBeforeInitializationAndDoesNotCancelTheScreen() async throws {
+        let engine = StartupEngine(), deadline = WakeStartupDeadline(), expected = result
+        let startup = NextRuntimeStartup(start: engine.start, wakeDelay: deadline.pause)
+        let wake = Task { try await startup.callWakeSession() }
+        try await ready { engine.waiting != nil && deadline.waiting != nil }
+        wake.cancel()
+        do { _ = try await wake.value; XCTFail("The removed wake must return cancellation") }
+        catch is CancellationError { }
+        deadline.fire()
+        let screen = Task { try await startup.session(configuration: nil) }
+        engine.waiting?.resume(returning: expected)
+        let actual = try await screen.value
+        XCTAssertEqual(actual, expected); XCTAssertFalse(engine.cancellationObserved)
+        XCTAssertEqual(engine.configurations.count, 1)
+    }
+
+    func testReadyCallWakeCancelsOnlyItsDeadlineAndKeepsTheCachedSession() async throws {
+        let engine = StartupEngine(), deadline = WakeStartupDeadline(), expected = result
+        let startup = NextRuntimeStartup(start: engine.start, wakeDelay: deadline.pause)
+        let wake = Task { try await startup.callWakeSession() }
+        try await ready { engine.waiting != nil && deadline.waiting != nil }
+        engine.waiting?.resume(returning: expected)
+        let actual = try await wake.value
+        XCTAssertEqual(actual, expected)
+        deadline.fire()
+        try await ready { deadline.cancelled }
+        let cached = try await startup.callWakeSession()
+        XCTAssertEqual(cached, expected); XCTAssertEqual(engine.configurations.count, 1)
+        deadline.fire()
+    }
+
+    func testCallWakePropagatesTheRetainedStartupErrorWithoutRestartingPython() async throws {
+        enum Failed: Error { case startup }
+        var calls = 0
+        let startup = NextRuntimeStartup { _ in calls += 1; throw Failed.startup }
+        for _ in 0..<2 {
+            do { _ = try await startup.callWakeSession(); XCTFail("The original failure must survive") }
+            catch Failed.startup { }
+        }
+        XCTAssertEqual(calls, 1)
+    }
+
+
+    func testAlreadyCancelledWakeDoesNotInitializeAnyRuntime() async throws {
+        var calls = 0
+        let expected = result
+        let startup = NextRuntimeStartup { _ in calls += 1; return expected }
+        let wake = Task { try await startup.callWakeSession() }
+        wake.cancel()
+        do { _ = try await wake.value; XCTFail("A cancelled wake must not start Python") }
+        catch is CancellationError { }
+        XCTAssertEqual(calls, 0)
+    }
+
 }

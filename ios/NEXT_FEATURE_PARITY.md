@@ -57,7 +57,11 @@ matches only that approved voice identity to the pending CallKit UUID. Native
 checks are prepared. This does not register PushKit or deploy a provider;
 explicit enrollment, sender integration, cancellation lookup and genuine APNs
 and physical-device qualification remain required before suspended call alerts
-can be described as reliable.
+can be described as reliable. The shared-runtime coordinator now also offers a
+15-second call-wake wait that releases a cancelled or timed-out caller without
+cancelling or reinitializing CPython. Five native tests are prepared for pending,
+ready, failed and pre-cancelled startup. This method is a dispatcher prerequisite;
+it does not register PushKit or make a suspended-call delivery claim.
 
 ## Features and remaining work
 
