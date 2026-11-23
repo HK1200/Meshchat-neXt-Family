@@ -566,10 +566,14 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
         response = await handler(request)
+        # The shell and opaque frame import several identical modules. Mark
+        # every public variant, including the shell's no-Origin response, or
+        # WebKit can reuse it for the frame without its required CORS headers.
+        if public_frame_resource(request.path):
+            response.headers["Vary"] = "Origin"
         if opaque_static:
             response.headers["Access-Control-Allow-Origin"] = "null"
             response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
-            response.headers["Vary"] = "Origin"
         if request.path == "/nomad-crash-tab.html":
             response.headers["Content-Security-Policy"] = build_nomad_crash_tab_csp(authority)
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
