@@ -151,7 +151,7 @@ extension NextCallWakeQuery: FamilyCallWakeQuerying { }
                 policyDigest: approval.digest, installation: installation)
             error = accepted ? "" : registration.status
             return accepted
-        } catch { error = "Current guardian approvals could not be verified."; return false }
+        } catch { self.error = "Current guardian approvals could not be verified."; return false }
     }
     func disable(guardianUnlocked: () -> Bool) {
         guard guardianUnlocked() else { error = "Unlock Guardian settings first."; return }
