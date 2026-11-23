@@ -583,6 +583,22 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     async def api(request):
         path = request.match_info["path"]
         responses["status"]["inbox_error"] = inbox.error
+        if path == "preview/call-enrollment-state" and request.method == "POST":
+            from push_receiving import call_snapshot
+            chunks, length = [], 0
+            async for chunk in request.content.iter_chunked(8192):
+                length += len(chunk)
+                if length > 65536:
+                    raise web.HTTPRequestEntityTooLarge(max_size=65536, actual_size=length)
+                chunks.append(chunk)
+            try:
+                body = json.loads(b"".join(chunks))
+                if type(body) is not dict or body.keys() != {"publicKeys"} or type(body["publicKeys"]) is not list:
+                    raise ValueError("Invalid public key selection")
+                value = call_snapshot(history, probe.source, voice, public_keys=body["publicKeys"], block_snapshot=blocks.snapshot())
+            except (TypeError, ValueError):
+                return web.json_response({"message": "Use at most 256 distinct public contact keys."}, status=400, headers={"Cache-Control": "no-store"})
+            return web.json_response(value, headers={"Cache-Control": "no-store"})
         alert_route = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})/mailbox-alert-route", path)
         if alert_route:
             contact_id = int(alert_route[1])
@@ -635,7 +651,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             if path == "preview/call-enrollment-state":
                 from push_receiving import call_snapshot
                 try:
-                    return web.json_response(call_snapshot(history, probe.source, voice), headers={"Cache-Control": "no-store"})
+                    return web.json_response(call_snapshot(history, probe.source, voice, block_snapshot=blocks.snapshot()), headers={"Cache-Control": "no-store"})
                 except ValueError:
                     return web.json_response({"message": "The call identity is unavailable. Reopen neXt before enrolling."}, status=503, headers={"Cache-Control": "no-store"})
             if path == "preview/push-enrollment-state":
