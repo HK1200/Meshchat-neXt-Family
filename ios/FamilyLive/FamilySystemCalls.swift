@@ -59,6 +59,8 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         var actions: FamilySystemCallActions
         var awaitingTransport: Bool
         var transportWaiter: CheckedContinuation<Bool, Never>?
+        var reportResult: Bool?
+        var reportWaiters: [CheckedContinuation<Bool, Never>] = []
         var connected = false
         var answered = false
         var ending = false
@@ -76,6 +78,12 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         func resolveTransport(_ ready: Bool) {
             let waiter = transportWaiter; transportWaiter = nil
             waiter?.resume(returning: ready)
+        }
+        func resolveReport(_ accepted: Bool) {
+            guard reportResult == nil else { return }
+            reportResult = accepted
+            let waiters = reportWaiters; reportWaiters.removeAll()
+            for waiter in waiters { waiter.resume(returning: accepted) }
         }
     }
 
@@ -114,6 +122,14 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         return report(key, name: name, incoming: true, actions: actions, systemID: id)
     }
 
+    /// A required VoIP push must not complete before the real CallKit report.
+    /// UUID lookup also survives an earlier authenticated transport adoption.
+    func incomingReportCompleted(_ id: UUID) async -> Bool {
+        guard let entry, entry.id == id, entry.incoming, !entry.ending else { return false }
+        if let result = entry.reportResult { return result }
+        return await withCheckedContinuation { entry.reportWaiters.append($0) }
+    }
+
     /// Adopt one authenticated arriving call without reporting a second CallKit call.
     @discardableResult
     func attachIncoming(_ pending: FamilySystemCallKey, to key: FamilySystemCallKey,
@@ -141,8 +157,12 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
             do {
                 if incoming { try await driver.incoming(value.id, name: name) }
                 else { try await driver.start(value.id, name: name) }
-                if self.entry !== value { driver.ended(value.id, failed: false) }
+                if self.entry !== value || value.ending {
+                    value.resolveReport(false)
+                    driver.ended(value.id, failed: false)
+                } else { value.resolveReport(true) }
             } catch {
+                value.resolveReport(false)
                 guard self.entry === value else { return }
                 self.error = "iOS could not show this call. Please try again."
                 await fail(value)
@@ -164,6 +184,7 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         guard let entry, entry.key == key else { return }
         self.entry = nil
         entry.resolveTransport(false)
+        entry.resolveReport(false)
         audioReady = false
         driver.ended(entry.id, failed: failed)
     }
@@ -220,6 +241,7 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         guard let entry, entry.id == id, !entry.ending else { return false }
         entry.ending = true
         entry.resolveTransport(false)
+        entry.resolveReport(false)
         audioReady = false
         await entry.actions.end()
         if self.entry === entry { finish(entry.key) }
@@ -281,6 +303,7 @@ final class FamilySystemCalls: ObservableObject, FamilySystemCallEvents {
         guard entry === value, !value.ending else { return }
         value.ending = true
         value.resolveTransport(false)
+        value.resolveReport(false)
         audioReady = false
         await value.actions.end()
         if entry === value { finish(value.key, failed: true) }

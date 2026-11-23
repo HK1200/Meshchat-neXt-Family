@@ -7,7 +7,14 @@ private final class WakeHandoffDriver: FamilySystemCallDriver {
     weak var events: (any FamilySystemCallEvents)?
     var reports: [UUID] = []
     var endedIDs: [UUID] = []
-    func incoming(_ id: UUID, name: String) async throws { reports.append(id) }
+    var pauseReport = false
+    var failReport = false
+    var reportGate: CheckedContinuation<Void, Never>?
+    func incoming(_ id: UUID, name: String) async throws {
+        reports.append(id)
+        if pauseReport { await withCheckedContinuation { reportGate = $0 } }
+        if failReport { throw URLError(.cannotConnectToHost) }
+    }
     func start(_ id: UUID, name: String) async throws { reports.append(id) }
     func answer(_ id: UUID) async throws { _ = await events?.systemAnswer(id) }
     func end(_ id: UUID) async throws { _ = await events?.systemEnd(id) }
@@ -135,4 +142,48 @@ final class CallWakeHandoffTests: XCTestCase {
         calls.systemActionTimedOut(id)
         XCTAssertTrue(calls.contains(arrived)); calls.finish(arrived)
     }
+    func testRequiredPushWaitsForActualCallKitReportBeforeCompletion() async throws {
+        let driver = WakeHandoffDriver(), id = UUID()
+        driver.pauseReport = true
+        let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
+        XCTAssertTrue(calls.reserveIncoming(pending, id: id, name: "Approved caller", actions: actions()))
+        try await ready { driver.reportGate != nil }
+        var completed: Bool?
+        let acknowledgment = Task { let result = await calls.incomingReportCompleted(id); completed = result; return result }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(completed)
+        XCTAssertTrue(calls.attachIncoming(pending, to: arrived, actions: actions()))
+        driver.reportGate?.resume(); driver.reportGate = nil
+        let accepted = await acknowledgment.value
+        XCTAssertTrue(accepted)
+        let alreadyReported = await calls.incomingReportCompleted(id)
+        XCTAssertTrue(alreadyReported)
+        calls.finish(arrived)
+    }
+    func testCancelledWakeReleasesReportAcknowledgmentBeforeLateReportReturns() async throws {
+        let driver = WakeHandoffDriver(), id = UUID()
+        driver.pauseReport = true
+        let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
+        XCTAssertTrue(calls.reserveIncoming(pending, id: id, name: "Approved caller", actions: actions()))
+        try await ready { driver.reportGate != nil }
+        let acknowledgment = Task { await calls.incomingReportCompleted(id) }
+        calls.finish(pending)
+        let accepted = await acknowledgment.value
+        XCTAssertFalse(accepted)
+        driver.reportGate?.resume(); driver.reportGate = nil
+        XCTAssertFalse(calls.hasCall)
+    }
+    func testFailedCallKitReportCannotAcknowledgeARequiredPushAsReported() async throws {
+        let driver = WakeHandoffDriver(), id = UUID()
+        driver.failReport = true
+        let calls = FamilySystemCalls(driver: driver, preferences: nil, enabled: true)
+        XCTAssertTrue(calls.reserveIncoming(pending, id: id, name: "Approved caller", actions: actions()))
+        let accepted = await calls.incomingReportCompleted(id)
+        XCTAssertFalse(accepted)
+        try await ready { !calls.hasCall }
+        XCTAssertFalse(calls.error.isEmpty)
+        let wrong = await calls.incomingReportCompleted(UUID())
+        XCTAssertFalse(wrong)
+    }
+
 }
