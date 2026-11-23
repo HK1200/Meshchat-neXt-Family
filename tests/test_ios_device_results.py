@@ -31,3 +31,21 @@ def test_rejects_partial_failed_or_nonbehavioral_results(change):
     elif change=='transport':code=1
     elif change=='no_plan':control=''
     with pytest.raises(ValueError):module.verify(text,control,CASES,code)
+
+
+def test_family_variant_can_target_only_the_separate_mailbox_app():
+    source=(Path(__file__).resolve().parents[1]/'ios/DeviceChecks/FamilyTests/PreviewChecks.swift').read_text()
+    assert '"org.meshchat.family.ios.mailbox-test.9GUBNZGGM5"' in source
+    assert 'org.meshchat.family.ios.live' not in source
+    assert 'NEXT_PHYSICAL_TARGET' in source and '== family' in source
+    assert 'secureTextFields["unlock-password"]' in source
+    assert '.typeText(' not in source and 'buttons["Unlock"].tap' not in source
+
+
+def test_invalid_device_variant_is_rejected_before_build_tools_start(tmp_path):
+    import os,subprocess
+    script=Path(__file__).resolve().parents[1]/'ios/DeviceChecks/build.sh'
+    result=subprocess.run(['bash',str(script)],env={**os.environ,'CHECK_APP':'regular-family'},capture_output=True,text=True,timeout=10)
+    assert result.returncode==2
+    assert 'Choose next or family' in result.stderr
+    assert 'xcodegen: command not found' not in result.stderr

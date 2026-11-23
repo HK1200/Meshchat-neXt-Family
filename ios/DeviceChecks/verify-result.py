@@ -30,7 +30,8 @@ if __name__ == '__main__':
     parser.add_argument('log', type=Path)
     parser.add_argument('control_log', type=Path)
     parser.add_argument('--exit-code', type=int, required=True)
+    parser.add_argument('--check-app', choices=['next', 'family'], default='next')
     args = parser.parse_args()
-    source = Path(__file__).parent/'Tests/PreviewChecks.swift'
+    source = Path(__file__).parent/('FamilyTests' if args.check_app == 'family' else 'Tests')/'PreviewChecks.swift'
     expected = re.findall(r'\bfunc\s+(test\w+)\s*\(', source.read_text())
     print(json.dumps(verify(args.log.read_text(), args.control_log.read_text(), expected, args.exit_code)))

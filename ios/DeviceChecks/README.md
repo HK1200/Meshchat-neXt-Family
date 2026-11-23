@@ -11,6 +11,15 @@ neXt preview identified in `Tests/PreviewChecks.swift`; another bundle identifie
 must not be substituted for convenience. A passed menu test does not qualify
 radio delivery, calls, notifications or suspended execution.
 
+The workflow's `check_app` selection also offers `family`. That separate variant
+inspects only Family Mailbox Test, opens the Guardian password gate and closes
+it with Done. It does not enter a password or unlock settings. Its runner must
+occupy a different disposable slot from the app being tested. Pass
+`--check-app family` to the verifier for those logs; the default inventory is
+neXt's two cases. The authenticated artifact includes `device-check-kind.txt`
+so the selected variant can be checked before installation. Never interchange
+these inventories to make an unrelated result pass.
+
 ## Build and sign
 
 Use `build.sh` on a Mac with Xcode and XcodeGen, or dispatch the **Build isolated

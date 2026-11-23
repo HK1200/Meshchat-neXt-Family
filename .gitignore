@@ -17,3 +17,7 @@ __pycache__/
 .env.*
 
 .expat-runtime-maven/
+
+# Generated, explicitly selected physical UI-test variant.
+ios/DeviceChecks/project-family-generated.yml
+ios/DeviceChecks/device-check-kind.txt

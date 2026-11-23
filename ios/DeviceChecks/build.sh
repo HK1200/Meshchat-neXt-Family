@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
-xcodegen generate --spec project.yml
+check_app="${CHECK_APP:-next}"
+case "$check_app" in
+    next) project_spec=project.yml ;;
+    family)
+        project_spec=project-family-generated.yml
+        python3 - <<'SPEC'
+from pathlib import Path
+source=Path("project.yml").read_text()
+assert source.count("sources: [Tests]")==1
+Path("project-family-generated.yml").write_text(source.replace("sources: [Tests]", "sources: [FamilyTests]"))
+SPEC
+        ;;
+    *) echo "Choose next or family read-only checks" >&2; exit 2 ;;
+esac
+xcodegen generate --spec "$project_spec"
 xcodebuild build-for-testing -project NextDeviceChecks.xcodeproj -scheme NextDeviceChecks \
   -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO
 runner=DerivedData/Build/Products/Debug-iphoneos/NextDeviceChecks-Runner.app
@@ -33,3 +47,5 @@ assert (target / "PlugIns/NextDeviceChecks.xctest/NextDeviceChecks").is_file()
 PYTHON
 (cd Package && zip -qry ../neXt-Device-Checks-unsigned.ipa Payload)
 shasum -a 256 neXt-Device-Checks-unsigned.ipa > neXt-Device-Checks-unsigned.ipa.sha256
+
+printf '%s\n' "$check_app" > device-check-kind.txt
