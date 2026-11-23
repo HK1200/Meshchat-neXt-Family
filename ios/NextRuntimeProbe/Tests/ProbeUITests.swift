@@ -23,7 +23,7 @@ final class ProbeUITests: XCTestCase {
         let own = app.staticTexts["my-lxmf-address"].label
         // The first interface paint can still settle native header geometry.
         // Use one tap at its stable visible frame, just as for web navigation.
-        tapSettledButton(app.buttons["show-my-contact-qr"], in: app, app: app)
+        tapSettledButton(app.buttons["show-my-contact-qr"], in: app, app: app, native: true)
         let importing = app.buttons["next-import-contact"]
         XCTAssertTrue(importing.waitForExistence(timeout: 15), app.debugDescription)
         importing.tap()
@@ -632,7 +632,7 @@ final class ProbeUITests: XCTestCase {
         tapSettledButton(button, in: web, app: app)
     }
 
-    private func tapSettledButton(_ button: XCUIElement, in container: XCUIElement, app: XCUIApplication) {
+    private func tapSettledButton(_ button: XCUIElement, in container: XCUIElement, app: XCUIApplication, native: Bool = false) {
         XCTAssertTrue(button.waitForExistence(timeout: 15), app.debugDescription)
         // A cold WebKit page can expose the button before the native header's
         // final geometry settles. Keep the real one-tap navigation assertion,
@@ -660,6 +660,15 @@ final class ProbeUITests: XCTestCase {
         }
         XCTAssertNotNil(target, app.debugDescription)
         guard let frame = target else { return }
+        if native {
+            // The iPad recording shows the root-coordinate event missing an
+            // otherwise stable native header control. Resolve the button's
+            // own activation point after settling, as the later QR test does.
+            // Send one activation only; the real sheet/import assertions below
+            // remain mandatory and there is no navigation retry.
+            button.tap()
+            return
+        }
         let origin = app.frame.origin
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(
             dx: frame.midX - origin.x, dy: frame.midY - origin.y
