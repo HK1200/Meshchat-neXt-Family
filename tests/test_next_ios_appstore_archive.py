@@ -66,3 +66,10 @@ def test_rejects_wrong_build_or_missing_native_capability(archive, key, value):
     target.write_bytes(plistlib.dumps(info))
     with pytest.raises(AssertionError):
         module.verify(archive[0])
+
+
+def test_rejects_developer_web_inspection_in_production_executable(archive):
+    target = archive[1] / 'NextRuntimeProbe'
+    target.write_bytes(target.read_bytes() + b'--inspect-web-interface')
+    with pytest.raises(AssertionError, match='Web Inspector'):
+        module.verify(archive[0])

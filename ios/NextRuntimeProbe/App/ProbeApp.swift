@@ -584,6 +584,13 @@ private struct ProbeWebView: UIViewRepresentable {
                          forMainFrameOnly: true, in: .defaultClient)
         )
         let view = WKWebView(frame: .zero, configuration: configuration)
+        #if DEBUG
+        // Explicit, per-launch development opt-in. The device must separately
+        // permit Apple's Web Inspector; this cannot bypass that setting.
+        if #available(iOS 16.4, *), ProcessInfo.processInfo.arguments.contains("--inspect-web-interface") {
+            view.isInspectable = true
+        }
+        #endif
         view.accessibilityElementsHidden = modalPresented || loadState.loading || loadState.problem != nil
         view.navigationDelegate = context.coordinator
         context.coordinator.setModal(modalPresented, on: view)

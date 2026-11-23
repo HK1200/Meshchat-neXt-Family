@@ -43,12 +43,13 @@ def verify(archive):
                  'SIP-NOTICES.txt', 'staged/voice-notices/Opus-COPYING',
                  'staged/voice-notices/Codec2-COPYING', 'staged/voice-notices/audioop-LICENSE'):
         assert (app / name).is_file() and (app / name).stat().st_size > 0, name
+    assert b'--inspect-web-interface' not in (app / 'NextRuntimeProbe').read_bytes(), 'Developer Web Inspector opt-in leaked into production'
     fixtures = {'peer.json', 'sip-account.json', 'sip-incoming.json', 'sip-outgoing.json'}
     assert not any(path.name in fixtures or path.suffix in ('.xctest', '.xctestrun')
                    for path in app.rglob('*')), 'Test fixture included in production archive'
     return dict(bundle_identifier=BUNDLE, version=info['CFBundleShortVersionString'],
                 build=info['CFBundleVersion'], unsigned=True, personal_profile_absent=True,
-                simulator_fixtures_absent=True, iphone_and_ipad=True,
+                simulator_fixtures_absent=True, developer_web_inspection_absent=True, iphone_and_ipad=True,
                 privacy_manifest_present=True, native_runtime_and_notices_present=True,
                 executable_sha256=hashlib.file_digest((app / 'NextRuntimeProbe').open('rb'), 'sha256').hexdigest(),
                 apple_enrollment_performed=False, app_store_submission_performed=False,

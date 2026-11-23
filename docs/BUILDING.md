@@ -58,3 +58,22 @@ run `python3 scripts/ci/family_release_feeds.py` or dispatch **Published Family
 updater verification**. The check validates both package IDs, frozen transfer
 metadata, APK sizes and GitHub's available SHA-256 digests. It does not replace
 APK certificate verification or an in-place installation test.
+
+
+## Inspect the separate neXt iOS development preview
+
+A Debug build of the separate neXt preview can expose its embedded web interface
+through Apple's Web Inspector when launched with `--inspect-web-interface`.
+The option is off by default and is not saved. Relaunch without the argument to
+turn it off. It does not apply to regular Family or provide access to native
+Guardian forms.
+
+The iPad must permit Web Inspector in its Safari advanced settings, and the
+computer must already be trusted. The launch option does not enable either of
+those device settings. The device-tools Web Inspector commands can then inspect
+the preview's web page for development checks. Keep inspector access limited to
+the trusted development computer; the page can contain private conversations.
+
+Release builds omit this launch option. The App Store archive gate rejects a
+production executable containing it. Xcode and a live inspection check are
+required before this developer capability is qualified.
