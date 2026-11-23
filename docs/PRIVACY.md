@@ -62,3 +62,14 @@ Guardian settings. The reference provider expires call intents after their
 short validity window; provider logs and backups may retain connection or
 registration metadata according to the operator's policy. This feature does
 not provide suspended SIP calling or guarantee delivery without network access.
+
+A guardian can separately save a call-alert route for an approved contact who
+uses a compatible receiver. Saving sends nothing. On an outgoing Reticulum call,
+Family sends that contact's chosen provider a signed hint containing public
+routing identities, a random call identifier and a timestamp. Ending the call or
+revoking the contact/route requests cancellation, even when the original HTTP
+acknowledgment was lost. No contact names, audio, message/file contents, location,
+Apple token or enrollment credential is included in sender hints. Ordinary calls
+continue if the provider is unavailable. Routes are stored privately with the
+current approved identity and are removed when that approval is removed or
+changed. They do not carry over to a newly added contact automatically.

@@ -70,8 +70,9 @@ def check_default_codec(profiles):
 
 
 class FamilyVoice:
- def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True,incoming_gate=None):
+ def __init__(self,identity,state,lock,save,gate=None,route_context=None,autostart=True,incoming_gate=None,hints=None):
   self.identity=identity;self.state=state;self.lock=lock;self.save=save;self.gate=gate;self.incoming_gate=incoming_gate;self.background_wake=False;self.phone=None;self.error='';self.phase='idle';self.profiles=None;self.peer='';self.target='';self.call_id='';self.name='';self.generation=0;self.input=None;self.pcm=VoicePlaybackBuffer();self.sent=0;self.received=0;self.muted=False;self._setup=threading.Lock();self._dialling=False
+  self.hints=hints;self._call_hint=None
   self.route_context=route_context or (lambda address:'reticulum');self.outgoing=False;self.connected_at=0.;self.quality_context='';self.last_rtt=None
   self.last_incoming='';self.last_playback_activity=float('-inf');self.playback_rms=0.0
   state.setdefault('voiceEnabled',False);state.setdefault('callQuality',[])
@@ -241,6 +242,7 @@ class FamilyVoice:
    self.peer=identity.hash.hex();self.phase='connected';self.connected_at=time.time();self.last_rtt=getattr(call,'rtt',None);self.name=self._contact(identity.hash)['name']
  def _ended(self,identity=None):
   with self.lock:
+   self._cancel_call_hint()
    if self.outgoing and self.target and ((self.connected_at and time.time()-self.connected_at>=3) or self.error):
     metrics={};rtt=getattr(getattr(self.phone,'active_call',None),'rtt',None) or self.last_rtt
     if isinstance(rtt,(int,float)) and 0<=rtt<60:metrics['rtt_ms']=rtt*1000
@@ -261,6 +263,10 @@ class FamilyVoice:
    self.background_wake=False
    self.outgoing=True;self.connected_at=0.;self.quality_context=self.route_context(address)
    self.generation+=1;generation=self.generation;self.phase='finding';self._dialling=True;self.target=address;self.call_id=uuid.uuid4().hex;self.name=contact['name'];self.error='';self.sent=0;self.received=0
+   self._cancel_call_hint()
+   if self.hints:
+    try:self._call_hint=self.hints.start(contact_id,self.call_id,address)
+    except Exception:pass  # Provider problems cannot fail an ordinary call.
   def dial():
    try:
     import RNS
@@ -298,10 +304,14 @@ class FamilyVoice:
    try:self.phone.answer(identity)
    except Exception as exc:self.error=str(exc)[:200];self.hangup()
   threading.Thread(target=answer_call,daemon=True).start()
+ def _cancel_call_hint(self):
+  handle,self._call_hint=self._call_hint,None
+  if handle:handle.cancel()
  def hangup(self,call_id=None):
   with self.lock:
    # A delayed UI/notification action for an ended call must not affect a newer call.
    if call_id is not None and call_id!=self.call_id:return
+   self._cancel_call_hint()
    self.generation+=1;self.phase='ending' if self.phone and self.phone.active_call else 'idle'
    if self.phase=='idle':self._ended();return
   def end():

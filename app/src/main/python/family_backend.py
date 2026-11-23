@@ -14,7 +14,7 @@ ANNOUNCE_INTERVAL=60*60
 TCP_ONLY_ACTIONS=frozenset({
     'setup','status','radio_batteries','unlock','lock','password','contacts','peer',
     'ios_network_context','call_routes','device_name','preferences','contact_card','qr_parse','discover_client','conversation_read','send',
-    'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','tcp_network_changed',
+    'mailbox_config','mailbox_sync','mailbox_route_get','mailbox_route_set','call_alert_route_get','call_alert_route_set','tcp_network_changed',
     'location_policy','location_start','location_stop','location_sample','location_suspend','ios_location_background',
     'room_save','room_remove','room_open','room_close','room_post','room_retry','room_discover','room_name','rnode','ios_bluetooth','meshcore_config','meshcore_contacts','meshcore_advert',
     'voice_config','voice_call','voice_answer','voice_hangup','voice_mute','voice_resolve','voice_presence','voice_keep_awake',
@@ -203,12 +203,14 @@ def _start():
             _destination=_router.register_delivery_identity(identity,display_name=_state['device_name'],stamp_cost=0)
         _router.register_delivery_callback(_receive, require_propagation_delivery=_tcp_only)
         if _meshcore:_meshcore.identity=identity
+        from family_call_alerts import FamilyCallHints
+        call_hints=FamilyCallHints(identity,_state,_lock)
         if not _tcp_only:
             from family_voice import FamilyVoice
-            _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred)
+            _voice=FamilyVoice(identity,_state,_lock,_save,route_context=_voice_route_context,autostart=not _voice_deferred,hints=call_hints)
         elif _ios_voice:
             from family_voice import FamilyVoice
-            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,incoming_gate=_ios_voice_incoming,route_context=_voice_route_context)
+            _voice=FamilyVoice(identity,_state,_lock,_save,gate=lambda acquire:not acquire or _ios_voice_foreground,incoming_gate=_ios_voice_incoming,route_context=_voice_route_context,hints=call_hints)
         try:
             from family_rooms import FamilyRooms
             if _rooms_enabled:
@@ -1020,6 +1022,24 @@ def request(raw):
             with _lock:reconnect=bool(_rns and _state['peer'].get('enabled'))
             if reconnect:threading.Thread(target=_connect,kwargs={"reconnect":True},daemon=True).start()
             return json.dumps({'ok':True})
+        if action in ('call_alert_route_get','call_alert_route_set'):
+            from family_call_alerts import bound_contact,route_for,set_route
+            with _lock:
+                _authorized(p)
+                contact_id=p.get('contactId')
+                bound_contact(_state,contact_id)
+                if action=='call_alert_route_set':
+                    previous=_state.get('callAlertRoutes')
+                    existed='callAlertRoutes' in _state
+                    try:
+                        set_route(_state,contact_id,p.get('route'))
+                        _save()
+                    except Exception:
+                        if existed:_state['callAlertRoutes']=previous
+                        else:_state.pop('callAlertRoutes',None)
+                        raise
+                route=route_for(_state,contact_id)
+                return json.dumps({'ok':True,'callAlertRoute':{'provider':route.provider,'audience':route.audience} if route else None})
         if action in ('mailbox_route_get','mailbox_route_set'):
             import mailbox_push
             _authorized(p)
@@ -1253,6 +1273,8 @@ def request(raw):
                         if address in known_keys and not contact.get('identityPublicKey'):
                             contact['identityPublicKey']=known_keys[address]
                 _state['contacts']=contacts
+                from family_call_alerts import reconcile_routes
+                reconcile_routes(_state)
                 if _locations:_locations.reconcile()
                 if _voice:_voice.reconcile()
                 import RNS

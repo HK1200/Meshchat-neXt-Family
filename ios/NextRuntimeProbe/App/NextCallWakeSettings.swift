@@ -63,6 +63,17 @@ struct NextCallWakeSettings: View {
                     }
                     if !error.isEmpty { Text(error).foregroundStyle(.red) }
                 }
+                if let provider = registration.recipientProvider, let audience = registration.recipientAudience {
+                    Section("Provider details for saved callers") {
+                        LabeledContent("HTTPS provider", value: provider).textSelection(.enabled)
+                        LabeledContent("Audience", value: audience).textSelection(.enabled)
+                        ShareLink(item: "Reticulum call-alert provider: \(provider)\nAudience: \(audience)") {
+                            Label("Share provider details", systemImage: "square.and.arrow.up")
+                        }
+                        Text("Shares no enrollment code, Apple token or private identity key.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 Section("Contacts allowed to call while suspended") {
                     Text("Select individual saved contacts. Adding a contact later does not grant call-alert access automatically.")
                         .font(.footnote).foregroundStyle(.secondary)

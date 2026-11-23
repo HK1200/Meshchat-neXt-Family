@@ -53,6 +53,11 @@ struct FamilyContactEditor: View {
                 Text("Import fills the services in the code. Other services, the name, and the photo stay unchanged. Review the addresses before saving.")
                     .font(.footnote).foregroundStyle(.secondary)
                 if contact.addresses["lxmf"]?.isEmpty == false {
+                    if contact.addresses["lxst"]?.isEmpty == false {
+                        NavigationLink("This contact’s incoming call alerts") {
+                            FamilyCallAlertRouteEditor(family: family, contactID: contact.id)
+                        }.accessibilityIdentifier("contact-call-alert-route")
+                    }
                     NavigationLink("Private mailbox push route") {
                         FamilyMailboxRouteEditor(family: family, contactID: contact.id)
                     }

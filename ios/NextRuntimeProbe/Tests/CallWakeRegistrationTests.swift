@@ -79,6 +79,17 @@ import XCTest
         }
         throw URLError(.timedOut)
     }
+    func testProviderSharingExposesOnlyPublicSetupAndDisappearsOnDisable() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertNil(f.controller.recipientProvider); XCTAssertNil(f.controller.recipientAudience)
+        let record = try f.record()
+        XCTAssertTrue(f.controller.enable(record))
+        XCTAssertEqual(f.controller.recipientProvider, "https://example.invalid")
+        XCTAssertEqual(f.controller.recipientAudience, "private-calls")
+        f.controller.disable()
+        XCTAssertNil(f.controller.recipientProvider); XCTAssertNil(f.controller.recipientAudience)
+    }
+
     func testCallStateLookupRequiresCurrentConsentAndContainsNoPrivateIdentity() throws {
         let f = CallConsentFixture(); defer { f.close() }
         let call = UUID()

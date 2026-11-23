@@ -209,6 +209,11 @@ struct FamilyMapPack: Decodable, Identifiable, Sendable {
     let center: Center?
 }
 
+struct FamilyCallAlertRoute: Codable, Sendable {
+    let provider: String
+    let audience: String
+}
+
 struct FamilyMailboxRoute: Codable, Sendable {
     let provider: String
     let audience: String
@@ -257,6 +262,7 @@ struct FamilyReply: Decodable, Sendable {
     var voice: FamilyVoiceState?
     var mailbox: FamilyMailbox?
     var mailboxRoute: FamilyMailboxRoute?
+    var callAlertRoute: FamilyCallAlertRoute?
     var location: FamilyLocationState?
     var locationBackgroundEnabled: Bool?
     var activeMap: String?

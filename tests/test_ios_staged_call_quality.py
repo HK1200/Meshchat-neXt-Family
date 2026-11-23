@@ -22,6 +22,10 @@ import json, pathlib, socket, sys
 sys.path.insert(0, sys.argv[1])
 import family_backend as backend
 import family_call_quality as quality
+import family_call_alerts, family_call_hints
+for module in (family_call_alerts, family_call_hints):
+    assert pathlib.Path(module.__file__).resolve().parent == pathlib.Path(sys.argv[1]).resolve()
+assert family_call_alerts.FamilyCallHints(None, {}, __import__('threading').RLock()).start(1, 'ab'*16, 'cd'*16) is None
 assert pathlib.Path(quality.__file__).resolve().parent == pathlib.Path(sys.argv[1]).resolve()
 def forbidden(*args, **kwargs):
     raise AssertionError('Ranking must not create a network socket')

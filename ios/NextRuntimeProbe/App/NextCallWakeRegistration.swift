@@ -34,6 +34,13 @@ import Foundation
     var stopping: Bool { current?.revoking == true }
     var needsReview: Bool { unreadable || current?.pausedForReview == true }
     var selectedCallers: [NextCallWakeEnrollment.Caller] { current?.selectedCallers ?? [] }
+    // Public recipient setup only. Never return a bearer, token, installation
+    // marker, caller name or private agreement key through these accessors.
+    var recipientProvider: String? {
+        guard localEnabled, let current, !current.revoking, current.pausedForReview != true else { return nil }
+        return current.provider.absoluteString
+    }
+    var recipientAudience: String? { recipientProvider == nil ? nil : current?.audience }
     var context: NextCallWakeContext? {
         guard localEnabled, eligible(), permitted(), let current,
               let value = try? marker(), validatePolicy(current) else { return nil }

@@ -529,6 +529,17 @@ final class FamilyModel: ObservableObject, FamilyCallWakeRuntime {
         } catch { self.error = error.localizedDescription }
     }
 
+    func loadCallAlertRoute(contactID: Int) async throws -> FamilyCallAlertRoute? {
+        try await request("call_alert_route_get", ["token": token, "contactId": contactID]).callAlertRoute
+    }
+
+    func saveCallAlertRoute(contactID: Int, route: FamilyCallAlertRoute?) async throws {
+        let value: Any
+        if let route { value = ["provider": route.provider, "audience": route.audience] }
+        else { value = NSNull() }
+        _ = try await request("call_alert_route_set", ["token": token, "contactId": contactID, "route": value])
+    }
+
     func loadMailboxRoute(contactID: Int) async throws -> FamilyMailboxRoute? {
         try await request("mailbox_route_get", ["token": token, "contactId": contactID]).mailboxRoute
     }

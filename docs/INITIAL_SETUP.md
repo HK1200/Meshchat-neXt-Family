@@ -82,3 +82,17 @@ Location sharing is optional. Grant device location access only if you intend to
 ### Start connections after a restart
 
 Open **Guardian settings → Security** and enable **Restore connections after a reboot or app update** if Family should reconnect automatically. This setting starts off. With it off, open Family after a reboot or update to reconnect.
+
+## Optional call alerts for an approved iOS contact
+
+If an approved contact uses a compatible push-enabled iPhone or iPad app, their
+guardian can share an HTTPS call-alert provider and audience. In Guardian
+settings, edit that saved Reticulum messaging/voice contact and open **This
+contact’s incoming call alerts**. Save those two public values. Its identity key
+comes from the verified saved contact, so no long key needs typing. No Apple
+token, enrollment code or account password belongs in this form.
+
+Saving the route sends nothing. Calling queues a signed wake hint while the
+ordinary Reticulum call finds its path. Provider outages do not block ordinary
+calls. Remove the route to stop future hints. Removing the contact also clears
+its route; adding it again does not restore that consent automatically.

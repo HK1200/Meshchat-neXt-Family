@@ -70,6 +70,17 @@ struct FamilyCallAlertsSettings: View {
                     }
                     if !owner.error.isEmpty { Text(owner.error).foregroundStyle(.red) }
                 }
+                if let provider = registration.recipientProvider, let audience = registration.recipientAudience {
+                    Section("Provider details for approved callers") {
+                        LabeledContent("HTTPS provider", value: provider).textSelection(.enabled)
+                        LabeledContent("Audience", value: audience).textSelection(.enabled)
+                        ShareLink(item: "Reticulum call-alert provider: \(provider)\nAudience: \(audience)") {
+                            Label("Share provider details", systemImage: "square.and.arrow.up")
+                        }
+                        Text("Give these public details to an approved caller for their contact route. This shares no password, enrollment code or Apple token.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 Section("Contacts allowed to call while suspended") {
                     Text("Choose individual guardian-approved Reticulum voice contacts. Adding a contact later does not grant call-alert access automatically.")
                         .font(.footnote).foregroundStyle(.secondary)

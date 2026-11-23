@@ -435,3 +435,21 @@ selection to resume. Turning alerts off stops local admission immediately;
 if provider removal is pending, reconnect and retry removal. Never delete the
 app to solve a pending removal or upgrade problem. See [Privacy](PRIVACY.md)
 for the provider's data flow and retention limits.
+
+### Calling a contact whose iPhone or iPad may be suspended
+
+Ask that contact's guardian for the HTTPS provider and audience shown in their
+Incoming Reticulum call alerts page. They can use **Share provider details**;
+never ask them for their Apple token or enrollment code. In your Guardian
+settings, edit the approved contact and choose **This contact’s incoming call
+alerts**. Save the supplied provider and audience. The saved, verified contact
+supplies its identity key automatically. Save changes to the contact's addresses
+before editing a route.
+
+The route sends nothing until you call that person. A short signed hint is
+queued alongside ordinary Reticulum path discovery, and ending the call cancels
+the hint. A provider failure does not prevent an ordinary call. Removing the
+route stops future hints; removing the contact or changing its approved identity
+also removes its route. Adding the same person later requires a fresh route.
+Sender support does not need Apple enrollment on the calling device; the
+recipient still needs a compatible push-enabled app and provider.
