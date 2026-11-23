@@ -16,6 +16,8 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources:
+      - path: ../NextRuntimeProbe/App/NextNativeModelHost.swift
+      - path: ../NextRuntimeProbe/Tests/NativeModelHostTests.swift
       - path: ../NextRuntimeProbe/App/NextCallWakeContext.swift
       - path: ../NextRuntimeProbe/App/NextCallWakeEnrollment.swift
       - path: ../NextRuntimeProbe/App/NextCallWakeInstallation.swift

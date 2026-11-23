@@ -4,9 +4,14 @@ import WebKit
 @main
 struct ProbeApp: App {
     @UIApplicationDelegateAdaptor(NextMessageAlerts.self) private var alerts
-    init() { alerts.callAlertsLaunch = { NextCallWakeOwner.shared.restore() } }
+    init() {
+        if !NextNativeModelHost.active { alerts.callAlertsLaunch = { NextCallWakeOwner.shared.restore() } }
+    }
     var body: some Scene {
-        WindowGroup { ProbeScreen(alerts: alerts) }
+        WindowGroup {
+            if NextNativeModelHost.active { Color.clear }
+            else { ProbeScreen(alerts: alerts) }
+        }
     }
 }
 
