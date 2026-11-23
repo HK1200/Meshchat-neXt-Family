@@ -609,9 +609,12 @@ final class ProbeUITests: XCTestCase {
         reveal(provider, in: form); replace(provider, with: "https://example.invalid", in: app)
         let audience = app.textFields["next-recipient-call-alert-audience"]
         reveal(audience, in: form); replace(audience, with: "private-calls", in: app)
-        let doneTyping = app.buttons["next-recipient-call-alert-done-typing"]
-        XCTAssertTrue(doneTyping.waitForExistence(timeout: 10), app.debugDescription)
-        doneTyping.tap()
+        // replace() already taps the real Done typing control and verifies
+        // keyboard dismissal. Do not require its focus-only button a second
+        // time after focus has intentionally been removed.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(provider.value as? String, "https://example.invalid")
+        XCTAssertEqual(audience.value as? String, "private-calls")
         reveal(save, in: form)
         XCTAssertTrue(save.isEnabled, app.debugDescription)
         save.tap()
