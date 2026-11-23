@@ -128,9 +128,10 @@ class ConversationHistory:
             """)
 
     def preferences(self, default_name="neXt iOS"):
-        result = {"display_name": default_name, "theme": "system", "auto_announce_interval_seconds": 3600}
+        result = {"display_name": default_name, "theme": "system", "auto_announce_interval_seconds": 3600, "page_archiver_enabled": False}
         result.update(dict(self.db.execute("SELECT key, value FROM preferences WHERE key != 'last_announced_at'")))
         result["auto_announce_interval_seconds"] = int(result["auto_announce_interval_seconds"])
+        result["page_archiver_enabled"] = result["page_archiver_enabled"] in (True, 1, "1")
         return result
 
     def last_announce_time(self):
@@ -150,8 +151,8 @@ class ConversationHistory:
             self.db.execute("INSERT INTO preferences VALUES ('last_announced_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (timestamp,))
 
     def update_preferences(self, changes, default_name="neXt iOS"):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"display_name", "theme", "auto_announce_interval_seconds"}:
-            raise ValueError("This iOS preview supports saving the display name, theme and announce interval")
+        if not isinstance(changes, dict) or not changes or set(changes) - {"display_name", "theme", "auto_announce_interval_seconds", "page_archiver_enabled"}:
+            raise ValueError("This iOS preview supports saving the display name, theme, announce interval and page archiving")
         values = dict(changes)
         if "display_name" in values:
             name = values["display_name"]
@@ -165,6 +166,8 @@ class ConversationHistory:
             interval = values["auto_announce_interval_seconds"]
             if type(interval) is not int or interval not in (0, 900, 1800, 3600, 10800, 21600, 43200, 86400):
                 raise ValueError("Choose a listed announce interval")
+        if "page_archiver_enabled" in values and type(values["page_archiver_enabled"]) is not bool:
+            raise ValueError("Choose whether to save visited pages")
         with self.db:
             self.db.executemany("INSERT INTO preferences VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                                 values.items())
@@ -392,7 +395,7 @@ class ConversationHistory:
         self.db.close()
 
 
-async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None, network_factory=None, file_factory=None, terminal_factory=None):
+async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=None, meshcore_factory=None, sip_factory=None, voice_factory=None, map_factory=None, relay_factory=None, telemetry_factory=None, location_factory=None, network_factory=None, file_factory=None, terminal_factory=None, nomad_factory=None):
     loop = asyncio.get_running_loop()
     clients = set()
     tasks = set()
@@ -403,6 +406,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
     location = None
     files = None
     terminal = None
+    nomad = None
     closing = False
     pending_active = set()
     pending_retry_at = {}
@@ -626,6 +630,8 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 return web.json_response({"messages": notices}, headers={"Cache-Control": "no-store"})
             if path == "announces":
                 try:
+                    if nomad and request.query.get("aspect") == "nomadnetwork.node":
+                        return web.json_response({"announces": nomad.discovered(request.query)}, headers={"Cache-Control": "no-store"})
                     if relay and request.query.get("aspect") == "rrc.hub":
                         return web.json_response({"announces": relay.discovered(request.query)}, headers={"Cache-Control": "no-store"})
                     return web.json_response({"announces": [row for row in probe.discovery.page(request.query)
@@ -1030,7 +1036,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             return
 
     async def websocket(request):
-        client = web.WebSocketResponse()
+        client = web.WebSocketResponse(max_msg_size=14_000_000 if nomad is not None else 4 * 1024 * 1024)
         await client.prepare(request)
         clients.add(client)
         try:
@@ -1043,7 +1049,11 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                         continue
                     if isinstance(data, dict) and data.get("type") == "ping":
                         await client.send_json({"type": "pong"})
+                    elif nomad is not None:
+                        await nomad.handle(client, data)
         finally:
+            if nomad is not None:
+                nomad.disconnect(client)
             clients.discard(client)
         return client
 
@@ -1080,6 +1090,10 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 except (ConnectionError, RuntimeError): clients.discard(client)
         terminal = terminal_factory(probe, ready_file.parent / 'rnsh' / own, blocks.denies, terminal_event)
         terminal.register(app.router)
+    if nomad_factory:
+        nomad = nomad_factory(ready_file.parent, probe, blocks.denies,
+                              lambda event: track(meshcore_broadcast(event)), config)
+        nomad.register(app.router)
     if voice_factory:
         def voice_interfaces():
             import RNS
@@ -1150,11 +1164,13 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         app.on_startup.append(start_sip)
         app.on_cleanup.append(stop_sip)
     async def revoke_blocked(keys):
+        if nomad: nomad.begin_block(keys)
         for key in keys:
             if location: await location.contact_removed(key)
             mailbox_push.save_route(ready_file.parent, key, None)
 
     async def blocks_changed():
+        if nomad: nomad.reconcile_blocks()
         contacts.clear(); contacts.update(history.contacts())
         if relay: relay.refresh_contacts()
         if voice:
@@ -1216,6 +1232,7 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                 pass
         if files: await files.close()
         if terminal: await terminal.close()
+        if nomad: await nomad.close()
         probe.close()
         await runner.cleanup()
         if tasks:
@@ -1242,8 +1259,9 @@ def run_for_app(ready_file):
         from network_runtime import NetworkRuntime
         from file_runtime import FileRuntime
         from terminal_runtime import TerminalRuntime
+        from nomad_runtime import NomadRuntime
         asyncio.run(serve(ready, resources / "frontend", fixture, device=fixture != simulator,
-                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime, network_factory=NetworkRuntime, file_factory=FileRuntime, terminal_factory=TerminalRuntime))
+                          peer_settings=overrides, meshcore_factory=NextMeshCore, sip_factory=NextSIPRuntime, voice_factory=ReticulumVoice, map_factory=MapRuntime, relay_factory=RelayRuntime, telemetry_factory=TelemetryRuntime, location_factory=LocationRuntime, network_factory=NetworkRuntime, file_factory=FileRuntime, terminal_factory=TerminalRuntime, nomad_factory=NomadRuntime))
     except Exception as error:
         ready.with_suffix(".error").write_text(str(error), encoding="utf-8")
         raise

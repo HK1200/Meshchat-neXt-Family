@@ -33,7 +33,11 @@ final class NextAttachmentDownloads: NSObject, WKDownloadDelegate {
     private var active: WKDownload?
     private var destination: URL?
     private var limit: Int64 = 10_000_000
-    private var oversizedMessage: String { limit > 10_000_000 ? "This map exceeds the 2 GB limit." : "This attachment exceeds the 10 MB direct-message limit." }
+    private var oversizedMessage: String {
+        if limit == 2 * 1024 * 1024 * 1024 { return "This download exceeds the 2 GB limit." }
+        if limit == 64 * 1024 * 1024 { return "This archive export exceeds the 64 MB limit." }
+        return "This download exceeds the 10 MB limit."
+    }
 
     init(base: URL, onComplete: @escaping (URL) -> Void, onError: @escaping (String) -> Void) {
         self.base = base; self.onComplete = onComplete; self.onError = onError
@@ -48,10 +52,11 @@ final class NextAttachmentDownloads: NSObject, WKDownloadDelegate {
     func downloadLimit(for url: URL?) -> Int64? {
         guard let url else { return nil }
         if url.scheme == "blob" {
-            return isLocal(URL(string: String(url.absoluteString.dropFirst(5)))) ? 10_000_000 : nil
+            return isLocal(URL(string: String(url.absoluteString.dropFirst(5)))) ? 10 * 1024 * 1024 : nil
         }
         guard isLocal(url) else { return nil }
         if url.path.range(of: "^/api/v1/lxmf-messages/attachment/[a-f0-9]{64}/(file|image|audio)$", options: .regularExpression) != nil { return 10_000_000 }
+        if url.path == "/api/v1/nomadnet/archives/export" { return 64 * 1024 * 1024 }
         if url.path.range(of: "^/api/v1/map/export/[a-f0-9]{16}/download$", options: .regularExpression) != nil { return 2 * 1024 * 1024 * 1024 }
         if url.path.range(of: "^/api/v1/preview/rncp/files/[a-f0-9]{32}/download$", options: .regularExpression) != nil { return 2 * 1024 * 1024 * 1024 }
         return nil

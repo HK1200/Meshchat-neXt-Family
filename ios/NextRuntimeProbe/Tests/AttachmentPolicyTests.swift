@@ -47,4 +47,17 @@ final class AttachmentPolicyTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testNomadBlobExportsKeepTheStandardBudgetWithoutChangingMessageBounds() throws {
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:55444/"))
+        let policy = NextAttachmentDownloads(base: base, onComplete: { _ in XCTFail() }, onError: { _ in XCTFail() })
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: "blob:http://127.0.0.1:55444/owned-nomad-file")), 10 * 1024 * 1024)
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: "http://127.0.0.1:55444/api/v1/lxmf-messages/attachment/" + String(repeating: "a", count: 64) + "/file")), 10_000_000)
+        XCTAssertNil(policy.downloadLimit(for: URL(string: "blob:http://127.0.0.1:55445/another-session")))
+        XCTAssertNil(policy.downloadLimit(for: URL(string: "blob:https://example.invalid/untrusted")))
+        XCTAssertEqual(policy.downloadLimit(for: URL(string: "http://127.0.0.1:55444/api/v1/nomadnet/archives/export?q=roads")), 64 * 1024 * 1024)
+        XCTAssertNil(policy.downloadLimit(for: URL(string: "http://127.0.0.1:55445/api/v1/nomadnet/archives/export")))
+        XCTAssertNil(policy.downloadLimit(for: URL(string: "http://127.0.0.1:55444/api/v1/nomadnet/archives/export/extra")))
+    }
+
 }

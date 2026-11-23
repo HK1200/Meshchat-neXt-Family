@@ -78,6 +78,8 @@ node --test "$probe/test-native-location-client.mjs"
 python3 "$probe/location_frontend.py" staged/frontend
 python3 "$probe/rncp_frontend.py" staged/frontend
 python3 "$probe/terminal_frontend.py" staged/frontend
+node --test "$probe/test-native-archive-export.mjs"
+python3 "$probe/nomad_frontend.py" staged/frontend
 curl --fail --silent --show-error --location --retry 3 \
     https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.27/meshchat_next-0.1.27-py3-none-any.whl \
     --output next-backend.whl
@@ -103,6 +105,7 @@ cp "$probe/map_runtime.py" staged/map_runtime.py
 cp "$probe/relay_runtime.py" staged/relay_runtime.py
 cp "$probe/outbound_mailbox.py" staged/outbound_mailbox.py
 cp "$probe/durable_outbox.py" staged/durable_outbox.py
+cp "$probe/nomad_store.py" "$probe/nomad_runtime.py" "$probe/nomad_policy.py" staged/
 cp "$probe/push_receiving.py" staged/push_receiving.py
 cp "$probe/telemetry_runtime.py" staged/telemetry_runtime.py
 cp "$probe/conversation_organization.py" staged/conversation_organization.py
@@ -192,7 +195,7 @@ test "$(defaults read com.apple.iphonesimulator ConnectHardwareKeyboard)" = 0
 cp -R "$probe/Tests" .
 # The shared wake type is compiled into this test target; do not import the Family app.
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo > "$scratch/echo.log" 2>&1 &
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo nomad-browser > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do
     [[ ! -f "$scratch/echo/peer.json" ]] || break

@@ -16,8 +16,9 @@ class ClientDiscovery:
     capacity = 1000
     retention_seconds = 30 * 24 * 60 * 60
 
-    def __init__(self, path, own_address):
+    def __init__(self, path, own_address, on_change=None):
         self.own_address = own_address
+        self.on_change = on_change
         self.lock = threading.RLock()
         self.closed = False
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -35,7 +36,7 @@ class ClientDiscovery:
         if (not isinstance(destination_hash, bytes) or len(destination_hash) != 16
                 or destination_hash.hex() == self.own_address or announced_identity is None):
             return
-        expected = RNS.Destination.hash_from_name_and_identity("lxmf.delivery", announced_identity)
+        expected = RNS.Destination.hash_from_name_and_identity(self.aspect_filter, announced_identity)
         if destination_hash != expected:
             return
         public_key = announced_identity.get_public_key()
@@ -44,7 +45,7 @@ class ClientDiscovery:
         if app_data is not None and (not isinstance(app_data, bytes) or len(app_data) > 512):
             return
         try:
-            name = LXMF.display_name_from_app_data(app_data) or "Anonymous Peer"
+            name = self.display_name(app_data) or "Anonymous Peer"
         except Exception:  # Malformed remote MessagePack must not stop announce processing.
             name = "Anonymous Peer"
         if not isinstance(name, str):
@@ -57,6 +58,14 @@ class ClientDiscovery:
                 return
             with self.db:
                 self._remember(destination_hash, announced_identity, public_key, name, now)
+        if self.on_change is not None:
+            try:
+                self.on_change(destination_hash.hex())
+            except (ConnectionError, RuntimeError):
+                pass
+
+    def display_name(self, app_data):
+        return LXMF.display_name_from_app_data(app_data)
 
     def _remember(self, destination_hash, announced_identity, public_key, name, now):
         self.db.execute("""INSERT INTO clients VALUES (?, ?, ?, ?, ?)

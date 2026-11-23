@@ -14,9 +14,9 @@ def test_saved_profile_survives_restart_and_partial_updates(tmp_path):
     history.update_preferences({"display_name": "  Test 雪  ", "theme": "dark"})
     history.close()
     history = ConversationHistory(path)
-    assert history.preferences() == {"display_name": "Test 雪", "theme": "dark", "auto_announce_interval_seconds": 3600}
+    assert history.preferences() == {"display_name": "Test 雪", "theme": "dark", "auto_announce_interval_seconds": 3600, "page_archiver_enabled": False}
     history.update_preferences({"theme": "light"})
-    assert history.preferences() == {"display_name": "Test 雪", "theme": "light", "auto_announce_interval_seconds": 3600}
+    assert history.preferences() == {"display_name": "Test 雪", "theme": "light", "auto_announce_interval_seconds": 3600, "page_archiver_enabled": False}
     assert len(history.contacts()) == 1
     history.close()
 
@@ -30,7 +30,7 @@ def test_invalid_profile_edits_do_not_change_saved_settings(tmp_path, changes):
     history.update_preferences({"display_name": "Original", "theme": "dark"})
     with pytest.raises(ValueError):
         history.update_preferences(changes)
-    assert history.preferences() == {"display_name": "Original", "theme": "dark", "auto_announce_interval_seconds": 3600}
+    assert history.preferences() == {"display_name": "Original", "theme": "dark", "auto_announce_interval_seconds": 3600, "page_archiver_enabled": False}
     history.close()
 
 
@@ -77,3 +77,27 @@ def test_invalid_native_notification_floor_never_opens_or_changes_history(tmp_pa
     with pytest.raises(ValueError):
         ConversationHistory(path, notification_floor=floor)
     assert not path.exists()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_page_archive_preference_survives_restart_without_changing_contacts(tmp_path, enabled):
+    path = tmp_path / "history.sqlite3"
+    history = ConversationHistory(path)
+    history.ensure_contact("ab" * 16, "Saved contact")
+    history.update_preferences({"display_name": "Saved name", "page_archiver_enabled": enabled})
+    history.close()
+    history = ConversationHistory(path)
+    assert history.preferences()["page_archiver_enabled"] is enabled
+    assert history.preferences()["display_name"] == "Saved name"
+    assert len(history.contacts()) == 1
+    history.close()
+
+
+@pytest.mark.parametrize("enabled", [None, 0, 1, "true", [], {}])
+def test_invalid_archive_preference_is_atomic(tmp_path, enabled):
+    history = ConversationHistory(tmp_path / "history.sqlite3")
+    before = history.preferences()
+    with pytest.raises(ValueError):
+        history.update_preferences({"display_name": "Changed", "page_archiver_enabled": enabled})
+    assert history.preferences() == before
+    history.close()

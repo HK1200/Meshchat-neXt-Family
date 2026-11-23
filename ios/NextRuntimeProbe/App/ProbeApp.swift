@@ -183,6 +183,10 @@ private struct ProbeScreen: View {
                 VStack {
                     ContentUnavailableView("neXt couldn’t start", systemImage: "exclamationmark.triangle",
                                            description: Text(error))
+                    Text("Close and reopen neXt before trying to start it again.")
+                        .font(.callout)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                     Button("Review connection settings") { self.error = nil; starting = false }
                 }
             } else if (simulator && !setupReviewFixture) || starting {

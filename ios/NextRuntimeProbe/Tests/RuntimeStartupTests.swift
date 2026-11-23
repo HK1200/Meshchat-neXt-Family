@@ -26,6 +26,7 @@ final class RuntimeStartupTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTFail("The private startup barrier was not reached")
+        throw URLError(.timedOut)
     }
 
     func testConcurrentScreenAndWakeShareOneRuntimeAndSession() async throws {

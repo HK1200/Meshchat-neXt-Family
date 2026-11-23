@@ -147,6 +147,34 @@ in TestFlight on the iPad. Internal TestFlight does not require the iPad's UDID.
 Use the **AppStore** build configuration when archiving Family for the App Store. It disables room access and room networking. Local and GitHub builds use Debug or Release and include rooms.
 
 
+## neXt iOS Nomad browser (development)
+
+Open **Nomad Network** from the normal sidebar. Select a discovered node or enter
+its Reticulum address and page path, such as `address:/page/index.mu`. Discovery
+uses verified Nomad node announces and keeps bookmarks separate from messaging
+contacts. Browsing uses the same enabled Reticulum interfaces as messages.
+
+A bookmark does not disclose your identity automatically. Enable its existing
+**Identify on connect** option explicitly if the remote page needs it. Private
+browsing overrides that choice, uses an unshared link and does not automatically
+archive visited pages. Turning identification off cancels pending identified
+requests and retires the cached link. Blocking a node also prevents late page
+or file results from reaching the interface.
+
+Automatic page archiving is off by default. You can save a page manually or
+enable automatic archiving in Settings. Local archives retain up to five versions
+per page within a 128-version, 32 MiB total bound; a single saved page is limited
+to 4 MiB. Old versions are removed as those limits are reached. Search, removal
+and export apply to saved pages, not messages or the Reticulum identity. Export
+opens the native Save/share screen and contains only the selected search/node
+results. Nomad file downloads support the standard 10 MiB limit. Direct-message
+attachment limits remain as described below.
+
+This integration has private host protocol tests. Both simulator UI runs and
+physical browser/export checks are still required; local page hosting and
+crawling are not implemented by this mobile adapter. See
+[NEXT_FEATURE_PARITY.md](NEXT_FEATURE_PARITY.md) for the current qualification.
+
 ## Native neXt TCP connections
 
 The neXt iOS shell uses the released Messages interface and the native **TCP connections** screen. New default TCP profiles list RMAP 4343, RMAP 4242, WashMesh 7242 and Chicago 4242 separately. Each row can be edited, disabled or removed; **Add TCP peer** creates a disabled row for review before connecting. Existing custom/private single-peer profiles keep their custom connection enabled and show the public defaults disabled, rather than silently connecting to them. Saved rows retain their independent on/off state on the next launch.

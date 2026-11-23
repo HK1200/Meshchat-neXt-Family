@@ -9,6 +9,8 @@ final class ProbeUITests: XCTestCase {
         let deleteMessage: String?
         let freshMessage: String?
         let locationReceipt: String?
+        let nomadAddress: String?
+        let nomadPage: String?
     }
 
     func testContactCodeImportReviewsExistingContactWithoutRequestingCamera() throws {
@@ -59,6 +61,51 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(app.collectionViews["next-contact-import-form"].waitForNonExistence(timeout: 15), app.debugDescription)
         app.navigationBars["My contact QR"].buttons["Done"].tap()
         XCTAssertTrue(app.navigationBars["My contact QR"].waitForNonExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, own)
+    }
+
+    func testNomadBrowserLoadsARealPageAndOffersTheReceivedFileForSaving() throws {
+        executionTimeAllowance = 300
+        continueAfterFailure = false
+        let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: file))
+        let address = try XCTUnwrap(fixture.nomadAddress)
+        let text = try XCTUnwrap(fixture.nomadPage)
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
+        let own = app.staticTexts["my-lxmf-address"].label
+        let web = app.webViews.firstMatch
+        let browser = web.links["Nomad Network"].firstMatch
+        if !browser.exists || !browser.isHittable {
+            let menu = web.buttons["menu"].firstMatch
+            XCTAssertTrue(menu.exists && menu.isHittable, app.debugDescription)
+            menu.tap()
+        }
+        XCTAssertTrue(browser.waitForExistence(timeout: 20), app.debugDescription)
+        let visible = NSPredicate(format: "exists == true AND hittable == true")
+        expectation(for: visible, evaluatedWith: browser)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(browser.isHittable, app.debugDescription)
+        browser.tap()
+        let entry = web.textFields["Enter a Nomadnet URL"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 25), app.debugDescription)
+        entry.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        app.typeText(address + ":/page/index.mu\n")
+        let page = web.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 75), app.debugDescription)
+        let download = web.links["Download Nomad sample"].firstMatch
+        XCTAssertTrue(download.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(download.isHittable, app.debugDescription)
+        download.tap()
+        let exported = app.staticTexts["export-attachment-name"]
+        XCTAssertTrue(exported.waitForExistence(timeout: 60), app.debugDescription)
+        XCTAssertEqual(exported.label, "nomad-test.txt")
+        XCTAssertTrue(app.buttons["share-attachment"].exists, app.debugDescription)
+        app.navigationBars["Attachment"].buttons["Done"].tap()
+        XCTAssertTrue(exported.waitForNonExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, own)
     }
 

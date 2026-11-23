@@ -60,6 +60,13 @@ jobs:
           python ios/NextRuntimeProbe/stage-backend.py \
             temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only \
             --cbor-wheel temp-tests/voice-source/cbor2.whl
+      - name: Verify private Nomad pages, files, consent and saved archives
+        run: |
+          NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \
+            PYTHONPATH="$PWD/temp-tests/voice-source/staged:$PWD/app/src/main/python" \
+            python -m pytest -q ios/test-next-nomad-runtime.py ios/test-next-nomad-wire.py \
+            --basetemp=temp-tests/nomad-browser
+          node --test ios/NextRuntimeProbe/test-native-archive-export.mjs
       - name: Verify native MeshCore location consent and final Bluetooth handoff
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \

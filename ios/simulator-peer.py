@@ -11,7 +11,9 @@ import LXMF
 import RNS
 
 
-def main(folder, public, drop_test=False, attachment_echo=False, location_echo=False):
+def main(folder, public, drop_test=False, attachment_echo=False, location_echo=False, nomad_browser=False):
+    if public and nomad_browser:
+        raise ValueError("Nomad browser fixtures must stay on loopback")
     if public and location_echo:
         raise ValueError("Synthetic location fixtures must stay on loopback")
     if public and attachment_echo:
@@ -126,6 +128,19 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
             diagnostic("message_received", message)
             threading.Thread(target=reply, args=(message, location), daemon=True).start()
 
+    nomad = None
+    if nomad_browser:
+        nomad = RNS.Destination(identity, RNS.Destination.IN, RNS.Destination.SINGLE, 'nomadnetwork', 'node')
+        nomad_page = 'neXt iOS Nomad fixture page\n\n`[Download Nomad sample`:/file/nomad-test.txt]\n'
+        nomad_bytes = b'Private native Nomad file export test'
+        def page(path, data, request_id, link_id, remote_identity, requested_at):
+            return nomad_page.encode()
+        def file(path, data, request_id, link_id, remote_identity, requested_at):
+            return ['nomad-test.txt', nomad_bytes]
+        nomad.register_request_handler('/page/index.mu', response_generator=page, allow=RNS.Destination.ALLOW_ALL)
+        nomad.register_request_handler('/file/nomad-test.txt', response_generator=file, allow=RNS.Destination.ALLOW_ALL)
+        nomad.announce(app_data=b'Simulator Nomad node')
+
     router.register_delivery_callback(echo)
     destination.announce()
     pending = folder / "peer.tmp"
@@ -135,6 +150,9 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
         "deleteMessage": delete_message, "freshMessage": fresh_message,
     }
     if location_echo: payload["locationReceipt"] = location_receipt
+    if nomad_browser:
+        payload['nomadAddress'] = nomad.hash.hex()
+        payload['nomadPage'] = 'neXt iOS Nomad fixture page'
     pending.write_text(json.dumps(payload))
     pending.replace(folder / "peer.json")
     threading.Event().wait()
@@ -142,4 +160,4 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
 
 if __name__ == "__main__":
     public = len(sys.argv) > 2 and sys.argv[2] == "rmap"
-    main(Path(sys.argv[1]), public, drop_test=not public and sys.argv[2:3] != ["local-no-drop"], attachment_echo=sys.argv[3:4] == ["attachment-echo"], location_echo=sys.argv[4:5] == ["location-echo"])
+    main(Path(sys.argv[1]), public, drop_test=not public and sys.argv[2:3] != ["local-no-drop"], attachment_echo=sys.argv[3:4] == ["attachment-echo"], location_echo=sys.argv[4:5] == ["location-echo"], nomad_browser=sys.argv[5:6] == ["nomad-browser"])
