@@ -464,3 +464,15 @@ def test_archive_storage_failure_reports_an_error_without_false_saved_confirmati
             assert len(runtime.store.archives()) == 1
         finally: await runtime.close()
     asyncio.run(check())
+
+
+def test_mobile_sandbox_csp_matches_the_checksum_pinned_upstream_policy():
+    import ast
+    import inspect
+    import os
+    from nomad_frame import build_nomad_crash_tab_csp
+    source = Path(os.environ['NEXT_TEST_BACKEND_SOURCE']) / 'meshchatnext/src/backend/http/middleware.py'
+    original = next(node for node in ast.parse(source.read_text()).body
+        if isinstance(node, ast.FunctionDef) and node.name == 'build_nomad_crash_tab_csp')
+    mobile = ast.parse(inspect.getsource(build_nomad_crash_tab_csp)).body[0]
+    assert ast.dump(original, include_attributes=False) == ast.dump(mobile, include_attributes=False)
