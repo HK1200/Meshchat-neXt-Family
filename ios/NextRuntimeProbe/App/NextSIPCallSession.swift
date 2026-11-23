@@ -51,6 +51,13 @@ final class NextSIPSystemAudio: NextSIPCallAudio {
     }
 }
 
+/// Only a native authenticated wake owner may offer a pending call for adoption.
+@MainActor
+protocol NextIncomingCallWakeRouting: AnyObject {
+    func pendingIncoming(peer: String, service: FamilySystemCallKey.Service) -> FamilySystemCallKey?
+    func attached(_ pending: FamilySystemCallKey, to key: FamilySystemCallKey)
+}
+
 /// Owns one transport call; CallKit/permission awaits cannot act on a later call.
 /// SIP keeps its existing default policy; Reticulum supplies strict identity validation.
 @MainActor
@@ -58,10 +65,12 @@ final class NextSIPCallSession: NextSIPCallManaging {
     private final class Call {
         let id: String; let peer: String; let incoming: Bool
         let service: FamilySystemCallKey.Service; let name: String
+        let pendingWake: FamilySystemCallKey?
         var started: Bool; var connected = false; var ending = false; var muted = false; var answering = false
-        init(id: String, peer: String, incoming: Bool, service: FamilySystemCallKey.Service, name: String) {
+        init(id: String, peer: String, incoming: Bool, service: FamilySystemCallKey.Service, name: String,
+             pendingWake: FamilySystemCallKey? = nil) {
             self.id = id; self.peer = peer; self.incoming = incoming; self.started = incoming
-            self.service = service; self.name = name
+            self.service = service; self.name = name; self.pendingWake = pendingWake
         }
         var key: FamilySystemCallKey { FamilySystemCallKey(service: service, id: id) }
     }
@@ -70,6 +79,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
     private let normalizePeer: (String) -> String?
     private let displayName: (String) -> String
     private let system: FamilySystemCalls
+    private let wakeRouter: (any NextIncomingCallWakeRouting)?
     private let audio: any NextSIPCallAudio
     private let emit: ([String: Any]) -> Void
     private var current: Call?
@@ -85,9 +95,11 @@ final class NextSIPCallSession: NextSIPCallManaging {
          service: FamilySystemCallKey.Service = .sip,
          normalizePeer: @escaping (String) -> String? = { FamilySIPAddress($0)?.uri },
          displayName: @escaping (String) -> String = { $0 },
+         wakeRouter: (any NextIncomingCallWakeRouting)? = nil,
          emit: @escaping ([String: Any]) -> Void) {
         self.driver = driver; self.system = system; self.audio = audio; self.emit = emit
         self.service = service; self.normalizePeer = normalizePeer; self.displayName = displayName
+        self.wakeRouter = wakeRouter
         guard observeAudio else { return }
         system.$audioReady.dropFirst().sink { [weak self] _ in
             Task { @MainActor in self?.audioChanged() }
@@ -161,8 +173,7 @@ final class NextSIPCallSession: NextSIPCallManaging {
     }
     private func track(_ call: Call) -> Bool {
         if system.enabled {
-            return system.track(call.key, name: call.name, incoming: call.incoming,
-                actions: FamilySystemCallActions(
+            let actions = FamilySystemCallActions(
                     prepareAudio: { [weak self, weak call] in
                         guard let self, let call else { return false }; return await self.prepare(call)
                     }, start: { [weak self, weak call] in
@@ -172,7 +183,13 @@ final class NextSIPCallSession: NextSIPCallManaging {
                     }, end: { [weak self, weak call] in if let call { self?.end(call) } },
                     mute: { [weak self, weak call] muted in
                         guard let self, let call else { return false }; return self.setMuted(muted, call: call)
-                    }))
+                    })
+            if let pending = call.pendingWake {
+                guard call.incoming, system.attachIncoming(pending, to: call.key, actions: actions) else { return false }
+                wakeRouter?.attached(pending, to: call.key)
+                return true
+            }
+            return system.track(call.key, name: call.name, incoming: call.incoming, actions: actions)
         }
         if !call.incoming {
             Task { if await prepare(call) { if !begin(call, answer: false) { end(call) } } else { end(call) } }
@@ -209,10 +226,14 @@ final class NextSIPCallSession: NextSIPCallManaging {
             guard id.range(of: "^[A-Za-z0-9_.-]{1,79}$", options: .regularExpression) != nil,
                   !retired.contains(id) else { return }
             if current?.id == id { return }
-            guard current == nil, !system.hasCall, let address = normalizePeer(peer) else {
+            guard current == nil, let address = normalizePeer(peer) else {
                 _ = driver.command(3, value: nil, callID: id); return
             }
-            let call = Call(id: id, peer: address, incoming: true, service: service, name: displayName(address))
+            let pending = wakeRouter?.pendingIncoming(peer: address, service: service)
+            guard !system.hasCall || (system.enabled && pending.map(system.contains) == true) else {
+                _ = driver.command(3, value: nil, callID: id); return
+            }
+            let call = Call(id: id, peer: address, incoming: true, service: service, name: displayName(address), pendingWake: pending)
             current = call
             if track(call) { event("incoming", call: call) }
             else { end(call) }

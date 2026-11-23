@@ -195,6 +195,7 @@ test "$(defaults read com.apple.iphonesimulator ConnectHardwareKeyboard)" = 0
 cp -R "$probe/Tests" .
 # The shared wake type is compiled into this test target; do not import the Family app.
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
+sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilySystemCallTests.swift" > Tests/FamilySystemCallTests.swift
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo nomad-browser > "$scratch/echo.log" 2>&1 &
 peer_pid=$!
 for ((i=0; i<200; i++)); do
