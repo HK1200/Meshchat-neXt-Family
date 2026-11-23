@@ -33,9 +33,9 @@ struct NextCallWakeEnrollment: Codable {
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
               parts.path.isEmpty || parts.path == "/",
               parts.port == nil || (1...65535).contains(parts.port!),
-              audience.range(of: "^[A-Za-z0-9 _.-]{1,128}$", options: .regularExpression) != nil,
-              enrollmentCode.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
-              policyDigest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil,
+              audience.range(of: #"\A[A-Za-z0-9 _.-]{1,128}\z"#, options: .regularExpression) != nil,
+              enrollmentCode.range(of: #"\A[a-f0-9]{64}\z"#, options: .regularExpression) != nil,
+              policyDigest.range(of: #"\A[a-f0-9]{64}\z"#, options: .regularExpression) != nil,
               recipientPublicKey.count == 64, selectedCallers.count <= 256,
               Set(selectedCallers.map(\.voiceAddress)).count == selectedCallers.count else { throw Invalid.record }
         if revoking {

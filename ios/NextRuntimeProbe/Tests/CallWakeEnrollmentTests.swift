@@ -64,9 +64,17 @@ import XCTest
     }
     func testAudienceUsesTheSameAlphabetAsTheSignedProtocol() throws {
         let original = try record().encoded(installation: marker)
-        for audience in ["", "bad/audience", "emoji-🙂", "bad\nvalue", String(repeating: "a", count: 129)] {
+        for audience in ["", "bad/audience", "private-calls\n", "emoji-🙂", "bad\nvalue", String(repeating: "a", count: 129)] {
             var json = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
             json["audience"] = audience
+            XCTAssertThrowsError(try NextCallWakeEnrollment.decode(JSONSerialization.data(withJSONObject: json), installation: marker))
+        }
+    }
+    func testEnrollmentAndDigestMustMatchTheWholeString() throws {
+        let original = try record().encoded(installation: marker)
+        for key in ["enrollmentCode", "policyDigest"] {
+            var json = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+            json[key] = String(repeating: "a", count: 64) + "\n"
             XCTAssertThrowsError(try NextCallWakeEnrollment.decode(JSONSerialization.data(withJSONObject: json), installation: marker))
         }
     }

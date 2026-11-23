@@ -4,7 +4,7 @@ import Foundation
 import XCTest
 
 final class CallWakeInstallationTests: XCTestCase {
-    private let name = ".next-call-alert-installation-v1"
+    private let markerName = ".next-call-alert-installation-v1"
     private func directory() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("call-install-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -13,7 +13,7 @@ final class CallWakeInstallationTests: XCTestCase {
     func testColdReadDoesNotCreateConsentAndExplicitOptInRetainsTheMarker() throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         XCTAssertNil(try NextCallWakeInstallation.read(support: root))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(name).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(markerName).path))
         let marker = try NextCallWakeInstallation.createForOptIn(support: root)
         XCTAssertEqual(marker.count, 32)
         XCTAssertEqual(try NextCallWakeInstallation.createForOptIn(support: root), marker)
@@ -28,14 +28,14 @@ final class CallWakeInstallationTests: XCTestCase {
         let root = try directory(), outside = try directory()
         defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: outside) }
         let marker = try NextCallWakeInstallation.createForOptIn(support: outside)
-        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent(name), withDestinationURL: outside.appendingPathComponent(name))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent(markerName), withDestinationURL: outside.appendingPathComponent(markerName))
         XCTAssertThrowsError(try NextCallWakeInstallation.read(support: root))
         XCTAssertThrowsError(try NextCallWakeInstallation.createForOptIn(support: root))
         XCTAssertEqual(try NextCallWakeInstallation.read(support: outside), marker)
     }
     func testMalformedAndPubliclyReadableMarkersFailClosed() throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let path = root.appendingPathComponent(name)
+        let path = root.appendingPathComponent(markerName)
         try Data(repeating: 0, count: 31).write(to: path)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
         XCTAssertThrowsError(try NextCallWakeInstallation.createForOptIn(support: root))
@@ -45,7 +45,7 @@ final class CallWakeInstallationTests: XCTestCase {
     }
     func testNamedPipesFailWithoutWaitingForAnotherProcess() throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
-        XCTAssertEqual(mkfifo(root.appendingPathComponent(name).path, 0o600), 0)
+        XCTAssertEqual(mkfifo(root.appendingPathComponent(markerName).path, 0o600), 0)
         XCTAssertThrowsError(try NextCallWakeInstallation.read(support: root))
         XCTAssertThrowsError(try NextCallWakeInstallation.createForOptIn(support: root))
     }
