@@ -111,3 +111,22 @@ def call_snapshot(history, source, voice, *, public_keys=None, block_snapshot=()
         "savedContacts": saved,
         "policyDigest": digest,
     }
+
+
+def notify_call_policy(history, source, voice, *, block_snapshot=()):
+    """Synchronize native consent before acknowledging a saved policy change.
+
+    This in-process bridge receives only a policy digest. Failure first asks
+    native code to pause alerts; it never sends a key or code to a web page.
+    """
+    try:
+        digest = call_snapshot(history, source, voice, block_snapshot=block_snapshot)["policyDigest"]
+        result = voice.request("call_policy", digest=digest)
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise RuntimeError("Native call permission update was not accepted")
+    except Exception:
+        try:
+            voice.request("call_policy_invalid")
+        except Exception:
+            pass
+        raise

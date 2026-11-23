@@ -565,7 +565,17 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
             raise web.HTTPForbidden(text="This local session is unavailable")
         if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.headers.get("X-CSRF-Token") != token:
             raise web.HTTPForbidden()
-        response = await handler(request)
+        try:
+            response = await handler(request)
+        finally:
+            # A handler may save an edit before a later response/broadcast
+            # fails. Revocation must still reach native code in that case.
+            if device and voice and voice.available and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+                from push_receiving import notify_call_policy
+                try:
+                    notify_call_policy(history, probe.source, voice, block_snapshot=blocks.snapshot())
+                except Exception:
+                    raise web.HTTPServiceUnavailable(text="Call permissions changed; refresh call alerts before retrying") from None
         # The shell and opaque frame import several identical modules. Mark
         # every public variant, including the shell's no-Origin response, or
         # WebKit can reuse it for the frame without its required CORS headers.
@@ -1149,7 +1159,16 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
         config.update(voice.settings_snapshot())
         voice.destination_blocked = blocks.denies
         voice.register(app.router)
-        async def start_voice(_): await voice.start()
+        async def start_voice(_):
+            await voice.start()
+            if device and voice.available:
+                from push_receiving import notify_call_policy
+                try:
+                    notify_call_policy(history, probe.source, voice, block_snapshot=blocks.snapshot())
+                except Exception:
+                    # The bridge requested local alert suspension. Preserve the
+                    # messaging runtime even if native calling is unavailable.
+                    voice.error = "Incoming call-alert permissions need review"
         async def stop_voice(_): await voice.close()
         app.on_startup.append(start_voice)
         app.on_cleanup.append(stop_voice)

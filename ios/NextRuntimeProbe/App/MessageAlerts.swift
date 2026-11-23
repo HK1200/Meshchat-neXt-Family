@@ -62,6 +62,7 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
     @Published private(set) var requestedAddress: String?
     @Published private(set) var requestedMeshCoreKey: String?
     let push: NextPushRegistration
+    var callAlertsLaunch: (@MainActor () -> Void)?
     @Published private(set) var mailboxInboxRequested = false
     @Published private(set) var mailboxSyncGeneration = 0
     private var mailboxAcknowledgedGeneration = 0
@@ -88,6 +89,7 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        callAlertsLaunch?()
         return true
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {

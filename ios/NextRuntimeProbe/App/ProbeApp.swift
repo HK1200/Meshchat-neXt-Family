@@ -4,6 +4,7 @@ import WebKit
 @main
 struct ProbeApp: App {
     @UIApplicationDelegateAdaptor(NextMessageAlerts.self) private var alerts
+    init() { alerts.callAlertsLaunch = { NextCallWakeOwner.shared.restore() } }
     var body: some Scene {
         WindowGroup { ProbeScreen(alerts: alerts) }
     }
@@ -23,7 +24,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location, callAlerts
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -227,6 +228,7 @@ private struct ProbeScreen: View {
             if appActive {
                 next_probe_request_listener_recovery()
                 Task { await alerts.refreshAuthorization() }
+                NextCallWakeOwner.shared.refreshPermissions()
             }
         }
         .onChange(of: alerts.mailboxInboxRequested) { _, wanted in
@@ -254,12 +256,18 @@ private struct ProbeScreen: View {
                             Label("SIP accounts", systemImage: "phone")
                                 .frame(minHeight: 44)
                         }.accessibilityIdentifier("next-sip-settings")
+                        Button { panel = .callAlerts } label: {
+                            Label("Incoming call alerts", systemImage: "phone.badge.waveform")
+                                .frame(minHeight: 44)
+                        }.accessibilityIdentifier("next-call-alert-settings")
                     }
                     .navigationTitle("Calling")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Done") { panel = nil } }
                     }
                 }
+            case .callAlerts:
+                if let url { NextCallWakeSettings(base: url, registration: NextCallWakeOwner.shared.registration) }
             case .location:
                 if let url { NextLocationSettings(base: url).interactiveDismissDisabled() }
             case .mailbox:

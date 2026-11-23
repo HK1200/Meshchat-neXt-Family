@@ -135,6 +135,16 @@ final class NextReticulumBridge {
             return ["ok": true]
         }
         guard session == identifier, let calls, let driver else { return ["ok": false] }
+        if operation == "call_policy_invalid" {
+            NextCallWakeOwner.shared.registration.pauseForReview()
+            return ["ok": true]
+        }
+        if operation == "call_policy" {
+            guard let digest = value["digest"] as? String,
+                  digest.range(of: #"\A[a-f0-9]{64}\z"#, options: .regularExpression) != nil else { return ["ok": false] }
+            NextCallWakeOwner.shared.policyChanged(digest)
+            return ["ok": true]
+        }
         if operation == "close" {
             calls.close(); driver.stop()
             self.calls = nil; self.driver = nil; session = nil

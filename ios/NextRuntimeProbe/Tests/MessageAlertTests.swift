@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import UserNotifications
 
 @MainActor
@@ -26,6 +27,22 @@ private final class FakeNextAlerts: NextAlertPosting {
 }
 
 final class MessageAlertTests: XCTestCase {
+    @MainActor
+    func testCallAlertRestoreRunsAtApplicationLaunchWithoutRequestingMessagePermissions() throws {
+        let suite = "next-alert-launch-test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = FakeNextAlerts()
+        let alerts = NextMessageAlerts(center: center, defaults: defaults)
+        var restored = 0
+        alerts.callAlertsLaunch = { restored += 1 }
+        XCTAssertEqual(restored, 0)
+        XCTAssertTrue(alerts.application(UIApplication.shared, didFinishLaunchingWithOptions: nil))
+        XCTAssertEqual(restored, 1)
+        XCTAssertEqual(center.requests, 0)
+        XCTAssertTrue(center.posted.isEmpty)
+    }
+
     @MainActor
     func testReticulumCounterFloorSurvivesReopenAndNeverUsesTheMeshCoreBaseline() async throws {
         let suite = "next-alert-floor-test." + UUID().uuidString

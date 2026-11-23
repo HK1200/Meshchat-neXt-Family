@@ -174,3 +174,37 @@ def test_native_cold_refresh_is_authenticated_csrf_protected_bounded_and_read_on
             urlopen(Request(endpoint, data=b"x" * 65537, headers=headers, method="POST"), timeout=5)
         assert bounded.value.code == 413
         assert api(base, path)[1] == before
+
+
+def test_native_policy_hook_sends_only_digest_and_observes_removal(monkeypatch):
+    from push_receiving import notify_call_policy
+    own, peer = RNS.Identity(), RNS.Identity()
+    monkeypatch.setattr(RNS.Identity, "recall", lambda _: peer)
+    voice = enabled_voice()
+    calls = []
+    voice.request = lambda op, **kwargs: calls.append((op, kwargs)) or {"ok": True}
+    notify_call_policy(history(peer), source(own), voice)
+    notify_call_policy(history(), source(own), voice)
+    assert [op for op, _ in calls] == ["call_policy", "call_policy"]
+    assert calls[0][1] != calls[1][1]
+    assert all(set(payload) == {"digest"} and len(payload["digest"]) == 64 for _, payload in calls)
+    assert own.get_private_key().hex() not in repr(calls)
+    assert peer.get_public_key().hex() not in repr(calls)
+
+
+@pytest.mark.parametrize("failure", ["bad_ack", "exception", "bad_identity"])
+def test_native_policy_hook_pauses_before_propagating_failure(monkeypatch, failure):
+    from push_receiving import notify_call_policy
+    own = RNS.Identity()
+    voice = enabled_voice()
+    calls = []
+    def request(op, **kwargs):
+        calls.append((op, kwargs))
+        if op == "call_policy" and failure == "exception": raise RuntimeError("unavailable")
+        return {"ok": op == "call_policy_invalid"}
+    voice.request = request
+    local = source(own)
+    if failure == "bad_identity": local.hash = bytes(16)
+    with pytest.raises((RuntimeError, ValueError)):
+        notify_call_policy(history(), local, voice)
+    assert calls[-1] == ("call_policy_invalid", {})

@@ -204,6 +204,33 @@ final class ProbeUITests: XCTestCase {
         verifyProfilePreferences(app, reply: "Echo: " + fixture.message)
     }
 
+    func testIncomingCallAlertsRemainOffInPersonalPreview() {
+        executionTimeAllowance = 180
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 60), app.debugDescription)
+        requireWebInterfaceReady(app)
+        let address = app.staticTexts["my-lxmf-address"].label
+        app.buttons["next-calling-menu"].tap()
+        let open = app.buttons["next-call-alert-settings"]
+        XCTAssertTrue(open.waitForExistence(timeout: 15), app.debugDescription)
+        open.tap()
+        XCTAssertTrue(app.collectionViews["next-call-alert-form"].waitForExistence(timeout: 15), app.debugDescription)
+        let off = app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label == %@",
+            "next-call-alert-status", "Off")).firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["next-call-alert-unavailable"].exists, app.debugDescription)
+        let enable = app.buttons["next-call-alert-enable"]
+        reveal(enable, in: app.collectionViews["next-call-alert-form"])
+        XCTAssertTrue(enable.exists)
+        XCTAssertFalse(enable.isEnabled, "A personal preview cannot register for Apple call pushes.")
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        app.navigationBars["Incoming call alerts"].buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, address)
+    }
+
     func testLocationControlsRequireExplicitRecipientsAndDefaultToForeground() {
         executionTimeAllowance = 180
         continueAfterFailure = false
