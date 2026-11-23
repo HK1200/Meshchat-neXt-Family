@@ -7,25 +7,26 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The latest fully verified separate iPad build is **389.1**, exact source
-`852b6f440025b721500b7ea3047affbbab523552`, pinned to public **0.1.27**.
-GitHub run `45137171591` passed all **111 required checks per simulator**
-(105 native and six UI cases) on their first attempts, plus both unsigned
+The latest fully verified separate iPad build is **390.1**, exact source
+`33096576029c398068cf562babd9b35f30afcdff`, pinned to public **0.1.27**.
+GitHub run `45148207507` passed all **115 required checks per simulator**
+(109 native and six UI cases) on their first attempts, plus both unsigned
 archives. The earlier compact-header candidate's iPhone contact-QR navigation
 failure was retained and that package was never installed. The same QR flow
 passed in the final both-device run without weakening its assertions.
 
-The same-key physical upgrade from 384.1 preserved all **1,121 current
+The same-key physical upgrade from 389.1 preserved all **1,511 current
 non-cache support files**, twelve messages, two contacts, identity, native
 preferences and four peers before first launch. Counts reflect the files
 present at this upgrade, not expired runtime caches from earlier builds.
 
-On the actual iPad, an original signed message with a **75,000-byte attachment**
-and photo survived a distinct process restart and arrived once with exact bytes.
-Standard RNCP send, fetch and approved reverse reception passed with **2 MiB**
-files and byte-identical downloads. Explicit removal affected only the synthetic
-received files. A clean private TCP test then queued messages during **twelve
-connection outages**: every original identifier was delivered once, every signed
+On the actual iPad's build 390.1, an original signed message with a
+**75,000-byte attachment** and photo survived a distinct process restart and
+arrived once with exact bytes. The previous build 389.1 also passed standard
+RNCP send, fetch and approved reverse reception with **2 MiB** files and
+byte-identical downloads. Explicit removal affected only the synthetic received
+files. Its clean private TCP test queued messages during **twelve connection
+outages**: every original identifier was delivered once, every signed
 echo returned, and no message was manually submitted again. The counterpart used
 the byte-verified recovery already in public neXt 0.1.27 from startup.
 
@@ -493,6 +494,11 @@ a process-lifetime atomic guard against duplicate Python initialization.
 
 The host regression races 32 threads against the production C guard and checks
 a negative control. Four native tests cover concurrent callers, retained
-sessions, caller cancellation and retained failures. Native Xcode verification
-is pending. This is a prerequisite for call wakeups, not PushKit registration
-or a claim that suspended calls can already ring.
+sessions, caller cancellation and retained failures. All four passed on both
+simulators in run `45148207507`; both complete 115-case suites and unsigned
+archives passed too. The separate iPad's same-key build 390.1 preserved its
+state, delivered the original signed packet after a process restart and
+rendered its ordinary conversation and composer afterward. Both Family apps'
+state, identity and native preferences remained byte-identical. Main CI,
+Security and Scorecard passed. This is a prerequisite for call wakeups, not
+PushKit registration or a claim that suspended calls can already ring.
