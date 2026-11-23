@@ -185,8 +185,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.next_runtime_probe || inputs.next_unit_tests) }}
     name: ${{ matrix.device }} neXt native and Messages
     runs-on: ${{ inputs.macos_runner || 'macos-26' }}
-    # Full native tests, seven cold-start UI cases and retained diagnostics.
-    timeout-minutes: 50
+    # Intel compilation plus seven cold-start UI cases can exceed 50 minutes.
+    # Keep the complete suite and per-case deadlines; allow artifact cleanup.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
