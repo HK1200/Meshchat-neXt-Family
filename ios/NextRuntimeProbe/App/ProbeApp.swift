@@ -579,6 +579,10 @@ private struct ProbeWebView: UIViewRepresentable {
                              forMainFrameOnly: true)
             )
         }
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: NextModalPage.loadingScript, injectionTime: .atDocumentStart,
+                         forMainFrameOnly: true, in: .defaultClient)
+        )
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.accessibilityElementsHidden = modalPresented || loadState.loading || loadState.problem != nil
         view.navigationDelegate = context.coordinator
@@ -615,6 +619,7 @@ private struct ProbeWebView: UIViewRepresentable {
         let downloads: NextAttachmentDownloads
         var requestedURL: URL
         private var modalPresented = false
+        private var appliedPageSuppression: Bool?
         let loadState: NextWebLoadState
         var handledRetry = 0
         private var loadWatchdog: Task<Void, Never>?
@@ -677,8 +682,9 @@ private struct ProbeWebView: UIViewRepresentable {
         }
 
         func setModal(_ active: Bool, on view: WKWebView) {
-            guard modalPresented != active else { return }
             modalPresented = active
+            let suppressed = active || loadState.loading || loadState.problem != nil
+            guard appliedPageSuppression != suppressed else { return }
             applyModal(to: view)
         }
 
@@ -686,7 +692,9 @@ private struct ProbeWebView: UIViewRepresentable {
             // The isolated content world prevents page scripts from changing
             // the saved pre-modal accessibility state. DOM attributes remain
             // visible to WebKit's own accessibility and input systems.
-            view.callAsyncJavaScript(NextModalPage.script, arguments: ["active": modalPresented],
+            let suppressed = modalPresented || loadState.loading || loadState.problem != nil
+            appliedPageSuppression = suppressed
+            view.callAsyncJavaScript(NextModalPage.script, arguments: ["active": suppressed],
                                      in: nil, in: .defaultClient) { _ in }
         }
         init(url: URL, loadState: NextWebLoadState, onExport: @escaping (URL) -> Void, onError: @escaping (String) -> Void, onPreferencesError: @escaping (String) -> Void, onExternalLink: @escaping (URL) -> Void) {

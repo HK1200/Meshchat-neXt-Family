@@ -61,6 +61,37 @@ final class ModalPageTests: XCTestCase {
         XCTAssertEqual(rendered as? Bool, true)
     }
 
+    func testLoadingDocumentStaysHiddenUntilNativeReadyWithoutBlockingReadiness() async throws {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: NextModalPage.loadingScript, injectionTime: .atDocumentStart,
+                         forMainFrameOnly: true, in: .defaultClient)
+        )
+        let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 480, height: 640), configuration: configuration)
+        let ready = expectation(description: "Concealed startup document loaded")
+        let navigation = Navigation(ready)
+        view.navigationDelegate = navigation
+        defer { view.stopLoading(); view.navigationDelegate = nil }
+        view.loadHTMLString("<html><body><div id='meshchatnext-boot-splash'>Loading</div><div id='app'><textarea id='draft'>Private draft</textarea></div></body></html>", baseURL: nil)
+        await fulfillment(of: [ready], timeout: 30)
+        XCTAssertNil(navigation.error)
+        let initiallyHidden = try await javascript(view, "return document.documentElement.inert && document.documentElement.getAttribute('aria-hidden') === 'true';")
+        XCTAssertEqual(initiallyHidden as? Bool, true)
+        let loading = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(loading as? Bool, false)
+        _ = try await javascript(view, "document.getElementById('meshchatnext-boot-splash').remove(); return true;")
+        let renderedWhileHidden = try await javascript(view, NextWebLoadState.pageReadyScript)
+        XCTAssertEqual(renderedWhileHidden as? Bool, true)
+        // A native sheet can still own interaction after the app has mounted.
+        _ = try await javascript(view, NextModalPage.script, arguments: ["active": true], isolated: true)
+        let modalHidden = try await javascript(view, "return document.documentElement.inert;")
+        XCTAssertEqual(modalHidden as? Bool, true)
+        _ = try await javascript(view, NextModalPage.script, arguments: ["active": false], isolated: true)
+        let restored = try await javascript(view, "return !document.documentElement.inert && !document.documentElement.hasAttribute('aria-hidden') && document.getElementById('draft').value === 'Private draft';")
+        XCTAssertEqual(restored as? Bool, true)
+    }
+
     func testNativeModalHidesPageWithoutLosingDraftAndRestoresIt() async throws {
         try await verify(attributes: "", expectedAria: NSNull(), expectedInert: false)
     }
