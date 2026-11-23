@@ -242,6 +242,7 @@ final class FamilyLiveUITests: XCTestCase {
             XCTAssertTrue(disableVoice.waitForExistence(timeout: 10) && disableVoice.isHittable, app.debugDescription)
             disableVoice.tap()
             XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
+            verifyRecipientCallRoute(app, contactName: contactName, address: peer.address)
             let offlineMaps = app.buttons["Offline maps"]
             let guardianForm = app.collectionViews["guardian-settings-form"]
             XCTAssertTrue(guardianForm.waitForExistence(timeout: 10))
@@ -260,6 +261,65 @@ final class FamilyLiveUITests: XCTestCase {
             let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: pnw)
             XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed, app.debugDescription)
         }
+    }
+
+    private func verifyRecipientCallRoute(_ app: XCUIApplication, contactName: String, address: String) {
+        let guardian = app.collectionViews["guardian-settings-form"]
+        let contact = guardian.buttons[contactName]
+        reveal(contact, in: guardian, up: false)
+        contact.tap()
+        let editor = app.collectionViews["contact-editor-form"]
+        let findVoice = app.buttons["Find voice address from approved messaging identity"]
+        reveal(findVoice, in: editor)
+        findVoice.tap()
+        let voice = app.textFields["Reticulum voice address"]
+        let resolved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value MATCHES %@", "[a-f0-9]{32}"), object: voice)
+        XCTAssertEqual(XCTWaiter.wait(for: [resolved], timeout: 15), .completed, app.debugDescription)
+        let saveContact = app.buttons["Save contact"]
+        reveal(saveContact, in: editor); saveContact.tap()
+        XCTAssertTrue(guardian.waitForExistence(timeout: 15))
+        reveal(contact, in: guardian, up: false); contact.tap()
+        let open = app.buttons["contact-call-alert-route"]
+        reveal(open, in: editor); open.tap()
+        let form = app.collectionViews["contact-call-alert-route-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        let provider = app.textFields["contact-call-alert-provider"]
+        fill(provider, "https://example.invalid")
+        fill(app.textFields["contact-call-alert-audience"], "private-calls")
+        let done = app.buttons["Done typing"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10)); done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+        let save = app.buttons["Save call-alert route"]
+        reveal(save, in: form); XCTAssertTrue(save.isEnabled); save.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        reveal(open, in: editor); open.tap()
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        XCTAssertEqual(provider.value as? String, "https://example.invalid")
+        XCTAssertEqual(app.textFields["contact-call-alert-audience"].value as? String, "private-calls")
+        let remove = app.buttons["Remove call-alert route"]
+        reveal(remove, in: form); remove.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        reveal(open, in: editor); open.tap()
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Remove call-alert route"].exists)
+        XCTAssertFalse(app.buttons["Save call-alert route"].isEnabled)
+        app.navigationBars["Contact call alerts"].buttons.element(boundBy: 0).tap()
+        reveal(app.textFields["LXMF address"], in: editor, up: false)
+        XCTAssertEqual(app.textFields["LXMF address"].value as? String, address)
+        XCTAssertEqual(app.textFields["edit-contact-name"].value as? String, contactName)
+        app.navigationBars["Edit contact"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(guardian.waitForExistence(timeout: 10))
+    }
+
+    private func reveal(_ element: XCUIElement, in form: XCUIElement, up: Bool = true) {
+        XCTAssertTrue(form.waitForExistence(timeout: 10))
+        for _ in 0..<10 {
+            if element.exists && element.isHittable { break }
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.72 : 0.38))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.40 : 0.70))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertTrue(element.exists && element.isHittable, app.debugDescription)
     }
 
     private func fill(_ field: XCUIElement, _ value: String) {

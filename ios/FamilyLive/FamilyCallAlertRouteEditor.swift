@@ -40,6 +40,7 @@ struct FamilyCallAlertRouteEditor: View {
                 }
             } else { Text("Unlock Guardian settings to edit this route.") }
         }
+        .accessibilityIdentifier("contact-call-alert-route-form")
         .navigationTitle("Contact call alerts")
         .toolbar { if typing { Button("Done typing") { typing = false; FamilyKeyboard.dismiss() } } }
         .task {

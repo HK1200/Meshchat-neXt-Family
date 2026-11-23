@@ -79,6 +79,7 @@ struct FamilyContactEditor: View {
                 if !family.error.isEmpty { Text(family.error).foregroundStyle(.red) }
             }
         }
+        .accessibilityIdentifier("contact-editor-form")
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
