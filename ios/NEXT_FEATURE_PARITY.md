@@ -670,3 +670,24 @@ requires every selected case to pass with no skipped tests and records source
 digests. Complete app qualification remains separate. Controller tests and
 App-delegate/UI/policy-hook wiring are still required; this code has not enabled
 push alerts on either installed iPad app or changed regular Family.
+
+
+#### Native incoming-call enrollment follow-up
+
+Development source now connects the native Reticulum call-wake enrollment
+controller to the application launch lifecycle and **Calling → Incoming call
+alerts**. It uses explicit caller selection, identity-bound public metadata,
+private Keychain storage and a separate install marker. The local controller
+ends consent before provider cleanup, serializes token changes and removal,
+and pauses when the saved calling policy changes. Personal previews cannot
+start PushKit registration. The native dispatcher rechecks this app's own
+identity before using a cached enrollment.
+
+The controller's initial 47 native tests passed on both simulators; the follow-up
+53-case suite and the full app/UI wiring have separate Xcode qualification runs.
+The actual private HTTP policy-change tests cover native digest delivery before
+acknowledgment and safe alert suspension when the native bridge rejects an
+update. These checks do not prove real APNs delivery. Signed outbound call
+hints, cancellation-state reconciliation, operational APNs and real suspended
+call testing are still release gates. SIP suspended-call delivery also remains
+unqualified. Do not describe this feature as completed background calling yet.

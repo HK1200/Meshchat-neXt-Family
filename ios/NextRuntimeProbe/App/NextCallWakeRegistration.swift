@@ -116,6 +116,20 @@ import Foundation
         return true
     }
 
+    /// Private receiver lookup. Only an active native enrollment can build it;
+    /// the bearer never enters a hint, JavaScript, contact card or log.
+    func callStateRequest(_ call: UUID) -> URLRequest? {
+        guard context != nil, let saved = current,
+              let owner = try? NextCallWakeIdentity.messagingAddress(publicKey: saved.recipientPublicKey) else { return nil }
+        var request = URLRequest(url: saved.provider.appendingPathComponent("v1").appendingPathComponent("call-state"))
+        request.httpMethod = "POST"; request.timeoutInterval = 3
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer " + saved.enrollmentCode, forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["owner": owner,
+            "call": call.uuidString.lowercased().replacingOccurrences(of: "-", with: "")])
+        return request.httpBody == nil ? nil : request
+    }
+
     func receivedToken(_ value: Data?) {
         guard localEnabled, current?.revoking == false, current?.pausedForReview != true else { return }
         if let value, !(16...256).contains(value.count) { token = nil }

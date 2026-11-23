@@ -72,6 +72,32 @@ import XCTest
         }
         throw URLError(.timedOut)
     }
+    func testCallStateLookupRequiresCurrentConsentAndContainsNoPrivateIdentity() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        let call = UUID()
+        XCTAssertNil(f.controller.callStateRequest(call))
+        let record = try f.record()
+        XCTAssertTrue(f.controller.enable(record))
+        let request = try XCTUnwrap(f.controller.callStateRequest(call))
+        XCTAssertEqual(request.url?.absoluteString, "https://example.invalid/v1/call-state")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + record.enrollmentCode)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(Set(body.keys), ["owner", "call"])
+        XCTAssertEqual(body["owner"], try NextCallWakeIdentity.messagingAddress(publicKey: record.recipientPublicKey))
+        XCTAssertEqual(body["call"], call.uuidString.lowercased().replacingOccurrences(of: "-", with: ""))
+        f.controller.disable()
+        XCTAssertNil(f.controller.callStateRequest(call))
+    }
+    func testPermissionOrInstallMarkerLossImmediatelyPreventsStateLookup() throws {
+        let f = CallConsentFixture(); defer { f.close() }
+        XCTAssertTrue(f.controller.enable(try f.record()))
+        XCTAssertNotNil(f.controller.callStateRequest(UUID()))
+        f.permitted = false
+        XCTAssertNil(f.controller.callStateRequest(UUID()))
+        f.permitted = true; f.marker = nil
+        XCTAssertNil(f.controller.callStateRequest(UUID()))
+    }
+
     func testNothingRegistersWithoutConsentOrInAnIneligibleBuild() throws {
         let f = CallConsentFixture(); defer { f.close() }
         f.controller.restore()

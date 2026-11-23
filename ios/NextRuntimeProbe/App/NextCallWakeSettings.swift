@@ -8,8 +8,13 @@ struct NextCallWakeSettings: View {
     @Environment(\.dismiss) private var dismiss
     @State private var policy: NextCallWakePolicy?
     @State private var selected: Set<String> = []
-    @State private var provider = "", audience = "", secret = "", error = ""
-    @State private var loading = false, visible = true, showCode = false
+    @State private var provider = ""
+    @State private var audience = ""
+    @State private var secret = ""
+    @State private var error = ""
+    @State private var loading = false
+    @State private var visible = true
+    @State private var showCode = false
     @FocusState private var typing: Bool
 
     var body: some View {

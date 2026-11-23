@@ -6,15 +6,23 @@ import Foundation
 @MainActor
 final class NextCallWakeDispatcher {
     typealias Context = @MainActor () -> NextCallWakeContext?
+    typealias CancellationCheck = @MainActor (FamilyCallWake, NextCallWakeContext) async -> Bool
+    typealias PollDelay = @MainActor @Sendable () async throws -> Void
     private let system: FamilySystemCalls
     private let router: NextReticulumWakeRouter
     private let runtime: NextRuntimeStartup
     private let context: Context
     private var boots: [UUID: Task<Void, Never>] = [:]
+    private var cancellationPolls: [UUID: Task<Void, Never>] = [:]
+    private let cancellationCheck: CancellationCheck?
+    private let pollDelay: PollDelay
 
     init(system: FamilySystemCalls, router: NextReticulumWakeRouter,
-         runtime: NextRuntimeStartup, context: @escaping Context) {
+         runtime: NextRuntimeStartup, context: @escaping Context,
+         cancellationCheck: CancellationCheck? = nil,
+         pollDelay: @escaping PollDelay = { try await Task.sleep(for: .seconds(2)) }) {
         self.system = system; self.router = router; self.runtime = runtime; self.context = context
+        self.cancellationCheck = cancellationCheck; self.pollDelay = pollDelay
     }
 
     /// mustReport comes from the OS metadata, never an untrusted payload.
@@ -31,6 +39,22 @@ final class NextCallWakeDispatcher {
         guard case .accepted(let id) = decision else {
             reject(mustReport, finished)
             return
+        }
+        if let cancellationCheck, let intent = router.pendingIntent(id) {
+            let pause = pollDelay
+            cancellationPolls[id] = Task { @MainActor [weak self, router] in
+                defer { self?.cancellationPolls.removeValue(forKey: id) }
+                // Never poll after expiry, consent loss or transport adoption.
+                for _ in 0..<15 {
+                    guard !Task.isCancelled, self?.context() == saved,
+                          router.pendingIntent(id) == intent else { return }
+                    let cancelled = await cancellationCheck(intent, saved)
+                    guard !Task.isCancelled, self?.context() == saved,
+                          router.pendingIntent(id) == intent else { return }
+                    if cancelled { router.cancel(id); return }
+                    do { try await pause() } catch { return }
+                }
+            }
         }
         // Reporting is already queued by admission. Start signaling in
         // parallel, without keeping the PushKit completion open for startup.
@@ -51,7 +75,8 @@ final class NextCallWakeDispatcher {
 
     func stop() {
         router.close()
-        let pending = Array(boots.values); boots.removeAll()
+        let pending = Array(boots.values) + Array(cancellationPolls.values)
+        boots.removeAll(); cancellationPolls.removeAll()
         for task in pending { task.cancel() }
     }
 

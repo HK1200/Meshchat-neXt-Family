@@ -376,3 +376,40 @@ neXt archive from source `e82803c` passed this gate with iOS SDK 26.5 and Xcode
 26.6. This is toolchain evidence, not Apple signing, enrollment, APNs delivery,
 TestFlight qualification or App Store approval. Recheck Apple's current minimum
 before submitting a release.
+
+### neXt incoming Reticulum call alerts (development source)
+
+Open **Calling → Incoming call alerts**. This is separate from mailbox message
+alerts and is off until you explicitly enable it. A compatible call-alert
+provider supplies its HTTPS address, audience and enrollment code. Select the
+individual saved callers you want to allow, then choose **Enable call alerts**.
+Only contacts with verified public keys matching their messaging and voice
+addresses are eligible. Adding another contact later does not grant call-alert
+permission automatically.
+
+Personal-signed previews explain that Apple call push is unavailable and keep
+Enable disabled. They can still receive calls while neXt is running. This
+screen does not enroll an Apple developer account, activate a provider or prove
+that a fully suspended iPhone/iPad can ring. That still requires appropriate
+Apple signing, an operational compatible provider and live device testing.
+SIP needs its own compatible calling-provider wake integration; Reticulum call
+alerts do not take SIP account passwords or wake arbitrary SIP registrations.
+
+The app stores the enrollment code and native call consent in its own Keychain.
+Private Reticulum key material stays native and is never returned to the web
+interface or sent to the provider. The provider receives the Apple call token,
+recipient public key and selected callers' public voice addresses. Apple gets
+an encrypted call intent, rather than caller names or audio.
+
+Removing contacts, blocking callers, enabling Do Not Disturb or changing call
+permissions pauses call alerts for review. Open this screen, refresh permissions,
+and confirm the selected callers before resuming. A voice-quality change alone
+does not revoke consent. A newly installed app must obtain consent again even
+if its old Keychain data survived removal.
+
+**Turn off call alerts** ends local consent immediately. If the provider cannot
+be reached, its removal remains pending; use **Retry provider setup or removal**
+after reconnecting. If the provider rotated its enrollment code, paste the new
+code into the removal form. That action can only finish removal, not turn
+alerts back on. Ordinary message alerts, radio settings and Family's separate
+installation are unaffected.

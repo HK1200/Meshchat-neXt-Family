@@ -50,6 +50,7 @@ final class NextReticulumWakeRouter: NextIncomingCallWakeRouting {
         let key: FamilySystemCallKey
         let expires: TimeInterval
         let issued: Int
+        let intent: FamilyCallWake
         let permitted: @MainActor () -> Bool
     }
     private let system: FamilySystemCalls
@@ -111,7 +112,7 @@ final class NextReticulumWakeRouter: NextIncomingCallWakeRouting {
         guard system.reserveIncoming(key, id: wake.call, name: name.isEmpty ? "Approved caller" : name, actions: actions) else {
             return .busy
         }
-        pending = Pending(id: wake.call, voice: wake.callerVoice, key: key, expires: time + remaining, issued: wake.issued, permitted: permitted)
+        pending = Pending(id: wake.call, voice: wake.callerVoice, key: key, expires: time + remaining, issued: wake.issued, intent: wake, permitted: permitted)
         status = "Waiting for the approved caller"
         let pause = delay
         deadline = Task { @MainActor [weak self] in
@@ -131,6 +132,11 @@ final class NextReticulumWakeRouter: NextIncomingCallWakeRouting {
         if !pending.permitted() || !time.isFinite || time < max(0, Double(pending.issued) - 10) || time >= pending.expires || !system.contains(pending.key) {
             cancel(pending.id)
         }
+    }
+    func pendingIntent(_ id: UUID) -> FamilyCallWake? {
+        refresh()
+        guard let pending, pending.id == id else { return nil }
+        return pending.intent
     }
     func pendingIncoming(peer: String, service: FamilySystemCallKey.Service) -> FamilySystemCallKey? {
         refresh()

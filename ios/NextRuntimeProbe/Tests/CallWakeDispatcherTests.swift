@@ -39,8 +39,22 @@ import XCTest
     }
     func close() { closed = true; let value = pending; pending = nil; value?.resume(throwing: CancellationError()) }
 }
+@MainActor private final class DispatcherCancellation {
+    var requests = 0, finished = 0
+    var hold = false, result = false
+    var pending: CheckedContinuation<Bool, Never>?
+    func check(_ intent: FamilyCallWake, _ context: NextCallWakeContext) async -> Bool {
+        requests += 1
+        let answer: Bool
+        if hold { answer = await withCheckedContinuation { pending = $0 } }
+        else { answer = result }
+        finished += 1
+        return answer
+    }
+    func release(_ value: Bool) { let saved = pending; pending = nil; saved?.resume(returning: value) }
+}
 @MainActor private final class DispatcherFixture {
-    let driver = DispatcherDriver(), engine = DispatcherEngine()
+    let driver = DispatcherDriver(), engine = DispatcherEngine(), cancellation = DispatcherCancellation()
     let system: FamilySystemCalls
     let router: NextReticulumWakeRouter
     let runtime: NextRuntimeStartup
@@ -48,7 +62,7 @@ import XCTest
     let caller: String
     var context: NextCallWakeContext?
     var dispatcher: NextCallWakeDispatcher!
-    init(enabled: Bool = true) throws {
+    init(enabled: Bool = true, cancellationEnabled: Bool = false) throws {
         let file = try XCTUnwrap(Bundle(for: CallWakeDispatcherTests.self).url(forResource: "call-wake-fixture", withExtension: "json"))
         let fixture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
         let vectors = try XCTUnwrap(fixture["vectors"] as? [String: Any])
@@ -62,9 +76,11 @@ import XCTest
         system = FamilySystemCalls(driver: driver, preferences: nil, enabled: enabled)
         router = NextReticulumWakeRouter(system: system, store: DispatcherReplay(), now: { Date(timeIntervalSince1970: 1000) })
         runtime = NextRuntimeStartup(start: engine.start)
-        dispatcher = NextCallWakeDispatcher(system: system, router: router, runtime: runtime, context: { [weak self] in self?.context })
+        let check: NextCallWakeDispatcher.CancellationCheck? = cancellationEnabled ? cancellation.check : nil
+        dispatcher = NextCallWakeDispatcher(system: system, router: router, runtime: runtime,
+            context: { [weak self] in self?.context }, cancellationCheck: check)
     }
-    func close() { dispatcher.stop(); driver.close(); engine.close() }
+    func close() { dispatcher.stop(); cancellation.release(false); driver.close(); engine.close() }
 }
 
 @MainActor final class CallWakeDispatcherTests: XCTestCase {
@@ -75,6 +91,58 @@ import XCTest
     private var actions: FamilySystemCallActions {
         FamilySystemCallActions(prepareAudio: { true }, start: { true }, answer: { true }, end: {}, mute: { _ in true })
     }
+    func testCancellationStillWaitsForTheActualCallKitReportCompletion() async throws {
+        let f = try DispatcherFixture(cancellationEnabled: true); defer { f.close() }
+        f.driver.holding = true; f.cancellation.result = true
+        var completed = 0
+        f.dispatcher.receive(f.payload, mustReport: true) { completed += 1 }
+        try await ready { f.cancellation.finished == 1 && !f.driver.pending.isEmpty }
+        XCTAssertFalse(f.system.hasCall)
+        XCTAssertEqual(completed, 0)
+        f.driver.release(); try await ready { completed == 1 }
+        XCTAssertEqual(f.driver.reports.count, 1)
+    }
+    func testLateCancellationLookupCannotEndAnAdoptedTransportCall() async throws {
+        let f = try DispatcherFixture(cancellationEnabled: true); defer { f.close() }
+        f.cancellation.hold = true
+        f.dispatcher.receive(f.payload, mustReport: true) { }
+        try await ready { f.cancellation.pending != nil }
+        let pending = try XCTUnwrap(f.router.pendingIncoming(peer: f.caller, service: .reticulum))
+        let real = FamilySystemCallKey(service: .reticulum, id: "adopted-before-cancel-response")
+        XCTAssertTrue(f.system.attachIncoming(pending, to: real, actions: actions))
+        f.router.attached(pending, to: real)
+        f.cancellation.release(true)
+        try await ready { f.cancellation.finished == 1 }
+        await Task.yield()
+        XCTAssertTrue(f.system.contains(real))
+        f.system.finish(real)
+    }
+    func testConsentLossDuringLookupCannotEndAnUnrelatedCall() async throws {
+        let f = try DispatcherFixture(cancellationEnabled: true); defer { f.close() }
+        f.cancellation.hold = true
+        f.dispatcher.receive(f.payload, mustReport: true) { }
+        try await ready { f.cancellation.pending != nil }
+        f.context = nil; f.dispatcher.refreshConsent()
+        XCTAssertFalse(f.system.hasCall)
+        let other = FamilySystemCallKey(service: .sip, id: "unrelated-after-consent-loss")
+        XCTAssertTrue(f.system.track(other, name: "Other call", incoming: false, actions: actions))
+        f.cancellation.release(true)
+        try await ready { f.cancellation.finished == 1 }
+        await Task.yield()
+        XCTAssertTrue(f.system.contains(other))
+        f.system.finish(other)
+    }
+    func testUnapprovedWakeDoesNotContactTheProviderForCancellationState() async throws {
+        let f = try DispatcherFixture(cancellationEnabled: true); defer { f.close() }
+        f.context = nil
+        var completed = 0
+        f.dispatcher.receive(f.payload, mustReport: false) { completed += 1 }
+        XCTAssertEqual(completed, 1)
+        await Task.yield()
+        XCTAssertEqual(f.cancellation.requests, 0)
+        XCTAssertFalse(f.system.hasCall)
+    }
+
     func testAcceptedWakeCompletesAfterCallKitWithoutWaitingForPython() async throws {
         let f = try DispatcherFixture(); defer { f.close() }
         f.driver.holding = true; f.engine.holding = true

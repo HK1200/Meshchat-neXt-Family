@@ -29,9 +29,18 @@ import Combine
         startDevice: { [weak self] in self?.device.start() ?? false },
         stopDevice: { [weak self] in self?.device.stop() },
         consentChanged: { [weak self] in self?.dispatcher.refreshConsent() })
+    private lazy var query = NextCallWakeQuery()
     private lazy var dispatcher = NextCallWakeDispatcher(system: .shared,
         router: .shared, runtime: NextRuntimeLauncher.shared,
-        context: { [weak self] in self?.validatedContext() })
+        context: { [weak self] in self?.validatedContext() },
+        cancellationCheck: { [weak self] wake, saved in
+            guard let self, self.validatedContext() == saved,
+                  let request = self.registration.callStateRequest(wake.call),
+                  let data = try? await self.query.response(request),
+                  self.validatedContext() == saved else { return false }
+            return NextCallWakeCancellation.verified(data, wake: wake,
+                audience: saved.audience, now: Int(Date().timeIntervalSince1970))
+        })
     private lazy var device = NextVoIPPushDevice(
         delivery: { [weak self] payload, required, completion in
             guard let self else { completion(); return }

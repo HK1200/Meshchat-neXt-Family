@@ -105,6 +105,7 @@ targets:
       - path: App/NextCallWakeInstallation.swift
       - path: App/NextCallWakeRegistration.swift
       - path: App/NextCallWakePolicy.swift
+      - path: App/NextCallWakeCancellation.swift
       - path: App/FamilyCallWake.swift
       - path: App/FamilySystemCalls.swift
       - path: App/FamilyCallKitDriver.swift

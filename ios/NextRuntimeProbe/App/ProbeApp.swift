@@ -77,6 +77,32 @@ private struct ProbeScreen: View {
                             notification_floor: alerts.reticulumBaselineID)
     }
 
+    private var setupForm: some View {
+        Form {
+            Section("Get started") {
+                Button("Review device permissions") { panel = .permissions }
+                    .accessibilityIdentifier("next-setup-permission-checkup")
+            }
+            Section("Reticulum TCP connections") {
+                Text("\(configuredPeers.filter(\.enabled).count) enabled peers")
+                Button("Edit TCP connections") { panel = .connections }
+                    .accessibilityIdentifier("tcp-connections")
+            }
+            Section("First contact (optional)") {
+                TextField("LXMF address (32 hex characters)", text: $contact)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            Button("Open Messages") {
+                guard let settings else { return }
+                starting = true
+                savedPeers = (try? NextTCPPeer.encodeSettings(configuredPeers)) ?? savedPeers
+                Task { await launch(settings) }
+            }
+            .disabled(settings == nil)
+        }
+    }
+
     var body: some View {
         Group {
             if let url {
@@ -193,29 +219,7 @@ private struct ProbeScreen: View {
             } else if (simulator && !setupReviewFixture) || starting {
                 ProgressView("Starting neXt…")
             } else {
-                Form {
-                    Section("Get started") {
-                        Button("Review device permissions") { panel = .permissions }
-                            .accessibilityIdentifier("next-setup-permission-checkup")
-                    }
-                    Section("Reticulum TCP connections") {
-                        Text("\(configuredPeers.filter(\.enabled).count) enabled peers")
-                        Button("Edit TCP connections") { panel = .connections }
-                            .accessibilityIdentifier("tcp-connections")
-                    }
-                    Section("First contact (optional)") {
-                        TextField("LXMF address (32 hex characters)", text: $contact)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-                    Button("Open Messages") {
-                        guard let settings else { return }
-                        starting = true
-                        savedPeers = (try? NextTCPPeer.encodeSettings(configuredPeers)) ?? savedPeers
-                        Task { await launch(settings) }
-                    }
-                    .disabled(settings == nil)
-                }
+                setupForm
             }
         }
         // The native sheet owns accessibility while it is presented. Apply

@@ -208,3 +208,74 @@ def test_native_policy_hook_pauses_before_propagating_failure(monkeypatch, failu
     with pytest.raises((RuntimeError, ValueError)):
         notify_call_policy(history(), local, voice)
     assert calls[-1] == ("call_policy_invalid", {})
+
+
+def run_native_policy_server(folder, ready, settings, pipe):
+    """Actual private HTTP runtime with a recording native bridge, no radio."""
+    import asyncio
+    import json
+    from loopback_probe import serve
+    from voice_runtime import ReticulumVoice
+    frontend = folder / "frontend"
+    frontend.mkdir(exist_ok=True)
+    (frontend / "index.html").write_text("Private consent fixture")
+    def factory(*args):
+        def native(value):
+            if value["op"] in ("call_policy", "call_policy_invalid"):
+                with (folder / "native-policy.jsonl").open("a") as log:
+                    log.write(json.dumps(value) + "\n")
+                if value["op"] == "call_policy" and (folder / "reject-native-update").exists():
+                    return {"ok": False}
+            return {"ok": True, "events": []}
+        return ReticulumVoice(*args, native=native)
+    asyncio.run(serve(ready, frontend, settings, device=True, voice_factory=factory))
+
+
+def test_saved_contact_and_dnd_edits_reach_native_before_http_acknowledgment(tmp_path):
+    import json
+    from contextlib import ExitStack
+    from test_next_ios_tcp_integration import api, backend, start, wait
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"peers": [{"id": "off", "host": "127.0.0.1", "port": 9, "enabled": False}]}))
+    ready = tmp_path / "backend.url"
+    log = tmp_path / "native-policy.jsonl"
+    def events(): return [json.loads(line) for line in log.read_text().splitlines()]
+    with ExitStack() as stack:
+        start(stack, run_native_policy_server, tmp_path, ready, settings)
+        wait(ready.exists)
+        base = backend(ready)
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert events()[-1]["op"] == "call_policy"
+        initial = events()[-1]["digest"]
+        peer = source(RNS.Identity()).hash.hex()
+        status, _ = api(base, "telephone/contacts", body={"name": "Private approval", "lxmf_address": peer}, token=token)
+        assert status == 200
+        changed = events()[-1]["digest"]
+        assert changed != initial
+        status, _ = api(base, "config", body={"do_not_disturb_enabled": True}, token=token, method="PATCH")
+        assert status == 200 and events()[-1]["digest"] != changed
+        assert all(set(row) <= {"op", "session", "digest"} for row in events())
+
+
+def test_rejected_native_update_pauses_alerts_and_leaves_saved_messaging_runtime_alive(tmp_path):
+    import json
+    from contextlib import ExitStack
+    from test_next_ios_tcp_integration import api, backend, start, wait
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"peers": [{"id": "off", "host": "127.0.0.1", "port": 9, "enabled": False}]}))
+    ready = tmp_path / "backend.url"
+    with ExitStack() as stack:
+        start(stack, run_native_policy_server, tmp_path, ready, settings)
+        wait(ready.exists)
+        base = backend(ready)
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        rejection = tmp_path / "reject-native-update"
+        rejection.touch()
+        status, _ = api(base, "config", body={"do_not_disturb_enabled": True}, token=token, method="PATCH")
+        assert status == 503
+        events = [json.loads(line) for line in (tmp_path / "native-policy.jsonl").read_text().splitlines()]
+        assert events[-1]["op"] == "call_policy_invalid"
+        status, config = api(base, "config")
+        assert status == 200 and config["config"]["do_not_disturb_enabled"] is True
+        rejection.unlink()
+        assert api(base, "config", body={"do_not_disturb_enabled": False}, token=token, method="PATCH")[0] == 200
