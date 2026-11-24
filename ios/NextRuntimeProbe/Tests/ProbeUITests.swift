@@ -14,7 +14,10 @@ final class ProbeUITests: XCTestCase {
     }
 
     func testContactCodeImportReviewsExistingContactWithoutRequestingCamera() throws {
-        executionTimeAllowance = 180
+        // The full cold-start/QR round trip completed in 274 seconds on Intel
+        // before XCTest's shorter case budget interrupted the host. Keep all
+        // readiness, camera, identity and per-operation assertions unchanged.
+        executionTimeAllowance = 300
         continueAfterFailure = false
         let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
         let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: file))
