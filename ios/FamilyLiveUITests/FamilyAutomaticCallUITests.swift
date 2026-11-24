@@ -105,11 +105,16 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         let app = XCUIApplication()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.tap() }
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         app.typeText(value)
         if field.elementType != .secureTextField {
             let entered = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: field)
-            XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 10), .completed, app.debugDescription)
+            let result = XCTWaiter.wait(for: [entered], timeout: 10)
+            // Preserve the untruncated synthetic value if input still differs;
+            // the accessibility hierarchy shortens long text to an ellipsis.
+            XCTAssertEqual(field.value as? String, value)
+            XCTAssertEqual(result, .completed, app.debugDescription)
         }
     }
 }

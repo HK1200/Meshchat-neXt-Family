@@ -99,11 +99,14 @@ final class FamilyLiveUITests: XCTestCase {
         }
         XCTAssertTrue(nameField.isHittable, app.debugDescription)
         nameField.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { nameField.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
         // Clear the existing advertised name using the native text field's value.
         if let value = nameField.value as? String {
-            nameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+            app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
         }
-        nameField.typeText(deviceName)
+        app.typeText(deviceName)
+        XCTAssertEqual(nameField.value as? String, deviceName)
         app.buttons["Save device name"].tap()
         XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
@@ -405,7 +408,12 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         if !field.isHittable { XCUIApplication().swipeUp() }
         field.tap()
-        field.typeText(value)
+        let app = XCUIApplication()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        // Send through the focused keyboard rather than asking XCTest to
+        // re-resolve a virtualized SwiftUI field during event delivery.
+        app.typeText(value)
     }
     #if FAMILY_STORE_SCREENSHOTS
     private func captureListingScreen(_ app: XCUIApplication, named name: String) {
