@@ -225,11 +225,16 @@ signing, push entitlements, TestFlight and submission remain on hold.
 ### neXt RNCP files under verification
 
 The native adapter retains the standard RNCP wire protocol. In **RNCP**, Browse
-imports the file you select into the app's own shared-file area; it cannot read
-arbitrary private app paths. **Open received directory** opens a received-file
-chooser whose links use the existing native Share/Save flow. Imported and
-received files are limited to 2 GiB each and retain their original file names.
-This is separate from normal message/photo attachment limits.
+uses the released managed-import picker: it copies the selected file into private
+app storage, with a 512 MiB per-file limit and additional available-space checks.
+These imports are separate from the directory exposed by explicitly enabled
+remote fetching. Importing a file does not share it automatically. The selected
+copy cannot be deleted while its send is finding a path or transferring.
+
+**Open received directory** opens a received-file chooser whose links use the
+existing native Share/Save flow. The receive/legacy preview-import path retains
+its 2 GiB limit; that is not the managed picker's upload limit. Ordinary chat
+attachments keep their separate message budget.
 
 The listener starts off. Enter permitted sender identity hashes before starting
 it. Remote fetch access, when explicitly enabled, is restricted to the RNCP

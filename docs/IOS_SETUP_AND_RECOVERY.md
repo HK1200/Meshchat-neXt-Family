@@ -344,10 +344,13 @@ identity and supply the RNCP receive address. A contact's LXMF messaging
 address is not an RNCP receive address.
 
 Use **Browse** to select a file from Files, then send it to that receive
-address. The iOS preview imports a copy into its own storage; it does not
-request access to the device's whole filesystem. Fetching a remote file also
-requires the other side to enable fetching and share that file explicitly.
-Disabling the listener does not delete files already received.
+address. The current managed picker imports a private copy, up to 512 MiB per
+file when storage permits. Importing does not expose it to remote fetching.
+The app does not request access to the device's whole filesystem. A selected
+import stays protected from deletion while its send is finding a path or
+transferring. Fetching a remote file also requires the other side to enable
+fetching and share that file explicitly. Disabling the listener does not delete
+files already received.
 
 Open **Received files** to share or save a received copy. Development source
 also provides **Remove → Remove file** with confirmation; **Keep file** cancels.
