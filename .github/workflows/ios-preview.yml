@@ -131,7 +131,9 @@ jobs:
   simulator:
     if: ${{ !inputs.call_consent && !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device && !inputs.next_appstore_archive }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
-    runs-on: macos-15
+    # PushKit's iOS26.4 metadata callback requires the current SDK even though
+    # runtime availability keeps the app compatible with iOS17 and later.
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 35
     strategy:
       fail-fast: false

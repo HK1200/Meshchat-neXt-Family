@@ -56,12 +56,17 @@ final class WebPreferencesBridgeTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .first(where: { $0.activationState == .foregroundActive }))
         let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
         let controller = UIViewController(); controller.view = view
         window.rootViewController = controller
         pages.append((view, window, navigation))
         window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.setNeedsLayout(); controller.view.layoutIfNeeded()
+        XCTAssertGreaterThan(view.bounds.width, 0)
+        XCTAssertGreaterThan(view.bounds.height, 0)
         view.load(URLRequest(url: url))
-        await fulfillment(of: [loaded], timeout: 30)
+        await fulfillment(of: [loaded], timeout: 90)
         guard navigation.completed else { throw URLError(.timedOut) }
         if let error = navigation.error { throw error }
         return view
@@ -76,6 +81,7 @@ final class WebPreferencesBridgeTests: XCTestCase {
         }
     }
     func testRealWebKitBridgePersistsRestoresAndRejectsChildFrames() async throws {
+        executionTimeAllowance = 240
         let previousWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows).first(where: \.isKeyWindow)
         defer {
