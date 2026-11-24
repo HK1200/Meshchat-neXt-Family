@@ -907,9 +907,14 @@ final class ProbeUITests: XCTestCase {
         let top = bounds.minY + 12
         let bottom = min(bounds.maxY - 16, XCUIApplication().frame.maxY - 52)
         func fullyVisible() -> Bool {
-            guard element.exists, element.isHittable else { return false }
+            guard element.exists else { return false }
             let frame = element.frame
-            return frame.height > 0 && frame.minY >= top && frame.maxY <= bottom
+            // Off-screen virtualized fields can throw while XCTest resolves
+            // their activation point. Scroll them into the visible form before
+            // asking for hittability; require both before interacting.
+            guard frame.width > 0, frame.height > 0,
+                  frame.minY >= top, frame.maxY <= bottom else { return false }
+            return element.isHittable
         }
         for _ in 0..<12 {
             if fullyVisible() { break }
@@ -921,7 +926,7 @@ final class ProbeUITests: XCTestCase {
             let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: up ? 0.4 : 0.7))
             start.press(forDuration: 0.05, thenDragTo: end)
         }
-        XCTAssertTrue(element.waitForExistence(timeout: 10) && element.isHittable && fullyVisible(), XCUIApplication().debugDescription)
+        XCTAssertTrue(element.waitForExistence(timeout: 10) && fullyVisible(), XCUIApplication().debugDescription)
     }
 
     private func replace(_ field: XCUIElement, with value: String, in app: XCUIApplication) {
