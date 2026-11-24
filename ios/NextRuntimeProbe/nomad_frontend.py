@@ -3,9 +3,9 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/ArchivesPage-BFi31667.js'
-SHA256 = 'ca68c56fa33f7fbd132a3fcee8909531d4c548d411b0569a65ba356e240cca6f'
-BEFORE = 'const t=await function(...e){return window.api.get(m("/nomadnet/archives/export"),...e)}({params:e,responseType:"blob"}),i=(new Date).toISOString().slice(0,19).replace(/[:T]/g,"-");await a.downloadFromApiResponse(t,`meshchatnext-archives-${i}.zip`)'
+CHUNK = 'assets/ArchivesPage-yIKm4WGV.js'
+SHA256 = '444b196710ae0232fd8c21d4ccf086edc61cfa8a4e5cfdf7f7f2e9d5de69e198'
+BEFORE = 'const t=await function(...e){return window.api.get(g("/nomadnet/archives/export"),...e)}({params:e,responseType:"blob"}),i=(new Date).toISOString().slice(0,19).replace(/[:T]/g,"-");await c.downloadFromApiResponse(t,`meshchatnext-archives-${i}.zip`)'
 AFTER = 'await __nextExportArchives(e)'
 
 

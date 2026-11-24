@@ -5,11 +5,12 @@ first await prevents a microphone prompt or delayed request controlling a
 replacement call. The original source checksums are required before changes.
 """
 import hashlib
+import re
 from pathlib import Path
 
 CHUNKS = {
-    "app-Cw2_MGRd.js": "2f43b757ea89bd8383b0d257dea8b5ce1650bad26dbcc61d1156ab9d3c2f4b08",
-    "CallPage-CVDUwFqv.js": "6e75ce07c379a8814e0796cf1e56fef2927844808f1e953c3f5227caffc5799e",
+    "app-K9UTif_O.js": "34780fd3d054f4f9aeb5f052e546bc85433e286a4cfb5180adec413fb54a4e24",
+    "CallPage-DoYRNS-T.js": "e0046c9d45fb4118fa26c3de63f28748bfb264cdbed7447310bed30e108a2b2f",
 }
 
 
@@ -19,7 +20,9 @@ def replace_once(source, before, after):
 
 
 def rewrite(source, *, page):
-    route = "A" if page else "Fe"
+    routes = re.findall(r'window\.api\.post\((\w+)\("/telephone/answer"\)\)', source)
+    if len(routes) != 1: raise ValueError("The pinned answer route changed")
+    route = routes[0]
     functions = ["async answerCall(){", "async hangupCall(){", "async toggleMicrophone(){",
                  "async toggleSpeaker(){", "async setPttActive(e){",
                  "async switchCallMode(e){" if page else "async toggleDuplexMode(){"]

@@ -1,5 +1,28 @@
 # Family iOS / Android parity audit
 
+## Current qualification — November 24, 2026
+
+Regular Family **47.6** and its setup remain untouched; the separate Family
+Mailbox Test remains **353.1**. Current Family production-source call-consent
+qualification passed **115 native checks on each simulator**, and both unsigned
+Family device and App Store archives passed (`45328469143`, source `e83c810`).
+The newer local full suite passed **942 tests**, with seven skips, at `1eb8b51`;
+its CI and security checks also passed. The full Family UI simulator journeys
+remain a separate qualification gate, not an inferred success from native tests.
+
+The current code includes the guardian-only call-alert owner, enrollment screen,
+identity/contact checks, native one-use caller admission and ordered signed
+cancellation handling. Earlier sections below record historical implementation
+checkpoints. They do not mean that the current wiring is absent, or prove live
+Apple push delivery. Personal previews still keep Apple push enrollment off.
+Real APNs, suspended SIP delivery, physical iPhone testing and the remaining
+radio/network/attachment/upgrade checks still need qualification. Keep Apple
+enrollment on hold until the owner changes that instruction.
+
+The iPad is waiting for its on-device USB trust prompt. No app or identity may be
+removed to bypass this. Continue simulator/software work independently.
+
+
 Audited 2026-11-20 against the Android assets and shared runtime in this checkout.
 “Present” means native wiring exists, not that a physical-device end-to-end test passed.
 Regular Family on the iPad is excluded from testing. Apple enrollment remains on hold.

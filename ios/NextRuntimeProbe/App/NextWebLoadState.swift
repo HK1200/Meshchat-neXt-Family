@@ -12,6 +12,33 @@ final class NextWebLoadState: ObservableObject {
         return document.readyState === 'complete'
             && (document.getElementById('app')?.childElementCount ?? 0) > 0 && !splashVisible;
         """
+    // Store only bounded failure categories. Never collect error messages,
+    // stack traces, URLs, DOM text, addresses or conversation contents.
+    static let diagnosticsInstallScript = """
+        (() => {
+            const state = {resources: 0, errors: []};
+            globalThis.__nextBootDiagnostics = state;
+            addEventListener('error', event => {
+                if (event.target !== globalThis) {
+                    state.resources = Math.min(99, state.resources + 1);
+                    return;
+                }
+                const allowed = ['Error','TypeError','SyntaxError','RangeError','ReferenceError','URIError','EvalError','AggregateError'];
+                const name = allowed.includes(event.error?.name) ? event.error.name : 'Error';
+                if (state.errors.length < 4) state.errors.push(name);
+            }, true);
+        })();
+        """
+    static let diagnosticsSnapshotScript = """
+        const state = globalThis.__nextBootDiagnostics;
+        const allowed = ['Error','TypeError','SyntaxError','RangeError','ReferenceError','URIError','EvalError','AggregateError'];
+        return JSON.stringify({
+            ready: ['loading','interactive','complete'].includes(document.readyState) ? document.readyState : 'unknown',
+            appChildren: Math.min(999, document.getElementById('app')?.childElementCount ?? 0),
+            resources: Number.isInteger(state?.resources) ? Math.max(0, Math.min(99, state.resources)) : 0,
+            errors: Array.isArray(state?.errors) ? state.errors.filter(name => allowed.includes(name)).slice(0,4) : []
+        });
+        """
     @Published private(set) var loading = true
     @Published private(set) var problem: String?
     @Published private(set) var retryRequest = 0

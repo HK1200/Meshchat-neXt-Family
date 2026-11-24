@@ -15,6 +15,8 @@ from aiohttp import web
 from aiohttp.helpers import content_disposition_header
 from meshchatnext.src.backend.rncp_handler import RNCPHandler
 from mobile_rncp_guard import install as install_fetch_guard
+from meshchatnext.src.backend.rncp_uploads import RNCPUploads, MAX_FILE_BYTES, ImportBusyError
+from meshchatnext.src.backend.http.uploads import PayloadTooLargeError
 
 MAX_FILE = 2 * 1024 * 1024 * 1024
 RESERVE = 128 * 1024 * 1024
@@ -24,6 +26,7 @@ class FileRuntime:
     def __init__(self, probe, folder, blocked, publish):
         self.folder = Path(folder).resolve()
         self.folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.imports = RNCPUploads(self.folder)
         self.shared = self.folder / 'rncp_shared'
         self.received = self.folder / 'rncp_received'
         for path in (self.shared, self.received):
@@ -132,6 +135,9 @@ class FileRuntime:
         router.add_get('/api/v1/rncp/transfer/{transfer_id}', self.transfer)
         for name in ('send', 'fetch', 'listen', 'stop', 'cancel'):
             router.add_post('/api/v1/rncp/' + name, self.action)
+        router.add_get('/api/v1/rncp/uploads', self.imported_files)
+        router.add_post('/api/v1/rncp/upload', self.import_file)
+        router.add_delete('/api/v1/rncp/uploads/{upload_id}', self.remove_import)
         router.add_post('/api/v1/preview/rncp/upload', self.upload)
         router.add_get('/api/v1/preview/rncp/files', self.files)
         router.add_get('/api/v1/preview/rncp/files/{file_id}/download', self.download)
@@ -198,6 +204,7 @@ class FileRuntime:
         self.pending.add(task)
         acquired = False
         transfer_id = None
+        leases = contextlib.ExitStack()
         try:
             data = await self.body(request)
             action = request.path.rsplit('/', 1)[-1]
@@ -227,7 +234,10 @@ class FileRuntime:
             if action == 'send':
                 raw = data.get('file_path')
                 try: path = self.local(raw, self.shared)
-                except ValueError: path = self.local(raw, self.received)
+                except ValueError:
+                    try: path = self.local(raw, self.received)
+                    except ValueError: path = self.local(raw, self.imports.root)
+                leases.enter_context(self.imports.lease(path))
                 options = dict(file_path=path, no_compress=self.flag(data, 'no_compress'))
                 # Protect a selected file during pathfinding as well as sending.
                 self.source_files[task] = path
@@ -282,6 +292,53 @@ class FileRuntime:
             self.pending.discard(task)
             self.transfers.pop(task, None)
             self.source_files.pop(task, None)
+            leases.close()
+
+    async def imported_files(self, request):
+        if self.closed: raise web.HTTPServiceUnavailable()
+        try:
+            return web.json_response({'files': self.imports.list(), 'max_file_bytes': MAX_FILE_BYTES},
+                                     headers={'Cache-Control': 'no-store'})
+        except (ValueError, OSError):
+            return web.json_response({'message': 'Imported files are unavailable'}, status=400)
+
+    async def import_file(self, request):
+        if self.closed: raise web.HTTPServiceUnavailable()
+        task = asyncio.current_task()
+        self.pending.add(task)
+        try:
+            if request.content_type != 'multipart/form-data': raise ValueError('Choose a file to import')
+            async with asyncio.timeout(300):
+                reader = await request.multipart()
+                field = await reader.next()
+                if field is None or field.name != 'file': raise ValueError('Choose a file to import')
+                return web.json_response(await self.imports.import_field(field), headers={'Cache-Control': 'no-store'})
+        except ImportBusyError as error:
+            return web.json_response({'message': str(error)}, status=409)
+        except PayloadTooLargeError:
+            return web.json_response({'message': 'The file exceeds the import size or available-storage limit'}, status=413)
+        except (ValueError, PermissionError) as error:
+            return web.json_response({'message': str(error)}, status=400)
+        except TimeoutError:
+            return web.json_response({'message': 'File import timed out'}, status=504)
+        except OSError:
+            return web.json_response({'message': 'Could not save the selected file'}, status=507)
+        finally:
+            self.pending.discard(task)
+
+    async def remove_import(self, request):
+        if self.closed: raise web.HTTPServiceUnavailable()
+        try:
+            self.imports.delete(request.match_info['upload_id'])
+            return web.json_response({'message': 'Imported copy removed'}, headers={'Cache-Control': 'no-store'})
+        except ImportBusyError as error:
+            return web.json_response({'message': str(error)}, status=409)
+        except FileNotFoundError:
+            raise web.HTTPNotFound()
+        except (ValueError, PermissionError) as error:
+            return web.json_response({'message': str(error)}, status=400)
+        except OSError:
+            return web.json_response({'message': 'Could not remove the imported copy'}, status=503)
 
     async def upload(self, request):
         if self.closed: raise web.HTTPServiceUnavailable(text='File transfers are stopped')

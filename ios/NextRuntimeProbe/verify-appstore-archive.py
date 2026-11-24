@@ -18,7 +18,7 @@ def verify(archive):
     app = archive / 'Products' / properties['ApplicationPath']
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == properties['CFBundleIdentifier'] == BUNDLE
-    assert info['CFBundleShortVersionString'] == properties['CFBundleShortVersionString'] == '0.1.27'
+    assert info['CFBundleShortVersionString'] == properties['CFBundleShortVersionString'] == '0.1.28'
     assert info['CFBundleVersion'] == properties['CFBundleVersion'] and info['CFBundleVersion']
     assert info['CFBundleExecutable'] == 'NextRuntimeProbe'
     assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS']

@@ -3,14 +3,14 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/RNCPPage-CdpkWydr.js'
-SHA256 = '7e4c7a429bc99e56e922046d100db2e8a836a874debef20ad64a00f63cf521ad'
-UPLOAD_BEFORE = 'onWebSendFilePicked(e){const t=e.target.files?.[0];e.target.value="",t&&(this.sendFilePath="",s.alert(this.$t("rncp.web_path_hint")))}'
-UPLOAD_AFTER = '''async onWebSendFilePicked(e){const t=e.target.files?.[0];e.target.value="";if(!t)return;this.sendFilePath="";this.sendInProgress=true;try{const f=new FormData();f.append("file",t,t.name);const r=await window.api.post("/api/v1/preview/rncp/upload",f,{headers:{"Content-Type":undefined},timeout:0});if(typeof r.data.file_path!=="string")throw new Error("Could not import the selected file.");this.sendFilePath=r.data.file_path}catch(x){await s.alert(x.response?.data?.message||x.message||"Could not import the selected file.")}finally{this.sendInProgress=false}}'''
-FILES_BEFORE = 'async openReceiveDirectory(){this.receiveDirectory||await this.syncListenerStatusFromServer(),this.receiveDirectory&&(await l.openDirectoryOrCopy(this.receiveDirectory,()=>c.success(this.$t("common.copied")))||s.alert(this.receiveDirectory))}'
-FILES_AFTER = 'async openReceiveDirectory(){try{await __nextShowRNCPFiles()}catch(e){await s.alert(e.response?.data?.message||e.message||"Could not load received files.")}}'
-SAVE_BEFORE = 'async pickFetchSaveDirectory(){const e=await l.pickDirectory();if(e)return void(this.fetchSavePath=e);if(l.isElectron())return;const t=await s.prompt(this.$t("rncp.web_save_path_prompt"));null!=t&&String(t).trim()&&(this.fetchSavePath=String(t).trim())}'
-SAVE_AFTER = 'async pickFetchSaveDirectory(){await this.syncListenerStatusFromServer();this.fetchSavePath=this.receiveDirectory||null;await s.alert("Fetched files are saved in Received files. Open that folder to share or save a copy.")}'
+CHUNK = 'assets/RNCPPage-CcD6vyMr.js'
+SHA256 = '50a3ad123117493e0b6dd90de7fe0d55313c407518f6b7760a45c79c2912c1c6'
+UPLOAD_BEFORE = 'async onWebSendFilePicked(e){const s=e.target.files?.[0];if(e.target.value="",!s||this.importInProgress||this.sendInProgress)return;if(!s.size||s.size>this.importLimit)return void(this.importError=this.$t("rncp.import_size_limit",{mib:Math.floor(this.importLimit/1048576)}));const t=new AbortController;this.importController=t,this.importInProgress=!0,this.importError=null;try{const e=new FormData;e.append("file",s);const i=await function(e,...s){return window.api.post(p("/rncp/upload"),e,...s)}(e,{signal:t.signal,timeout:0});if(this.importsDisposed)return;this.sendFilePath=i.data.file_path}catch(i){this.importsDisposed||t.signal.aborted||(this.importError=i.response?.data?.message||this.$t("rncp.import_failed"))}finally{this.importsDisposed||(this.importInProgress=!1,this.importController=null,await this.loadImportedFiles())}}'
+UPLOAD_AFTER = UPLOAD_BEFORE.replace('this.importController=t', 'this.sendFilePath="",this.importController=t')
+FILES_BEFORE = 'async openReceiveDirectory(){this.receiveDirectory||await this.syncListenerStatusFromServer(),this.receiveDirectory&&(await o.openDirectoryOrCopy(this.receiveDirectory,()=>a.success(this.$t("common.copied")))||t.alert(this.receiveDirectory))}'
+FILES_AFTER = 'async openReceiveDirectory(){try{await __nextShowRNCPFiles()}catch(e){await t.alert(e.response?.data?.message||e.message||"Could not load received files.")}}'
+SAVE_BEFORE = 'async pickFetchSaveDirectory(){const e=await o.pickDirectory();if(e)return void(this.fetchSavePath=e);if(o.isElectron())return;const s=await t.prompt(this.$t("rncp.web_save_path_prompt"));null!=s&&String(s).trim()&&(this.fetchSavePath=String(s).trim())}'
+SAVE_AFTER = 'async pickFetchSaveDirectory(){await this.syncListenerStatusFromServer();this.fetchSavePath=this.receiveDirectory||null;await t.alert("Fetched files are saved in Received files. Open that folder to share or save a copy.")}'
 
 SEND_AFTER = 'timeout:this.sendTimeout,no_compress:this.sendNoCompress},{timeout:0})'
 FETCH_AFTER = 'save_path:this.fetchSavePath||null,allow_overwrite:this.fetchAllowOverwrite},{timeout:0})'

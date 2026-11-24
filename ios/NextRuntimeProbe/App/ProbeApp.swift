@@ -559,6 +559,10 @@ private struct ProbeWebView: UIViewRepresentable {
             WKUserScript(source: NextModalPage.loadingScript, injectionTime: .atDocumentStart,
                          forMainFrameOnly: true, in: .defaultClient)
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: NextWebLoadState.diagnosticsInstallScript, injectionTime: .atDocumentStart,
+                         forMainFrameOnly: true, in: .page)
+        )
         let view = WKWebView(frame: .zero, configuration: configuration)
         #if DEBUG
         // Explicit, per-launch development opt-in. The device must separately
@@ -651,10 +655,16 @@ private struct ProbeWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            let value = error as NSError
+            let category = ["WKErrorDomain", "NSURLErrorDomain"].contains(value.domain) ? value.domain : "Other"
+            print("neXt interface navigation error: \(category) \(value.code)")
             navigationFailed(navigation)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            let value = error as NSError
+            let category = ["WKErrorDomain", "NSURLErrorDomain"].contains(value.domain) ? value.domain : "Other"
+            print("neXt interface navigation error: \(category) \(value.code)")
             navigationFailed(navigation)
         }
 
@@ -693,6 +703,12 @@ private struct ProbeWebView: UIViewRepresentable {
         }
 
         private func recoverStalledStartup(_ generation: Int, in view: WKWebView) {
+            guard generation == loadState.generation, loadState.loading else { return }
+            view.callAsyncJavaScript(NextWebLoadState.diagnosticsSnapshotScript, arguments: [:], in: nil, in: .page) { result in
+                if case .success(let value) = result, let summary = value as? String, summary.utf8.count < 512 {
+                    print("neXt interface startup diagnostics: \(summary)")
+                }
+            }
             guard loadState.startupStalled(generation) else { return }
             // Retry only the native-authorized local route. Keep the backend,
             // saved messages and connections, and never loop indefinitely.

@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = "assets/vendor-micron-D8bfT5oc.js"
-SHA256 = "27ed26bd6300159afaa9817552562927673ce4376b18e583f1469396ad73fc06"
+CHUNK = "assets/vendor-micron-ClKnwxev.js"
+SHA256 = "b9e03605af7414a13af430707e1d16ce4e23c5d46eb8dee41f5ab3362d25e656"
 BEFORE = "static enhanceA11y(t,e={}){"
 
 

@@ -14,7 +14,7 @@ spec.loader.exec_module(module)
 def archive(tmp_path):
     app = tmp_path / 'Products/Applications/NextRuntimeProbe.app'
     app.mkdir(parents=True)
-    info = dict(CFBundleIdentifier=module.BUNDLE, CFBundleShortVersionString='0.1.27',
+    info = dict(CFBundleIdentifier=module.BUNDLE, CFBundleShortVersionString='0.1.28',
                 CFBundleVersion='1.1', CFBundleExecutable='NextRuntimeProbe',
                 CFBundleSupportedPlatforms=['iPhoneOS'], UIDeviceFamily=[1, 2],
                 DTSDKName='iphoneos26.2', DTXcode='2620',
@@ -27,7 +27,7 @@ def archive(tmp_path):
     (app / 'Info.plist').write_bytes(plistlib.dumps(info))
     (tmp_path / 'Info.plist').write_bytes(plistlib.dumps(dict(ApplicationProperties=dict(
         ApplicationPath='Applications/NextRuntimeProbe.app', CFBundleIdentifier=module.BUNDLE,
-        CFBundleShortVersionString='0.1.27', CFBundleVersion='1.1'))))
+        CFBundleShortVersionString='0.1.28', CFBundleVersion='1.1'))))
     (app / 'PrivacyInfo.xcprivacy').write_bytes(plistlib.dumps(dict(NSPrivacyAccessedAPITypes=[dict(NSPrivacyAccessedAPIType='UserDefaults')])) )
     for name in ('NextRuntimeProbe', 'Frameworks/Python.framework/Python',
                  'Frameworks/FamilyVoiceCodecs.framework/FamilyVoiceCodecs',

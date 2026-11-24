@@ -8,14 +8,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('rncp_frontend', ROOT / 'ios/NextRuntimeProbe/rncp_frontend.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-FIXTURE = ROOT / 'tests/fixtures/next-026-rncp-methods.js.txt'
+FIXTURE = ROOT / 'tests/fixtures/next-028-rncp-methods.js.txt'
 
 
 def execute(tmp_path, body, *, patched=True):
     source = FIXTURE.read_text()
     if patched: source = module.rewrite(source)
     script = tmp_path / 'rncp-controls.cjs'
-    script.write_text("const assert=require('node:assert/strict');const alerts=[];const s={alert:async value=>alerts.push(value)};const o=value=>'/api/v1'+value;const methods=" + source + '\n(async()=>{' + body + "\nconsole.log('RNCP controls completed');})().catch(e=>{console.error(e);process.exitCode=1;});")
+    script.write_text("const assert=require('node:assert/strict');const alerts=[];const s={alert:async value=>alerts.push(value)};const p=value=>'/api/v1'+value,t=s;const methods=" + source + '\n(async()=>{' + body + "\nconsole.log('RNCP controls completed');})().catch(e=>{console.error(e);process.exitCode=1;});")
     result = subprocess.run(['node', str(script)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'RNCP controls completed' in result.stdout
@@ -24,12 +24,12 @@ def execute(tmp_path, body, *, patched=True):
 def test_selected_file_is_imported_with_actual_bytes_and_cancel_keeps_selection(tmp_path):
     execute(tmp_path, '''
 const file=new File([Buffer.from('chosen bytes')],'chosen.bin');
-const state={sendFilePath:'previous',sendInProgress:false};
+const state={sendFilePath:'previous',sendInProgress:false,importInProgress:false,importLimit:536870912,loadImportedFiles:async()=>{},$t:value=>value};
 let posted=0;
 global.window={api:{post:async(path,form,options)=>{
- assert.equal(path,'/api/v1/preview/rncp/upload');assert.equal(await form.get('file').text(),'chosen bytes');
- assert.equal(form.get('file').name,'chosen.bin');assert.equal(options.headers['Content-Type'],undefined);assert.equal(options.timeout,0);
- assert.equal(state.sendInProgress,true);posted++;return{data:{file_path:'selected/path/chosen.bin'}};
+ assert.equal(path,'/api/v1/rncp/upload');assert.equal(await form.get('file').text(),'chosen bytes');
+ assert.equal(form.get('file').name,'chosen.bin');assert.equal(options.signal instanceof AbortSignal,true);assert.equal(options.timeout,0);
+ assert.equal(state.importInProgress,true);posted++;return{data:{file_path:'selected/path/chosen.bin'}};
 }}};
 const event={target:{files:[file],value:'chosen'}};
 await methods.onWebSendFilePicked.call(state,event);
@@ -42,9 +42,9 @@ assert.equal(posted,1);assert.equal(state.sendFilePath,'selected/path/chosen.bin
 def test_import_failure_is_visible_and_never_sends_the_previous_file(tmp_path):
     execute(tmp_path, '''
 global.window={api:{post:async()=>{throw{response:{data:{message:'No storage available'}}}}}};
-const state={sendFilePath:'previous',sendInProgress:false};
+const state={sendFilePath:'previous',sendInProgress:false,importInProgress:false,importLimit:536870912,loadImportedFiles:async()=>{},$t:value=>value};
 await methods.onWebSendFilePicked.call(state,{target:{files:[new File(['data'],'a.bin')],value:'chosen'}});
-assert.equal(state.sendFilePath,'');assert.equal(state.sendInProgress,false);assert.deepEqual(alerts,['No storage available']);
+assert.equal(state.sendFilePath,'');assert.equal(state.sendInProgress,false);assert.equal(state.importError,'No storage available');assert.deepEqual(alerts,[]);
 ''')
 
 
@@ -71,13 +71,13 @@ assert.equal(nodes.find(n=>n.id==='next-rncp-files').removed,true);assert.equal(
 ''')
 
 
-def test_unmodified_browser_handler_cannot_pass_the_native_import_assertion(tmp_path):
+def test_unmodified_browser_handler_keeps_the_old_selection_after_import_failure(tmp_path):
     with pytest.raises(AssertionError):
         execute(tmp_path, '''
-let posted=0;global.window={api:{post:async()=>{posted++;return{data:{file_path:'chosen'}}}}};
-const state={sendFilePath:'previous',$t:value=>value};
+global.window={api:{post:async()=>{throw{response:{data:{message:'No storage available'}}}}}};
+const state={sendFilePath:'previous',sendInProgress:false,importInProgress:false,importLimit:536870912,loadImportedFiles:async()=>{},$t:value=>value};
 await methods.onWebSendFilePicked.call(state,{target:{files:[new File(['data'],'a.bin')],value:'chosen'}});
-assert.equal(posted,1);
+assert.equal(state.sendFilePath,'');
 ''', patched=False)
 
 

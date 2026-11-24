@@ -668,3 +668,58 @@ def test_real_http_stream_keeps_its_read_lease_until_disconnect(tmp_path):
                 assert (await client.delete('/api/v1/preview/rncp/files/'+key)).status==204
             finally:await value.close()
     asyncio.run(run())
+
+
+def test_released_managed_import_routes_keep_files_private_and_delete_only_selected_copy(tmp_path):
+    async def run():
+        value = runtime(tmp_path)
+        private = tmp_path / 'identity'; private.write_bytes(b'keep identity')
+        async def check(client):
+            form = FormData(); form.add_field('file', b'actual imported bytes', filename='chosen.bin')
+            response = await client.post('/api/v1/rncp/upload', data=form)
+            assert response.status == 200
+            record = await response.json(); path = Path(record['file_path'])
+            assert path.read_bytes() == b'actual imported bytes'
+            assert not path.is_relative_to(value.shared)
+            assert not path.is_relative_to(value.received)
+            listed = await client.get('/api/v1/rncp/uploads')
+            assert listed.headers['Cache-Control'] == 'no-store'
+            rows = await listed.json()
+            assert rows['max_file_bytes'] == module.MAX_FILE_BYTES
+            assert rows['files'] == [record]
+            assert value.inventory() == []
+            malformed = await client.delete('/api/v1/rncp/uploads/not-an-id')
+            assert malformed.status == 400 and private.read_bytes() == b'keep identity'
+            deleted = await client.delete('/api/v1/rncp/uploads/' + record['id'])
+            assert deleted.status == 200 and not path.exists()
+            assert (await (await client.get('/api/v1/rncp/uploads')).json())['files'] == []
+            assert private.read_bytes() == b'keep identity'
+        await with_client(value, check)
+    asyncio.run(run())
+
+
+def test_managed_import_cannot_be_deleted_during_the_actual_send_request(tmp_path):
+    async def run():
+        value = runtime(tmp_path); entered = asyncio.Event(); finish = asyncio.Event()
+        async def send(**options):
+            assert Path(options['file_path']).is_relative_to(value.imports.root)
+            entered.set(); await finish.wait()
+            return {'success': True}
+        value.handler.send_file = send
+        async def check(client):
+            form = FormData(); form.add_field('file', b'leased bytes', filename='leased.bin')
+            record = await (await client.post('/api/v1/rncp/upload', data=form)).json()
+            task = asyncio.create_task(client.post('/api/v1/rncp/send', json={
+                'destination_hash': ADDRESS, 'file_path': record['file_path']}))
+            try:
+                await asyncio.wait_for(entered.wait(), 3)
+                response = await client.delete('/api/v1/rncp/uploads/' + record['id'])
+                assert response.status == 409
+                assert Path(record['file_path']).read_bytes() == b'leased bytes'
+            finally:
+                finish.set()
+                sent = await asyncio.wait_for(task, 3)
+            assert sent.status == 200
+            assert (await client.delete('/api/v1/rncp/uploads/' + record['id'])).status == 200
+        await with_client(value, check)
+    asyncio.run(run())

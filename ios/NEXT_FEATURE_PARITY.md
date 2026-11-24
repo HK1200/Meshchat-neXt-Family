@@ -50,6 +50,32 @@ desktop services are still not qualified by these results.
 This checkpoint is dated November 23, 2026. “Integrated” means the code is wired
 into the app; physical verification is stated separately.
 
+## Current qualification — November 24, 2026
+
+The desktop/Android release is now **0.1.28** across all supported platforms.
+Its full build, CI, security, Scorecard and complete mutation run passed. All
+29 public release assets and all signed updater feeds were verified. The exact
+signed GitHub and Play APKs upgraded the OnePlus 9 in both directions without
+changing settings, identities, contacts or existing message history. The Play
+closed-test update is submitted; this does not grant production access.
+
+The next iOS integration pins that release's frontend and backend by checksum.
+It preserves native SIP, call-ID binding, audio previews, GPS sessions, RNCP,
+terminal guidance, archive exports and accessible Nomad links. RNCP's new
+managed-import controls use the released private import manager, separate from
+remotely fetchable shared files. A transfer holds a deletion lease from selection
+through completion or cancellation. Focused qualification passed 93 actual
+runtime/messaging tests, 116 native-adapter/file tests and 15 JavaScript tests.
+The updated complete regression suite and Xcode qualification are separate gates.
+No 0.1.28-based iPad package has been installed yet.
+
+Regular Family remains intact. The USB-connected iPad currently requires its
+on-device trust prompt to be accepted before further app access. Do not reset
+trust, remove an app or replace its identity to work around that prompt. Apple
+enrollment remains on hold. Real APNs delivery, suspended SIP wake, physical
+iPhone checks and the remaining real-device reliability matrix still prevent
+calling the iOS port release-ready.
+
 ## Current call-alert integration
 
 Development source now wires the native PushKit registry, explicit caller
@@ -662,7 +688,7 @@ followed by the native filename and sharing controls. Its simulator/device
 qualification remains pending; no failed candidate is installed or released.
 
 
-### Explicit call-alert enrollment lifecycle (not yet exposed)
+### Historical call-alert enrollment foundation
 
 The next native controller serializes registrations, persists the possibility
 of provider registration before an upload, and checks current consent, token,
