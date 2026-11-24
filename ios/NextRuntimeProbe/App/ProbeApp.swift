@@ -210,9 +210,11 @@ private struct ProbeScreen: View {
                             .padding().frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(.background)
                         } else if webLoad.loading {
+                            // The web splash lifts after two animation frames.
+                            // Keep WebKit paintable while waiting for it; an opaque
+                            // full-size cover can pause rendering on iPad.
                             ProgressView("Loading interface…")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(.background)
                                 .accessibilityIdentifier("next-web-loading")
                         }
                     }
