@@ -116,13 +116,24 @@ final class FamilyLiveUITests: XCTestCase {
             XCTAssertTrue(discovery.waitForExistence(timeout: 10))
             if !discovery.isHittable { app.swipeUp() }
             discovery.tap()
-            fill(app.textFields["Name or LXMF address"], peer.address)
+            let query = app.textFields["Name or LXMF address"]
+            fill(query, peer.address)
+            XCTAssertEqual(query.value as? String, peer.address)
+            // Do not search the lazy results while the keyboard hides them.
+            // Use the actual keyboard's submit action, not a coordinate tap.
+            if app.keyboards.firstMatch.exists {
+                let done = app.buttons["finish-contact-entry"]
+                if done.exists && done.isHittable { done.tap() }
+                else { query.typeText("\n") }
+                XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), app.debugDescription)
+            }
             let result = app.buttons["discovered-client-\(peer.address)"]
-            if !result.exists {
+            if !result.waitForExistence(timeout: 2) {
                 let lookup = app.buttons["Look up address"]
                 if lookup.exists && lookup.isEnabled { lookup.tap() }
             }
-            XCTAssertTrue(result.waitForExistence(timeout: 35))
+            XCTAssertTrue(result.waitForExistence(timeout: 35), app.debugDescription)
+            reveal(result, in: app.collectionViews.firstMatch)
             result.tap()
             XCTAssertEqual(app.textFields["contact-address"].value as? String, peer.address)
         } else {
