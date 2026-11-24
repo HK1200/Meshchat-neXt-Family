@@ -189,24 +189,26 @@ private struct ProbeScreen: View {
                             .padding(.vertical, 4)
                             .task(id: url) { await watchConnection(at: url) }
                     }
-                    ProbeWebView(url: url, modalPresented: panel != nil, loadState: webLoad, onExport: { file in
-                        exportFolder = file.deletingLastPathComponent()
-                        exportItem = NextExportItem(file: file)
-                    }, onExportError: { problem in
-                        exportError = problem; showExportError = true
-                    }, onPreferencesError: { problem in
-                        preferencesError = problem; showPreferencesError = true
-                    }, onExternalLink: { target in openURL(target) })
-                    .overlay {
+                    ZStack {
+                        ProbeWebView(url: url, modalPresented: panel != nil, loadState: webLoad, onExport: { file in
+                            exportFolder = file.deletingLastPathComponent()
+                            exportItem = NextExportItem(file: file)
+                        }, onExportError: { problem in
+                            exportError = problem; showExportError = true
+                        }, onPreferencesError: { problem in
+                            preferencesError = problem; showPreferencesError = true
+                        }, onExternalLink: { target in openURL(target) })
+                        .accessibilityHidden(webLoad.loading || webLoad.problem != nil || panel != nil)
+
                         if let problem = webLoad.problem {
                             VStack(spacing: 12) {
                                 Text(problem).multilineTextAlignment(.center)
+                                    .accessibilityIdentifier("next-web-error")
                                 Button("Retry interface") { webLoad.retry() }
                                     .accessibilityIdentifier("next-web-retry")
                             }
                             .padding().frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(.background)
-                            .accessibilityIdentifier("next-web-error")
                         } else if webLoad.loading {
                             ProgressView("Loading interface…")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
