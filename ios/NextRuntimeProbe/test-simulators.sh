@@ -22,6 +22,7 @@ if [[ -n "${NEXT_PROBE_DEVICE:-}" ]]; then
         *) echo "Choose iPhone or iPad for NEXT_PROBE_DEVICE" >&2; exit 2 ;; esac
 fi
 probe="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$probe/test-run-ui-cases.py"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/next-runtime-probe.XXXXXXXX")"
 peer_pid=
 sip_pid=
@@ -247,7 +248,6 @@ xcodebuild build-for-testing -project NextRuntimeProbe.xcodeproj -scheme NextRun
 python3 "$probe/inspect-simulator-apps.py" DerivedData/Build/Products/Debug-iphonesimulator "$result_set"
 test_runs=(DerivedData/Build/Products/*.xctestrun)
 [[ ${#test_runs[@]} == 1 && -f "${test_runs[0]}" ]]
-test_arguments=(-xctestrun "${test_runs[0]}")
 native_test_run="$(dirname -- "${test_runs[0]}")/native-models.xctestrun"
 python3 "$probe/isolate-native-model-host.py" "${test_runs[0]}" "$native_test_run" "$result_set/native-model-host-proof.json"
 native_test_arguments=(-xctestrun "$native_test_run")
@@ -311,15 +311,21 @@ PYTHON
     ) > "$result_set/$device-synthetic-location.log" 2>&1 &
     location_pid=$!
     failed_result_bundle="$ui_result"
-    if xcodebuild test-without-building "${test_arguments[@]}" \
-        -only-testing:NextRuntimeProbeUITests \
-        -destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
-        -resultBundlePath "$ui_result" -parallel-testing-enabled NO \
-        -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
-        -maximum-test-execution-time-allowance 900; then
-        xcrun xcresulttool get test-results summary --path "$ui_result" > "$result_set/$device-ui-summary.json" || return $?
-        xcrun xcresulttool get test-results tests --path "$ui_result" > "$result_set/$device-ui-tests.json" || return $?
-    else return $?; fi
+    # A failed UI case can leave XCTest's app host unusable. Run each unchanged
+    # case in its own test invocation, preserving the same simulator/app data.
+    # Stop on the first failure rather than turning it into launch-timeout noise.
+    if python3 "$probe/run-ui-cases.py" --source "$scratch/Tests/ProbeUITests.swift" \
+        --xctestrun "${test_runs[0]}" \
+        --destination "platform=iOS Simulator,arch=$simulator_arch,id=$destination" \
+        --prefix "$result_set/$device-ui"; then
+        :
+    else
+        local ui_status=$?
+        if [[ -s "$result_set/$device-ui-failed-path.txt" ]]; then
+            failed_result_bundle="$(cat "$result_set/$device-ui-failed-path.txt")"
+        fi
+        return "$ui_status"
+    fi
     python3 "$probe/verify-test-results.py" \
         "$result_set/$device-native-summary.json" "$result_set/$device-native-tests.json" "$scratch/Tests" \
         --ui-summary "$result_set/$device-ui-summary.json" --ui-tree "$result_set/$device-ui-tests.json" \
