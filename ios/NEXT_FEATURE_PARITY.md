@@ -70,7 +70,17 @@ remotely fetchable shared files. A transfer holds a deletion lease from selectio
 through completion or cancellation. Focused qualification passed 93 actual
 runtime/messaging tests, 116 native-adapter/file tests and 15 JavaScript tests.
 The updated complete regression suite and Xcode qualification are separate gates.
-No 0.1.28-based iPad package has been installed yet.
+The separate physical iPad preview is now **450.1**, source `56ae5ad`, with
+0.1.28. Its same-key upgrade preserved all 1,249 current non-cache support files,
+twelve messages, two contacts, identity and native preferences before first
+launch. Both Family apps were unchanged. The actual iPad then sent and received
+signed private text, a 75,000-byte file and a synthetic photo with exact bytes,
+restarted its process, retained the received content and completed a fresh
+signed round trip. Original conversations and contacts were unchanged, and the
+temporary contact, synthetic history and private peer were removed. A screenshot
+confirmed the ordinary conversation and composer rendered after restoration.
+These are actual private LAN/API and restart checks, not physical radio,
+camera/share-sheet or suspended-delivery qualification.
 
 The transparent native startup overlay candidate (`56ae5ad`) passed both unsigned
 neXt archives. Its iPad run passed contact-code review, signed messaging,
@@ -82,9 +92,9 @@ partial evidence, not a passing full suite. The preceding iPhone source
 field-reveal repair retains those cases and assertions; both simulator reruns
 remain required. Test cancellations and original failure logs are retained.
 
-Regular Family remains intact. The USB-connected iPad currently requires its
-on-device trust prompt to be accepted before further app access. Do not reset
-trust, remove an app or replace its identity to work around that prompt. Apple
+Regular Family remains **47.6**, intact. USB trust is working and the separate
+Family Mailbox Test has upgraded to **453.1**, preserving all fourteen saved
+files before launch and its seven contacts and identity afterward. Apple
 enrollment remains on hold. Real APNs delivery, suspended SIP wake, physical
 iPhone checks and the remaining real-device reliability matrix still prevent
 calling the iOS port release-ready.

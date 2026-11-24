@@ -2,8 +2,15 @@
 
 ## Current qualification — November 24, 2026
 
-Regular Family **47.6** and its setup remain untouched; the separate Family
-Mailbox Test remains **353.1**. Current Family production-source call-consent
+Regular Family **47.6** and its setup remain untouched. The separate Family
+Mailbox Test is now **453.1** (source `92b44df`), upgraded with its existing key
+and profile. All fourteen saved files, including identity and preferences,
+were byte-identical before first launch; seven contacts and the identity were
+preserved afterward, and the home screen rendered normally. Both current
+unsigned archives passed and all 23 packaged shared modules match the source.
+Family production/build inputs are identical to the native-qualified `e83c810`
+baseline; full UI qualification is still pending. The neXt preview upgraded
+separately to 450.1 without changing either Family install. Current Family production-source call-consent
 qualification passed **115 native checks on each simulator**, and both unsigned
 Family device and App Store archives passed (`45328469143`, source `e83c810`).
 The newer local full suite passed **942 tests**, with seven skips, at `1eb8b51`;
@@ -19,8 +26,10 @@ Real APNs, suspended SIP delivery, physical iPhone testing and the remaining
 radio/network/attachment/upgrade checks still need qualification. Keep Apple
 enrollment on hold until the owner changes that instruction.
 
-The iPad is waiting for its on-device USB trust prompt. No app or identity may be
-removed to bypass this. Continue simulator/software work independently.
+The iPad's USB trust is working again. Fresh private backups cover regular
+Family and both test apps. The radios were unavailable on the latest home-screen
+check, and the saved private TCP fixture was offline; those observations do not
+qualify a new hardware reconnect test.
 
 
 Audited 2026-11-20 against the Android assets and shared runtime in this checkout.
