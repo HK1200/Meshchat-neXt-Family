@@ -9,7 +9,26 @@ final class FamilyLiveUITests: XCTestCase {
         let reconnectMessage: String?
     }
 
+    private enum Journey: Equatable { case messages, callRoute, voiceAndMaps }
+
     func testGuardianApprovedMessageRoundTrip() throws {
+        try exerciseGuardianJourney(.messages)
+    }
+
+    #if !FAMILY_STORE_SCREENSHOTS
+    func testGuardianVerifiedRecipientCallRoute() throws {
+        try exerciseGuardianJourney(.callRoute)
+    }
+
+    func testGuardianVoiceAndOfflineMapControls() throws {
+        try exerciseGuardianJourney(.voiceAndMaps)
+    }
+    #endif
+
+    private func exerciseGuardianJourney(_ journey: Journey) throws {
+        // Independent profiles keep every check without a ten-minute omnibus
+        // case or relying on XCTest method order. Operation deadlines remain.
+        executionTimeAllowance = 600
         continueAfterFailure = false
         let file = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "test-peer", withExtension: "json"))
         let peer = try JSONDecoder().decode(Peer.self, from: Data(contentsOf: file))
@@ -19,11 +38,12 @@ final class FamilyLiveUITests: XCTestCase {
         app.launchEnvironment["FAMILY_TEST_HOST"] = peer.host
         app.launchEnvironment["FAMILY_TEST_PORT"] = String(peer.port)
         let localTest = peer.host == "127.0.0.1"
-        if localTest {
+        if localTest && journey == .messages {
             app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1"
             app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
         }
         app.launch()
+        defer { app.terminate() }
 
         let appearance = app.buttons["appearance-toggle"]
         XCTAssertTrue(appearance.waitForExistence(timeout: 20))
@@ -91,7 +111,7 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(addContact.waitForExistence(timeout: 10))
         addContact.tap()
         let contactName = localTest ? "Simulator echo peer" : "Echo peer"
-        if localTest {
+        if localTest && journey == .messages {
             let discovery = app.buttons["Find messaging client"]
             XCTAssertTrue(discovery.waitForExistence(timeout: 10))
             if !discovery.isHittable { app.swipeUp() }
@@ -114,7 +134,7 @@ final class FamilyLiveUITests: XCTestCase {
         saveContact.tap()
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
         app.buttons["Back to settings"].tap()
-        if localTest {
+        if localTest && journey == .messages {
             let guardianForm = app.collectionViews["guardian-settings-form"]
             let edit = guardianForm.buttons[contactName]
             for _ in 0..<4 where !edit.isHittable { guardianForm.swipeDown() }
@@ -145,7 +165,7 @@ final class FamilyLiveUITests: XCTestCase {
         #else
         XCTAssertTrue(app.staticTexts["relay-chat-ready"].waitForExistence(timeout: 15))
         #endif
-        if localTest {
+        if localTest && journey == .messages {
             let enableNotifications = app.buttons["Enable message notifications"]
             if enableNotifications.exists {
                 enableNotifications.tap()
@@ -163,52 +183,54 @@ final class FamilyLiveUITests: XCTestCase {
         #if FAMILY_STORE_SCREENSHOTS
         captureListingScreen(app, named: "01-approved-contacts")
         #endif
-        contact.tap()
-        fill(app.textFields["message-draft"], peer.message)
-        app.buttons["Send"].tap()
-        if localTest {
-            XCUIDevice.shared.press(.home)
-            let backgrounded = XCTNSPredicateExpectation(
-                predicate: NSPredicate { _, _ in
-                    app.state == .runningBackground || app.state == .runningBackgroundSuspended
-                },
-                object: nil
-            )
-            XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
-            app.activate()
-        }
-        XCTAssertTrue(
-            app.staticTexts["Delivered"].waitForExistence(timeout: 90),
-            "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
-        )
-        XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
-        if localTest {
-            XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
-            XCTAssertTrue(app.staticTexts["Native inbox signal received"].waitForExistence(timeout: 15))
-            XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
-            let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
-            fill(app.textFields["message-draft"], reconnectMessage)
+        if journey != .voiceAndMaps {
+            contact.tap()
+            fill(app.textFields["message-draft"], peer.message)
             app.buttons["Send"].tap()
-            // The newly inserted reply is above a focused composer in a lazy
-            // Form. Dismiss editing and reveal it; require the exact signed
-            // echo, rather than treating a hidden row as missing delivery.
-            let finish = app.buttons["finish-message-entry"]
-            if app.keyboards.firstMatch.exists {
-                XCTAssertTrue(finish.waitForExistence(timeout: 10))
-                finish.tap()
+            if localTest {
+                XCUIDevice.shared.press(.home)
+                let backgrounded = XCTNSPredicateExpectation(
+                    predicate: NSPredicate { _, _ in
+                        app.state == .runningBackground || app.state == .runningBackgroundSuspended
+                    },
+                    object: nil
+                )
+                XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
+                app.activate()
             }
-            let echo = app.staticTexts["Echo: " + reconnectMessage]
-            let conversation = app.collectionViews["private-conversation-form"]
-            XCTAssertTrue(conversation.waitForExistence(timeout: 10))
-            let deadline = Date().addingTimeInterval(90)
-            var swipes = 0
-            while !echo.exists && Date() < deadline {
-                if echo.waitForExistence(timeout: 1) { break }
-                if swipes % 12 < 6 { conversation.swipeDown() }
-                else { conversation.swipeUp() }
-                swipes += 1
+            XCTAssertTrue(
+                app.staticTexts["Delivered"].waitForExistence(timeout: 90),
+                "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
+            )
+            XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
+            if localTest && journey == .messages {
+                XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
+                XCTAssertTrue(app.staticTexts["Native inbox signal received"].waitForExistence(timeout: 15))
+                XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
+                let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
+                fill(app.textFields["message-draft"], reconnectMessage)
+                app.buttons["Send"].tap()
+                // The newly inserted reply is above a focused composer in a lazy
+                // Form. Dismiss editing and reveal it; require the exact signed
+                // echo, rather than treating a hidden row as missing delivery.
+                let finish = app.buttons["finish-message-entry"]
+                if app.keyboards.firstMatch.exists {
+                    XCTAssertTrue(finish.waitForExistence(timeout: 10))
+                    finish.tap()
+                }
+                let echo = app.staticTexts["Echo: " + reconnectMessage]
+                let conversation = app.collectionViews["private-conversation-form"]
+                XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+                let deadline = Date().addingTimeInterval(90)
+                var swipes = 0
+                while !echo.exists && Date() < deadline {
+                    if echo.waitForExistence(timeout: 1) { break }
+                    if swipes % 12 < 6 { conversation.swipeDown() }
+                    else { conversation.swipeUp() }
+                    swipes += 1
+                }
+                XCTAssertTrue(echo.exists, app.debugDescription)
             }
-            XCTAssertTrue(echo.exists, app.debugDescription)
         }
         app.terminate()
         app.launch()
@@ -234,51 +256,54 @@ final class FamilyLiveUITests: XCTestCase {
         let locked = app.secureTextFields["unlock-password"]
         if !locked.waitForExistence(timeout: 5), guardian.isHittable { guardian.tap() }
         XCTAssertTrue(locked.waitForExistence(timeout: 10), app.debugDescription)
-        if localTest {
+        if localTest && journey != .messages {
             fill(locked, password)
             app.buttons["Unlock"].tap()
-            let voice = app.buttons["Enable Reticulum calling"]
-            for _ in 0..<4 where !voice.isHittable { app.swipeUp() }
-            XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
-            voice.tap()
-            let ready = app.staticTexts["reticulum-voice-ready"]
-            let callingForm = app.collectionViews["guardian-settings-form"]
-            // SwiftUI virtualizes off-screen rows. Search in both directions using
-            // short drags; two full drags can scroll past the ready row on iPhone.
-            for delta in Array(repeating: -0.12, count: 4) + Array(repeating: 0.12, count: 8) {
-                if ready.waitForExistence(timeout: 1) { break }
-                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
-                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65 + delta))
-                start.press(forDuration: 0.05, thenDragTo: end)
+            if journey == .callRoute {
+                verifyRecipientCallRoute(app, contactName: contactName, address: peer.address)
+            } else {
+                let voice = app.buttons["Enable Reticulum calling"]
+                for _ in 0..<4 where !voice.isHittable { app.swipeUp() }
+                XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
+                voice.tap()
+                let ready = app.staticTexts["reticulum-voice-ready"]
+                let callingForm = app.collectionViews["guardian-settings-form"]
+                // SwiftUI virtualizes off-screen rows. Search in both directions using
+                // short drags; two full drags can scroll past the ready row on iPhone.
+                for delta in Array(repeating: -0.12, count: 4) + Array(repeating: 0.12, count: 8) {
+                    if ready.waitForExistence(timeout: 1) { break }
+                    let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+                    let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65 + delta))
+                    start.press(forDuration: 0.05, thenDragTo: end)
+                }
+                XCTAssertTrue(ready.waitForExistence(timeout: 35), app.debugDescription)
+                let disableVoice = app.buttons["Disable Reticulum calling"]
+                for _ in 0..<4 where !disableVoice.isHittable {
+                    let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
+                    let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
+                    start.press(forDuration: 0.05, thenDragTo: end)
+                }
+                XCTAssertTrue(disableVoice.waitForExistence(timeout: 10) && disableVoice.isHittable, app.debugDescription)
+                disableVoice.tap()
+                XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
+                let offlineMaps = app.buttons["Offline maps"]
+                let guardianForm = app.collectionViews["guardian-settings-form"]
+                XCTAssertTrue(guardianForm.waitForExistence(timeout: 10))
+                let bottom = guardianForm.frame.maxY - 20
+                for _ in 0..<6 {
+                    if offlineMaps.isHittable && offlineMaps.frame.midY < bottom { break }
+                    let start = guardianForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+                    let end = guardianForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+                    start.press(forDuration: 0.05, thenDragTo: end)
+                }
+                XCTAssertTrue(offlineMaps.isHittable && offlineMaps.frame.midY < bottom, app.debugDescription)
+                offlineMaps.tap()
+                let pnw = app.buttons["offline-map-layer-pnw"]
+                XCTAssertTrue(pnw.waitForExistence(timeout: 10), app.debugDescription)
+                pnw.tap()
+                let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: pnw)
+                XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed, app.debugDescription)
             }
-            XCTAssertTrue(ready.waitForExistence(timeout: 35), app.debugDescription)
-            let disableVoice = app.buttons["Disable Reticulum calling"]
-            for _ in 0..<4 where !disableVoice.isHittable {
-                let start = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30))
-                let end = callingForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
-                start.press(forDuration: 0.05, thenDragTo: end)
-            }
-            XCTAssertTrue(disableVoice.waitForExistence(timeout: 10) && disableVoice.isHittable, app.debugDescription)
-            disableVoice.tap()
-            XCTAssertTrue(voice.waitForExistence(timeout: 10), app.debugDescription)
-            verifyRecipientCallRoute(app, contactName: contactName, address: peer.address)
-            let offlineMaps = app.buttons["Offline maps"]
-            let guardianForm = app.collectionViews["guardian-settings-form"]
-            XCTAssertTrue(guardianForm.waitForExistence(timeout: 10))
-            let bottom = guardianForm.frame.maxY - 20
-            for _ in 0..<6 {
-                if offlineMaps.isHittable && offlineMaps.frame.midY < bottom { break }
-                let start = guardianForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
-                let end = guardianForm.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-                start.press(forDuration: 0.05, thenDragTo: end)
-            }
-            XCTAssertTrue(offlineMaps.isHittable && offlineMaps.frame.midY < bottom, app.debugDescription)
-            offlineMaps.tap()
-            let pnw = app.buttons["offline-map-layer-pnw"]
-            XCTAssertTrue(pnw.waitForExistence(timeout: 10), app.debugDescription)
-            pnw.tap()
-            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Selected"), object: pnw)
-            XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 10), .completed, app.debugDescription)
         }
     }
 

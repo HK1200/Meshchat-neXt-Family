@@ -137,6 +137,8 @@ jobs:
     timeout-minutes: 35
     strategy:
       fail-fast: false
+      # Leave hosted macOS capacity for native and archive qualification jobs.
+      max-parallel: 2
       matrix:
         device: [iPhone, iPad]
         suite: [live, preview]
@@ -156,20 +158,9 @@ jobs:
             echo "Retrying the external Reticulum peer once with a fresh test identity."
             bash ios/test-live.sh "${{ matrix.device }}" rmap
           fi
-      - name: Build Family for physical iPhone and iPad
-        if: ${{ !cancelled() && matrix.device == 'iPad' && matrix.suite == 'live' }}
-        working-directory: ios
-        run: |
-          bash prepare-live.sh
-          xcodegen generate --spec project-live.yml
-          xcodebuild build -project FamilyLive.xcodeproj -scheme FamilyLive \
-            -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO
-          app=DerivedData/Build/Products/Debug-iphoneos/FamilyLive.app
-          lipo "$app/FamilyLive" -verify_arch arm64
-          test -f "$app/Frameworks/Python.framework/Python"
-          test -f "$app/staged/family_tcp.py"
-          test -s "$app/offline-tiles/tiles.bin"
-          test -s "$app/offline-tiles/index.json"
+      # Physical Release and AppStore SDK checks are the separate device-archive
+      # and appstore-archive jobs; the qualification gate requires both. Avoid
+      # compiling the device app again after the simulator result.
       - name: Run preview smoke test
         if: matrix.suite == 'preview'
         run: bash ios/test-preview.sh "${{ matrix.device }}"
