@@ -111,23 +111,44 @@ final class ProbeUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["my-lxmf-address"].label, own)
     }
 
-    func testConversationSendsAndReceivesSignedLXMF() throws {
-        // The iPad run reached its final profile/restart checks at 600s.
-        // This full feature walk remains bounded by the harness maximum;
-        // retain every actual message, persistence and permission assertion.
-        executionTimeAllowance = 900
+    func testPrivateServiceEditorsKeepOptionalAccountsDisabled() {
+        executionTimeAllowance = 600
         continueAfterFailure = false
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
-        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: url))
         let app = XCUIApplication()
-        app.launch()
+        app.terminate(); app.launchArguments = []; app.launch()
+        defer { app.terminate() }
         let connections = app.buttons["tcp-connections"]
         XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         verifyMailboxSettings(app)
         verifyMessageAlertSettings(app)
+        verifyReticulumCallingOff(app)
+    }
+
+    func testRadioEditorsPreserveProfilesWithoutConnecting() {
+        executionTimeAllowance = 600
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        defer { app.terminate() }
+        let connections = app.buttons["tcp-connections"]
+        XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         verifyRNodeEditor(app)
         verifyMeshCoreSettings(app)
-        verifyReticulumCallingOff(app)
+        app.terminate(); app.launch()
+        XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
+        verifySavedRNodeEditor(app)
+    }
+
+    func testTCPPeerEditsPreservePrimaryAfterRestart() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: url))
+        executionTimeAllowance = 600
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        defer { app.terminate() }
+        let connections = app.buttons["tcp-connections"]
+        XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         connections.tap()
         let form = app.collectionViews["next-tcp-form"]
         XCTAssertTrue(form.waitForExistence(timeout: 10))
@@ -177,7 +198,18 @@ final class ProbeUITests: XCTestCase {
         reveal(restoredPrimary, in: restoredForm, up: false)
         XCTAssertEqual(restoredPrimary.value as? String, String(fixture.port))
         app.navigationBars["TCP connections"].buttons["Done"].tap()
-        verifySavedRNodeEditor(app)
+    }
+
+    func testConversationSendsAndReceivesSignedLXMF() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "peer", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(EchoFixture.self, from: Data(contentsOf: url))
+        executionTimeAllowance = 600
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.terminate(); app.launchArguments = []; app.launch()
+        defer { app.terminate() }
+        let connections = app.buttons["tcp-connections"]
+        XCTAssertTrue(connections.waitForExistence(timeout: 60), app.debugDescription)
         // Exercise a real background/foreground transition before sending.
         // The same saved conversation must remain usable after listener resume.
         XCUIDevice.shared.press(.home)
