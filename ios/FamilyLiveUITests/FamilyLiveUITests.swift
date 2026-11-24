@@ -146,8 +146,11 @@ final class FamilyLiveUITests: XCTestCase {
             fill(app.textFields["contact-name"], contactName)
             fill(app.textFields["contact-address"], peer.address)
         }
+        finishTyping("finish-contact-entry", in: app)
+        XCTAssertEqual(app.textFields["contact-address"].value as? String, peer.address)
         let saveContact = app.buttons["Save approved contact"]
-        if !saveContact.isHittable { app.swipeUp() }
+        reveal(saveContact, in: app.collectionViews["contact-approval-form"])
+        XCTAssertTrue(saveContact.isEnabled)
         saveContact.tap()
         XCTAssertTrue(app.buttons["Contact saved"].waitForExistence(timeout: 10))
         app.buttons["Back to settings"].tap()
@@ -203,7 +206,12 @@ final class FamilyLiveUITests: XCTestCase {
         if journey != .voiceAndMaps {
             contact.tap()
             fill(app.textFields["message-draft"], peer.message)
-            app.buttons["Send"].tap()
+            finishTyping("finish-message-entry", in: app)
+            XCTAssertEqual(app.textFields["message-draft"].value as? String, peer.message)
+            let send = app.buttons["Send"]
+            reveal(send, in: app.collectionViews["private-conversation-form"])
+            XCTAssertTrue(send.isEnabled)
+            send.tap()
             if localTest {
                 XCUIDevice.shared.press(.home)
                 let backgrounded = XCTNSPredicateExpectation(
@@ -243,7 +251,12 @@ final class FamilyLiveUITests: XCTestCase {
                 XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
                 let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
                 fill(app.textFields["message-draft"], reconnectMessage)
-                app.buttons["Send"].tap()
+                finishTyping("finish-message-entry", in: app)
+                XCTAssertEqual(app.textFields["message-draft"].value as? String, reconnectMessage)
+                let send = app.buttons["Send"]
+                reveal(send, in: app.collectionViews["private-conversation-form"])
+                XCTAssertTrue(send.isEnabled)
+                send.tap()
                 // The newly inserted reply is above a focused composer in a lazy
                 // Form. Dismiss editing and reveal it; require the exact signed
                 // echo, rather than treating a hidden row as missing delivery.
@@ -390,6 +403,14 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertEqual(app.textFields["edit-contact-name"].value as? String, contactName)
         app.navigationBars["Edit contact"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(guardian.waitForExistence(timeout: 10))
+    }
+
+    private func finishTyping(_ identifier: String, in app: XCUIApplication) {
+        guard app.keyboards.firstMatch.exists else { return }
+        let finish = app.buttons[identifier]
+        XCTAssertTrue(finish.waitForExistence(timeout: 10), app.debugDescription)
+        finish.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), app.debugDescription)
     }
 
     private func reveal(_ element: XCUIElement, in form: XCUIElement, up: Bool = true) {
