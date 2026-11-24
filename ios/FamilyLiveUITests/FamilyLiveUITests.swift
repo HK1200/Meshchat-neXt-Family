@@ -189,7 +189,26 @@ final class FamilyLiveUITests: XCTestCase {
             let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
             fill(app.textFields["message-draft"], reconnectMessage)
             app.buttons["Send"].tap()
-            XCTAssertTrue(app.staticTexts["Echo: " + reconnectMessage].waitForExistence(timeout: 90))
+            // The newly inserted reply is above a focused composer in a lazy
+            // Form. Dismiss editing and reveal it; require the exact signed
+            // echo, rather than treating a hidden row as missing delivery.
+            let finish = app.buttons["finish-message-entry"]
+            if app.keyboards.firstMatch.exists {
+                XCTAssertTrue(finish.waitForExistence(timeout: 10))
+                finish.tap()
+            }
+            let echo = app.staticTexts["Echo: " + reconnectMessage]
+            let conversation = app.collectionViews["private-conversation-form"]
+            XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+            let deadline = Date().addingTimeInterval(90)
+            var swipes = 0
+            while !echo.exists && Date() < deadline {
+                if echo.waitForExistence(timeout: 1) { break }
+                if swipes % 12 < 6 { conversation.swipeDown() }
+                else { conversation.swipeUp() }
+                swipes += 1
+            }
+            XCTAssertTrue(echo.exists, app.debugDescription)
         }
         app.terminate()
         app.launch()

@@ -179,7 +179,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-results-${{ matrix.device }}-${{ matrix.suite }}-${{ github.run_attempt }}
-          path: ios/RuntimeBuild/results/*.xcresult
+          path: |
+            ios/RuntimeBuild/results/*.xcresult
+            ios/RuntimeBuild/results/peer-*.log
+            ios/RuntimeBuild/results/*-summary.json
+            ios/RuntimeBuild/results/*-tests.json
           if-no-files-found: ignore
           retention-days: 7
 

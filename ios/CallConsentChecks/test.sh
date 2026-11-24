@@ -20,6 +20,9 @@ print(max(candidates)[2])
 PY
 simulator="$(cat Results/device)"
 # Never address a USB device. This job owns a fresh ephemeral hosted runner.
+# Complete the cold simulator boot before XCTest asks its service to launch.
+xcrun simctl boot "$simulator" || [[ "$(xcrun simctl list devices booted --json)" == *"$simulator"* ]]
+xcrun simctl bootstatus "$simulator" -b
 xcodebuild test -project CallConsentChecks.xcodeproj -scheme CallConsentChecks \
   -destination "platform=iOS Simulator,id=$simulator" \
   -derivedDataPath DerivedData -resultBundlePath Results/consent.xcresult \

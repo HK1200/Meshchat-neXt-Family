@@ -1476,6 +1476,7 @@ struct FamilyChat: View {
     @State private var attachments: [FamilyDraftAttachment] = []
     @State private var confirmLargeSend = false
     @State private var method: FamilyMessageMethod = .automatic
+    @FocusState private var editingMessage: Bool
 
     private var currentContact: FamilyContact? {
         family.state?.contacts?.first { $0.id == contact.id }
@@ -1551,7 +1552,11 @@ struct FamilyChat: View {
                 .accessibilityIdentifier("message-method")
                 .accessibilityValue(method.name)
                 .disabled(submitting)
-                TextField("Message", text: $draft).accessibilityIdentifier("message-draft")
+                TextField("Message", text: $draft)
+                    .accessibilityIdentifier("message-draft")
+                    .focused($editingMessage)
+                    .submitLabel(.done)
+                    .onSubmit { editingMessage = false; FamilyKeyboard.dismiss() }
                 if method == .meshcore || (method == .automatic && messagePolicy.available == [.meshcore]) {
                     Text("\(draft.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count) of 160 bytes")
                         .font(.caption).foregroundStyle(.secondary)
@@ -1577,8 +1582,15 @@ struct FamilyChat: View {
                 #endif
             }
         }
+        .accessibilityIdentifier("private-conversation-form")
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(currentContact?.name ?? contact.name)
         .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done typing") { editingMessage = false; FamilyKeyboard.dismiss() }
+                    .accessibilityIdentifier("finish-message-entry")
+            }
             if let currentContact, currentContact.addresses["lxst"]?.isEmpty == false,
                family.state?.voice?.ready == true {
                 ToolbarItem(placement: .topBarTrailing) {

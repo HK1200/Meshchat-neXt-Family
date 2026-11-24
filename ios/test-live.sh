@@ -10,8 +10,15 @@ bash prepare-live.sh
 
 run="$(mktemp -d "$PWD/RuntimeBuild/simulator-test.XXXXXXXX")"
 peer_pid=
+device_family="${1:-unknown}"
 cleanup() {
     if [[ -n "$peer_pid" ]]; then kill "$peer_pid" 2>/dev/null || true; wait "$peer_pid" 2>/dev/null || true; fi
+    # Retain synthetic-only peer events beside XCTest results so an inbox/UI
+    # failure can be distinguished from a missing network delivery.
+    mkdir -p "$PWD/RuntimeBuild/results"
+    if [[ -f "$run/peer.log" ]]; then
+        cp -- "$run/peer.log" "$PWD/RuntimeBuild/results/peer-${device_family}.log"
+    fi
     rm -f -- "$PWD/RuntimeBuild/test-peer.json"
     rm -rf -- "$run"
 }

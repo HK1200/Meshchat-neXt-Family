@@ -53,8 +53,10 @@ final class FamilyAutomaticCallUITests: XCTestCase {
         back.tap()
         XCTAssertTrue(app.navigationBars["Guardian settings"].waitForExistence(timeout: 10))
         let add = app.buttons["Add approved contact"]
-        XCTAssertTrue(add.waitForExistence(timeout: 15))
-        for _ in 0..<9 where !add.isHittable { settings.swipeDown() }
+        // SwiftUI virtualizes offscreen rows. Reveal the row before requiring
+        // its accessibility element after returning from the lower settings.
+        for _ in 0..<9 where !add.exists || !add.isHittable { settings.swipeDown() }
+        XCTAssertTrue(add.exists && add.isHittable, app.debugDescription)
         add.tap()
         let name = "Private Call Routing Fixture"
         fill(app.textFields["contact-name"], name)

@@ -64,6 +64,13 @@ xcodebuild test -project "$scheme.xcodeproj" -scheme "$scheme" \
         -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
         -maximum-test-execution-time-allowance 900 "$signing" ${build_overrides[@]+"${build_overrides[@]}"} || test_status=$?
 
+# Preserve portable test diagnostics even on failure; Linux can inspect these
+# without Xcode, while the original xcresult remains available for Apple tools.
+if [[ -d "$result" ]]; then
+    xcrun xcresulttool get test-results summary --path "$result" > "${result%.xcresult}-summary.json" || true
+    xcrun xcresulttool get test-results tests --path "$result" > "${result%.xcresult}-tests.json" || true
+fi
+
 if [[ "$store_capture" == 1 && -d "$result" ]]; then
     xcrun xcresulttool export attachments --path "$result" \
         --output-path "RuntimeBuild/store-screenshots/$device_family"
