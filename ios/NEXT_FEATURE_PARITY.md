@@ -57,7 +57,10 @@ Its full build, CI, security, Scorecard and complete mutation run passed. All
 29 public release assets and all signed updater feeds were verified. The exact
 signed GitHub and Play APKs upgraded the OnePlus 9 in both directions without
 changing settings, identities, contacts or existing message history. The Play
-closed-test update is submitted; this does not grant production access.
+closed-test update is approved and available to selected testers. Play Console
+currently shows 12 testers continuously opted in for one day; its 14-day
+production-access requirement is not yet complete. The same 0.1.28 build is
+available to internal testers. This does not grant production access.
 
 The next iOS integration pins that release's frontend and backend by checksum.
 It preserves native SIP, call-ID binding, audio previews, GPS sessions, RNCP,
@@ -68,6 +71,16 @@ through completion or cancellation. Focused qualification passed 93 actual
 runtime/messaging tests, 116 native-adapter/file tests and 15 JavaScript tests.
 The updated complete regression suite and Xcode qualification are separate gates.
 No 0.1.28-based iPad package has been installed yet.
+
+The transparent native startup overlay candidate (`56ae5ad`) passed both unsigned
+neXt archives. Its iPad run passed contact-code review, signed messaging,
+conversation deletion followed by a fresh signed reply, the personal-preview
+alert restriction, explicit location controls and Nomad file export. It then
+failed resolving a native field's accessibility activation point. This is
+partial evidence, not a passing full suite. The preceding iPhone source
+(`dea0341`) passed all 229 native and 12 interface cases. The current test-only
+field-reveal repair retains those cases and assertions; both simulator reruns
+remain required. Test cancellations and original failure logs are retained.
 
 Regular Family remains intact. The USB-connected iPad currently requires its
 on-device trust prompt to be accepted before further app access. Do not reset
