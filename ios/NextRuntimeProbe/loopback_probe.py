@@ -652,9 +652,21 @@ async def serve(ready_file, frontend, fixture, *, device=False, peer_settings=No
                     route = call_alerts.save_route(ready_file.parent, recipient, proposed)
                 else:
                     raise web.HTTPMethodNotAllowed(request.method, ["GET", "POST", "DELETE"])
-                return web.json_response({"route": None if route is None else dict(
-                    provider=route.provider, audience=route.audience, public_key=route.public_key)},
-                    headers={"Cache-Control": "no-store"})
+                result = {"route": None if route is None else dict(
+                    provider=route.provider, audience=route.audience, public_key=route.public_key)}
+                if request.method == "GET":
+                    # Match the released interface contract before a route is
+                    # saved. An address alone cannot supply a public key.
+                    result["public_key"] = None
+                    with contextlib.suppress(Exception):
+                        import RNS as route_rns
+                        identity = route_rns.Identity.recall(bytes.fromhex(recipient))
+                        if identity:
+                            key = identity.get_public_key().hex()
+                            if call_alerts.parse_route(recipient, dict(provider="https://identity.invalid",
+                                    audience="identity", public_key=key)):
+                                result["public_key"] = key
+                return web.json_response(result, headers={"Cache-Control": "no-store"})
             except (ValueError, TypeError):
                 return web.json_response({"message": "Use an HTTPS provider, audience and this contact's public key."}, status=400)
         alert_route = re.fullmatch(r"telephone/contacts/([1-9][0-9]{0,17})/mailbox-alert-route", path)

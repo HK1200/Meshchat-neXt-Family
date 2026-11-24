@@ -249,3 +249,42 @@ print("Packaged call-alert modules import without a checkout or network")
     result = subprocess.run([sys.executable, "-I", "-c", code, str(tmp_path / "staged")], cwd=tmp_path,
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def run_route_key_server(folder, ready, settings, public_key, recall_mode, pipe):
+    """Actual private runtime with a controlled Reticulum identity cache."""
+    from test_next_ios_call_enrollment import run_native_policy_server
+    recipient = RNS.Identity(create_keys=False)
+    recipient.load_public_key(bytes.fromhex(public_key))
+    destination = bytes.fromhex(destination_hash("lxmf.delivery", recipient.get_public_key()))
+    original = RNS.Identity.recall
+    cached = None if recall_mode == "unknown" else RNS.Identity() if recall_mode == "wrong" else recipient
+    RNS.Identity.recall = lambda key, *args, **kwargs: cached if key == destination else original(key, *args, **kwargs)
+    run_native_policy_server(folder, ready, settings, pipe)
+
+
+@pytest.mark.parametrize("recall_mode", ["unknown", "known", "wrong"])
+def test_new_interface_receives_only_a_bound_public_key_before_saving_a_call_route(tmp_path, monkeypatch, recall_mode):
+    from contextlib import ExitStack
+    from test_next_ios_tcp_integration import api, backend, start, wait
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(ROOT / "ios/NextRuntimeProbe"),
+        str(ROOT / "app/src/main/python"), str(ROOT / "tests"), os.environ.get("PYTHONPATH", "")]))
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"peers": [{"id": "off", "host": "127.0.0.1", "port": 9, "enabled": False}]}))
+    ready = tmp_path / "backend.url"
+    peer = RNS.Identity()
+    key = peer.get_public_key().hex()
+    address = destination_hash("lxmf.delivery", peer.get_public_key())
+    with ExitStack() as stack:
+        start(stack, run_route_key_server, tmp_path, ready, settings, key, recall_mode)
+        wait(ready.exists)
+        base = backend(ready)
+        token = api(base, "auth/csrf")[1]["csrf_token"]
+        assert api(base, "telephone/contacts", body={"name": "Private route key fixture", "lxmf_address": address}, token=token)[0] == 200
+        contact = next(row for row in api(base, "telephone/contacts")[1]["contacts"] if row["lxmf_address"] == address)
+        path = f"telephone/contacts/{contact['id']}/call-alert-route"
+        status, result = api(base, path)
+        assert status == 200
+        assert result == {"route": None, "public_key": key if recall_mode == "known" else None}
+        assert peer.get_private_key().hex() not in json.dumps(result)
+        assert not (tmp_path / "call-alert-routes.json").exists(), "Reading a key must not configure a route"
