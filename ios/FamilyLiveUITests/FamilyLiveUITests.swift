@@ -106,6 +106,7 @@ final class FamilyLiveUITests: XCTestCase {
         nameField.typeText(deviceName)
         app.buttons["Save device name"].tap()
         XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         let addContact = app.buttons["Add approved contact"]
         if !addContact.isHittable { app.swipeDown() }
         XCTAssertTrue(addContact.waitForExistence(timeout: 10))
@@ -137,6 +138,8 @@ final class FamilyLiveUITests: XCTestCase {
             result.tap()
             XCTAssertEqual(app.textFields["contact-address"].value as? String, peer.address)
         } else {
+            let approvalForm = app.collectionViews["contact-approval-form"]
+            reveal(app.textFields["contact-name"], in: approvalForm, up: false)
             fill(app.textFields["contact-name"], contactName)
             fill(app.textFields["contact-address"], peer.address)
         }
@@ -209,8 +212,25 @@ final class FamilyLiveUITests: XCTestCase {
                 XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed)
                 app.activate()
             }
+            if app.keyboards.firstMatch.exists {
+                let finish = app.buttons["finish-message-entry"]
+                XCTAssertTrue(finish.waitForExistence(timeout: 10))
+                finish.tap()
+                XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+            }
+            let conversation = app.collectionViews["private-conversation-form"]
+            XCTAssertTrue(conversation.waitForExistence(timeout: 10))
+            let delivery = app.staticTexts["Delivered"]
+            let receiptDeadline = Date().addingTimeInterval(90)
+            var receiptSwipes = 0
+            while !delivery.exists && Date() < receiptDeadline {
+                if delivery.waitForExistence(timeout: 1) { break }
+                if receiptSwipes % 8 < 4 { conversation.swipeDown() }
+                else { conversation.swipeUp() }
+                receiptSwipes += 1
+            }
             XCTAssertTrue(
-                app.staticTexts["Delivered"].waitForExistence(timeout: 90),
+                delivery.exists,
                 "Delivery receipt missing. Conversation labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
             )
             XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))

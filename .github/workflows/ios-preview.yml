@@ -134,7 +134,9 @@ jobs:
     # PushKit's iOS26.4 metadata callback requires the current SDK even though
     # runtime availability keeps the app compatible with iOS17 and later.
     runs-on: ${{ inputs.macos_runner || 'macos-26' }}
-    timeout-minutes: 35
+    # Three separately bounded guardian journeys plus native tests and compilation.
+    # Keep per-case deadlines intact and leave time to preserve failure evidence.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       # Leave hosted macOS capacity for native and archive qualification jobs.

@@ -16,14 +16,21 @@ cleanup() {
     # Retain synthetic-only peer events beside XCTest results so an inbox/UI
     # failure can be distinguished from a missing network delivery.
     mkdir -p "$PWD/RuntimeBuild/results"
-    if [[ -f "$run/peer.log" ]]; then
+    if [[ -f "$run/peer.log" && ! -L "$run/peer.log" ]]; then
         cp -- "$run/peer.log" "$PWD/RuntimeBuild/results/peer-${device_family}.log"
     fi
     rm -f -- "$PWD/RuntimeBuild/test-peer.json"
     rm -rf -- "$run"
 }
 trap cleanup EXIT
-PYTHONPATH="$PWD/RuntimeBuild/staged" python3 -S simulator-peer.py "$run/hub" "$mode" > "$run/peer.log" 2>&1 &
+trap 'exit 143' TERM
+trap 'exit 130' INT
+# Keep synthetic peer events outside the temporary run even if the CI job is
+# cancelled before its EXIT trap can finish.
+mkdir -p "$PWD/RuntimeBuild/results"
+peer_log="$PWD/RuntimeBuild/results/peer-${device_family}.log"
+PYTHONPATH="$PWD/RuntimeBuild/staged" python3 -u -S simulator-peer.py "$run/hub" "$mode" > "$peer_log" 2>&1 &
+ln -s -- "$peer_log" "$run/peer.log"
 peer_pid=$!
 for ((i=0; i<300; i++)); do
     if [[ -f "$run/hub/peer.json" ]]; then break; fi
