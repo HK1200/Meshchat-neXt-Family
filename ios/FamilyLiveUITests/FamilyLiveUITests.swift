@@ -315,6 +315,7 @@ final class FamilyLiveUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in form: XCUIElement, up: Bool = true) {
+        let app = XCUIApplication()
         XCTAssertTrue(form.waitForExistence(timeout: 10))
         for _ in 0..<10 {
             if element.exists && element.isHittable { break }

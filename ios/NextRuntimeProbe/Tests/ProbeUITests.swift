@@ -619,11 +619,17 @@ final class ProbeUITests: XCTestCase {
         XCTAssertTrue(save.isEnabled, app.debugDescription)
         save.tap()
         let saved = app.staticTexts["Recipient call alerts saved."]
+        // Form rows are virtualized on iPad. The actual saved state was visible
+        // above, while the confirmation row remained below the sheet's bounds.
+        reveal(saved, in: form)
         XCTAssertTrue(saved.waitForExistence(timeout: 20), app.debugDescription)
         let remove = app.buttons["next-recipient-call-alert-remove"]
         reveal(remove, in: form); XCTAssertTrue(remove.isEnabled)
         remove.tap()
-        XCTAssertTrue(app.staticTexts["Recipient call alerts removed."].waitForExistence(timeout: 20), app.debugDescription)
+        let removed = app.staticTexts["Recipient call alerts removed."]
+        reveal(removed, in: form)
+        XCTAssertTrue(removed.waitForExistence(timeout: 20), app.debugDescription)
+        reveal(status, in: form, up: false)
         XCTAssertTrue(status.waitForExistence(timeout: 10), app.debugDescription)
         app.navigationBars["Recipient call alerts"].buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["my-lxmf-address"].waitForExistence(timeout: 15), app.debugDescription)

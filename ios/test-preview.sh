@@ -51,6 +51,9 @@ if not candidates:
 print(max(candidates)[1])
 ' "$device_family" "$store_capture")"
 
+# Complete first boot before the test runner connects. This destination comes
+# only from simctl's hosted simulator inventory, never a physical device.
+xcrun simctl bootstatus "$destination" -b
 xcodegen generate --spec "$specification"
 mkdir -p RuntimeBuild/results
 result="$PWD/RuntimeBuild/results/$scheme-$device_family-$(uuidgen).xcresult"
