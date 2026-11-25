@@ -1,3 +1,13 @@
+# neXt Family v0.6.31
+
+- Include the tested, signed private call-alert hint used when an approved Reticulum call starts. Guardian opt-in, recipient approval and provider configuration are required; call audio and message content are not included in the hint.
+- Keep call-alert cancellation tied to the correct call and reject expired or unapproved incoming attempts.
+- Improve the iOS development contact editor, keyboard handling and permission/setup flows. Both iPhone and iPad live setup, contact, messaging and reconnect journeys passed.
+- Preserve the production Android app ID, signing key, guardian settings, contacts, messages and Reticulum identity. Android version code is 45.
+- GitHub builds retain approved rooms and Relay Chat; store builds continue to omit them. The iOS port remains a development build, without Apple enrollment or a claim of verified suspended Apple push delivery.
+
+---
+
 # neXt Family v0.6.30
 
 - Recover a Reticulum direct message left sending after its old link closes when a fresh active link is available. Preserve the signed packet, delivery budget and completed/cancelled state.

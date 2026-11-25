@@ -9,13 +9,12 @@ were byte-identical before first launch; seven contacts and the identity were
 preserved afterward, and the home screen rendered normally. Both current
 unsigned archives passed and all 23 packaged shared modules match the source.
 Family production/build inputs are identical to the native-qualified `e83c810`
-baseline; full UI qualification is still pending. The neXt preview upgraded
+baseline. Current full UI qualification passed on both iPhone and iPad: all 48 native cases and four live UI journeys per device, plus the separate preview checks (`45530812504`, source `0fb7888`). The neXt preview upgraded
 separately to 450.1 without changing either Family install. Current Family production-source call-consent
 qualification passed **115 native checks on each simulator**, and both unsigned
 Family device and App Store archives passed (`45328469143`, source `e83c810`).
 The newer local full suite passed **942 tests**, with seven skips, at `1eb8b51`;
-its CI and security checks also passed. The full Family UI simulator journeys
-remain a separate qualification gate, not an inferred success from native tests.
+its CI and security checks also passed. The full Family UI simulator journeys now have their own passing run; these results are separate from the 115 native call-consent checks.
 
 The current code includes the guardian-only call-alert owner, enrollment screen,
 identity/contact checks, native one-use caller admission and ordered signed

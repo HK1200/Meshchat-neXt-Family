@@ -7,37 +7,18 @@ Reticulum voice, offline maps, location and Relay Chat are integrated and
 undergoing native/device qualification. Remaining desktop services, suspended
 alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
 
-The latest fully verified separate iPad build is **390.1**, exact source
-`33096576029c398068cf562babd9b35f30afcdff`, pinned to public **0.1.27**.
-GitHub run `45148207507` passed all **115 required checks per simulator**
-(109 native and six UI cases) on their first attempts, plus both unsigned
-archives. The earlier compact-header candidate's iPhone contact-QR navigation
-failure was retained and that package was never installed. The same QR flow
-passed in the final both-device run without weakening its assertions.
+The latest separately installed iPad preview is **450.1**, source `56ae5ad`,
+pinned to public **0.1.28**. Its same-key upgrade preserved all 1,249 current
+non-cache support files, twelve messages, two contacts, identity and native
+preferences. Actual iPad signed text, a 75,000-byte file and a synthetic photo
+passed in both directions and survived a distinct process restart. Original
+conversations, contacts and TCP peers were restored afterward.
 
-The same-key physical upgrade from 389.1 preserved all **1,511 current
-non-cache support files**, twelve messages, two contacts, identity, native
-preferences and four peers before first launch. Counts reflect the files
-present at this upgrade, not expired runtime caches from earlier builds.
-
-On the actual iPad's build 390.1, an original signed message with a
-**75,000-byte attachment** and photo survived a distinct process restart and
-arrived once with exact bytes. The previous build 389.1 also passed standard
-RNCP send, fetch and approved reverse reception with **2 MiB** files and
-byte-identical downloads. Explicit removal affected only the synthetic received
-files. Its clean private TCP test queued messages during **twelve connection
-outages**: every original identifier was delivered once, every signed
-echo returned, and no message was manually submitted again. The counterpart used
-the byte-verified recovery already in public neXt 0.1.27 from startup.
-
-An initial bare-SDK receiver stalled in its own known Sending/no-destination
-state despite an active link. Receiver-side tracing captured that state;
-enabling the existing released recovery only in that disposable receiver
-unblocked its reply without changing the iPad. That diagnostic run and its
-original failures are retained separately from the clean twelve-outage result.
-The permanent regression now tests a raw-SDK first-link exchange and three
-repeated outages with the released counterpart's recovery; ordinary protocol
-interoperability coverage remains in place.
+The earlier build 389.1 also passed standard RNCP send, fetch and approved
+reverse reception with 2 MiB files and byte-identical downloads. Its private TCP
+test delivered every original identifier once across twelve connection outages.
+Those are historical checks; the current build has its own text/file/restart
+proof, not a repeated twelve-outage qualification.
 
 Original contacts and peers were restored. A screenshot confirmed the ordinary
 conversation, composer and compact native header rendered after all tests.
@@ -82,15 +63,14 @@ confirmed the ordinary conversation and composer rendered after restoration.
 These are actual private LAN/API and restart checks, not physical radio,
 camera/share-sheet or suspended-delivery qualification.
 
-The transparent native startup overlay candidate (`56ae5ad`) passed both unsigned
-neXt archives. Its iPad run passed contact-code review, signed messaging,
-conversation deletion followed by a fresh signed reply, the personal-preview
-alert restriction, explicit location controls and Nomad file export. It then
-failed resolving a native field's accessibility activation point. This is
-partial evidence, not a passing full suite. The preceding iPhone source
-(`dea0341`) passed all 229 native and 12 interface cases. The current test-only
-field-reveal repair retains those cases and assertions; both simulator reruns
-remain required. Test cancellations and original failure logs are retained.
+Both current neXt simulator suites passed all **229 native and 12 interface
+cases per device** (`45492517177`, source `1a7acbe`). The iPhone needed one
+unchanged failed-job retry after an app-launch timeout; the original failure is
+retained. The iPad passed its original job. Detailed logs confirm all 241
+expected cases passed exactly once on each successful job. The actual iPad
+also passed read-only native header and TCP-panel automation, and the owner
+confirmed its contact QR opens and displays clearly. These results do not
+qualify suspended internet calls or a physical iPhone.
 
 Regular Family remains **47.6**, intact. USB trust is working and the separate
 Family Mailbox Test has upgraded to **453.1**, preserving all fourteen saved
