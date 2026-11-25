@@ -144,7 +144,13 @@ final class FamilyLiveUITests: XCTestCase {
             let approvalForm = app.collectionViews["contact-approval-form"]
             reveal(app.textFields["contact-name"], in: approvalForm, up: false)
             fill(app.textFields["contact-name"], contactName)
-            fill(app.textFields["contact-address"], peer.address)
+            finishTyping("finish-contact-entry", in: app)
+            XCTAssertEqual(app.textFields["contact-name"].value as? String, contactName)
+            let addressField = app.textFields["contact-address"]
+            // Finish the previous field first: an existing keyboard does not
+            // prove the next, potentially virtualized row has keyboard focus.
+            reveal(addressField, in: approvalForm)
+            fill(addressField, peer.address)
         }
         finishTyping("finish-contact-entry", in: app)
         XCTAssertEqual(app.textFields["contact-address"].value as? String, peer.address)
