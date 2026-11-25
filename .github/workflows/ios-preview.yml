@@ -68,7 +68,7 @@ jobs:
   call-consent:
     if: ${{ inputs.call_consent }}
     name: ${{ matrix.device }} native call consent
-    runs-on: macos-26-intel
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
