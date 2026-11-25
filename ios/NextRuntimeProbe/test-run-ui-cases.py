@@ -38,6 +38,8 @@ class UICaseRunnerTests(unittest.TestCase):
             self.assertEqual([next(a for a in c if a.startswith('-only-testing:')) for c in commands],
                              ['-only-testing:NextRuntimeProbeUITests/ProbeUITests/testA','-only-testing:NextRuntimeProbeUITests/ProbeUITests/testB'])
             for c in commands:
+                self.assertEqual(c[c.index('-xctestrun')+1], str(root/'test.xctestrun'))
+                self.assertEqual(c[c.index('-destination')+1], 'disposable')
                 self.assertEqual(c[c.index('-maximum-test-execution-time-allowance')+1],'900')
                 self.assertEqual(c[c.index('-parallel-testing-enabled')+1],'NO')
             combined=json.loads(Path(str(prefix)+'-summary.json').read_text())

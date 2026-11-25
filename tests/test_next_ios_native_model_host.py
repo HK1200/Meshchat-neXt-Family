@@ -40,7 +40,10 @@ def test_rejects_ambiguous_or_pre_overridden_test_targets(change):
 def test_integration_leaves_ui_launch_on_the_original_run_file():
     script=(Path(__file__).resolve().parents[1]/'ios/NextRuntimeProbe/test-simulators.sh').read_text()
     assert '"${native_test_arguments[@]}" \\\n        -only-testing:NextRuntimeProbeUnitTests' in script
-    assert '"${test_arguments[@]}" \\\n        -only-testing:NextRuntimeProbeUITests' in script
+    ui_call = script.split('if python3 "$probe/run-ui-cases.py"', 1)[1].split("; then", 1)[0]
+    assert '--xctestrun "${test_runs[0]}"' in ui_call
+    assert "native_test_run" not in ui_call and "native_test_arguments" not in ui_call
+    assert '--source "$scratch/Tests/ProbeUITests.swift"' in ui_call
 
 
 def test_actual_cli_round_trip_retains_original_and_all_ui_configuration(tmp_path):
