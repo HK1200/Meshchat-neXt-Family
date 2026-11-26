@@ -79,6 +79,49 @@ enrollment remains on hold. Real APNs delivery, suspended SIP wake, physical
 iPhone checks and the remaining real-device reliability matrix still prevent
 calling the iOS port release-ready.
 
+## Physical call qualification — November 26, 2026
+
+The separate neXt iPad preview **450.1** and OnePlus 9 neXt **0.1.28**
+completed private Reticulum calls in both directions. Native microphone capture
+and transmitted/received audio-frame counters continued on both calls; ending
+each call also ended it at the other endpoint. Six live quality changes—low,
+ultra-low and medium, initiated from each endpoint—preserved two-way frame
+flow. The receiving endpoint followed each negotiated profile, including the
+expected 200 ms, 400 ms and 60 ms Android codec frame durations. These are
+instrumented media-continuity results, not a subjective speech-quality test.
+
+The test exposed a shared neXt status-report bug: Codec2 quality appeared blank
+and Opus reported a codec-internal preset instead of the negotiated LXST quality.
+The repair uses the active call's negotiated profile. Regressions exercised all
+eight real codec profiles, failing before the repair and passing afterward.
+The **0.1.29** release candidate contains that repair; its cross-platform build,
+signatures, upgrades and publication remain separate release gates. Family and
+the native iOS voice adapter already read the canonical active-call profile.
+
+The call harness opened the Android dialer before each call to attach its native
+audio client. An earlier reverse-call attempt connected but timed out waiting
+for that client; its failure is retained. Temporary contacts and LAN peers were
+removed, original quality preferences and TCP settings were restored, and
+regular Family remained unchanged. No speech recording or public message was
+made. These results do not qualify suspended internet call alerts, physical
+Wi-Fi switching, headset interruptions or a physical iPhone.
+
+## Current-build TCP recovery qualification — November 26, 2026
+
+The same physical neXt iPad preview **450.1** also completed a clean private
+TCP recovery run: one baseline exchange followed by twelve controlled socket
+outages. Each outage queued a new Unicode message before the connection was
+restored. All thirteen original message identifiers reached the private receiver
+exactly once and received verified signed echoes. The slowest exchange took
+22.31 seconds. The receiver used the released reconnect recovery from the start;
+no receiver intervention or peer edit was made during the run.
+
+The app's identity remained unchanged, and the original contacts and all saved
+TCP peer values were restored. Only the newly created synthetic conversation
+was removed. Regular Family was not addressed. This proves socket-loss recovery
+in the current build while its authenticated backend is running; it does not
+prove physical Wi-Fi switching, long idle delivery or fully suspended alerts.
+
 ## Current call-alert integration
 
 Development source now wires the native PushKit registry, explicit caller
