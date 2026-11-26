@@ -1,4 +1,4 @@
-"""Verify the native iOS SIP platform already present in the pinned 0.1.28 bundle.
+"""Verify the native iOS SIP platform already present in the pinned 0.1.29 bundle.
 
 The upstream SIP feature synchronization includes iOS, and commands carry the
 displayed call ID so delayed controls cannot end a replacement call. Preserve

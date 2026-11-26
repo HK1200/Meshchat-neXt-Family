@@ -79,6 +79,25 @@ enrollment remains on hold. Real APNs delivery, suspended SIP wake, physical
 iPhone checks and the remaining real-device reliability matrix still prevent
 calling the iOS port release-ready.
 
+## neXt 0.1.29 integration under qualification
+
+The next native build pins the verified, published **0.1.29** frontend and Python
+wheel from release source `0f8265e`, including the negotiated call-quality status
+repair. The complete desktop/Android build, mutation score, Android emulator and
+signed package upgrade checks passed. Both signed Android package variants
+preserved the OnePlus 9's existing configuration, identity, contacts and messages.
+
+Local hash-pinned qualification passed **943 tests and three subtests**, with
+seven skips, plus **209 staged-runtime tests**. Private protocol fixtures passed
+file send/fetch/reverse reception, terminal and probe exchanges, offline-map
+imports with no descriptor growth across 300 tile reads, Relay Chat, silent
+signed telemetry and twelve settled audio-signal checks. A silence-only control
+was correctly rejected. These host tests do not qualify physical iOS gestures,
+suspended internet alerts or an iPhone. Xcode and both complete simulator suites
+are separate gates. The installed iPad preview remains **450.1 / 0.1.28** until
+its own verified in-place upgrade. Neither Family install is targeted, and Apple
+enrollment stays on hold.
+
 ## Physical call qualification — November 26, 2026
 
 The separate neXt iPad preview **450.1** and OnePlus 9 neXt **0.1.28**

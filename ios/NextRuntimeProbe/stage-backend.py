@@ -9,7 +9,7 @@ import zipfile
 
 from mobile_rrc_codec import portable_rrc
 
-NEXT_WHEEL_SHA256 = "93d2f5b3193eb0333fc066f1b327dd446b610202f71d30167b4e21a0b736974b"
+NEXT_WHEEL_SHA256 = "5e13d17246cd197520ce27521225bee2e47c7d8104691b4f7b2c0da622397c50"
 
 
 def stage(wheel, destination, family_ios, *, voice_only=False, cbor_wheel=None):

@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p temp-tests/voice-source
           curl --fail --silent --show-error --location --retry 3 --max-time 120 \
-            https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.28/meshchat_next-0.1.28-py3-none-any.whl \
+            https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.29/meshchat_next-0.1.29-py3-none-any.whl \
             --output temp-tests/voice-source/backend.whl
           python -c 'import json, subprocess; s=json.load(open("ios/cbor-runtime.json")); subprocess.run(["curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3", "--max-time", "120", "--max-filesize", "2097152", s["url"], "--output", "temp-tests/voice-source/cbor2.whl"], check=True)'
           python ios/NextRuntimeProbe/stage-backend.py \
