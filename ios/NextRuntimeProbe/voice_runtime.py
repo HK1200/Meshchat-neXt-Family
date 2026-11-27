@@ -167,6 +167,8 @@ class ReticulumVoice:
         self.pcm_call = ""
         self.pcm_ready = False
         self.sent_frames = self.received_frames = self.dropped_bytes = 0
+        self.capture_bytes = self.received_bytes = self.played_bytes = 0
+        self.pull_calls = self.empty_pulls = 0
         self.last_announces = {}
         self.last_native = 0.
         self.client = None
@@ -428,6 +430,8 @@ class ReticulumVoice:
         if not isinstance(data, bytes) or len(data) % 2: return
         with self.pcm_lock:
             if not self.pcm_ready or self.pcm_call != call_id or self.call is None or self.call.receive_muted: return
+            self.received_bytes += len(data)
+            self.dropped_bytes += max(0, len(data) - 48_000)
             self.received.extend(data[-48_000:])
             excess = len(self.received) - 48_000
             if excess > 0:
@@ -444,6 +448,7 @@ class ReticulumVoice:
                 try:
                     engine.push(data, native_processing)
                     self.sent_frames += 1
+                    self.capture_bytes += len(data)
                     self.call.capture_activity_at = self.clock()
                 except Exception as error:
                     self.loop.call_soon_threadsafe(self.audio_failed, call_id, str(error)[:180])
@@ -456,13 +461,18 @@ class ReticulumVoice:
     def pull(self, call_id):
         with self.pcm_lock:
             if not self.pcm_ready or call_id != self.pcm_call or self.call is None or self.call.receive_muted: return b""
+            self.pull_calls += 1
             if not self.playing:
-                if len(self.received) < 5_760: return b""
+                if len(self.received) < 5_760:
+                    self.empty_pulls += 1
+                    return b""
                 self.playing = True
             if len(self.received) < 1_920:
                 self.playing = False
+                self.empty_pulls += 1
                 return b""
             result = bytes(self.received[:1_920]); del self.received[:1_920]
+            self.played_bytes += len(result)
             return result
 
     def schedule_end(self, call_id):
@@ -584,6 +594,10 @@ class ReticulumVoice:
             elif (call.capture_activity_at is not None
                   and 0 <= self.clock() - call.capture_activity_at < 2):
                 capture_status = "Microphone audio is flowing."
+        with self.pcm_lock:
+            pcm = dict(pcm_capture_bytes=self.capture_bytes, pcm_received_bytes=self.received_bytes,
+                       pcm_played_bytes=self.played_bytes, playback_queued_bytes=len(self.received),
+                       playback_pull_calls=self.pull_calls, playback_empty_pulls=self.empty_pulls)
         phone = self.engine.manager.telephone if self.engine else None
         active = None
         if call is not None and call.phase != "ending":
@@ -610,6 +624,7 @@ class ReticulumVoice:
                     voicemail=dict(is_recording=False, unread_count=0, latest_id=None),
                     web_audio=dict(enabled=False, required=False, allow_fallback=False, native_audio=True),
                     sent_frames=self.sent_frames, received_frames=self.received_frames, playback_dropped_bytes=self.dropped_bytes,
+                    **pcm,
                     call_targets=[{"address": key, "name": row["name"]} for key, row in self.contacts().items()])
 
     def record_call(self, call):

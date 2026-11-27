@@ -596,3 +596,52 @@ def test_unchanged_call_permissions_do_not_pause_call_alerts():
             assert attempts == []
         finally: await voice.close(); db.close()
     asyncio.run(run())
+
+
+def test_playback_diagnostics_distinguish_packet_arrival_native_drain_and_underflow():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            identity,peer=connect(voice);await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",identity)
+            identifier=voice.call.id
+            assert voice.pull(identifier)==b""
+            await voice.client.send_bytes(b"\x01\x00"*2880)
+            for _ in range(3):assert len(voice.pull(identifier))==1920
+            assert voice.pull(identifier)==b""
+            voice.push(identifier,b"\x02\x00"*960,True)
+            state=voice.snapshot()
+            assert state["pcm_received_bytes"]==5760 and state["pcm_played_bytes"]==5760
+            assert state["pcm_capture_bytes"]==1920 and state["playback_queued_bytes"]==0
+            assert state["playback_pull_calls"]==5 and state["playback_empty_pulls"]==2
+            assert state["playback_dropped_bytes"]==0
+            before={k:v for k,v in state.items() if k.startswith("pcm_") or k.startswith("playback_")}
+            voice.pull("0"*32);voice.push("0"*32,b"\x02\x00"*960,True)
+            await voice.receive_pcm("0"*32,b"\x01\x00"*2880)
+            after=voice.snapshot()
+            assert {k:after[k] for k in before}==before
+        finally:await voice.close();db.close()
+    asyncio.run(run())
+
+
+def test_drop_counter_includes_oversized_decoded_batches_without_retaining_them():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            identity,peer=connect(voice);await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",identity)
+            await voice.client.send_bytes(b"\x01\x00"*48000)
+            state=voice.snapshot()
+            assert state["pcm_received_bytes"]==96000
+            assert state["playback_queued_bytes"]==48000
+            assert state["playback_dropped_bytes"]==48000
+            assert len(voice.pull(voice.call.id))==1920
+            await voice.client.send_bytes(b"\x02\x00"*1920)
+            state=voice.snapshot()
+            assert state["playback_dropped_bytes"]==49920
+            assert state["pcm_received_bytes"]==state["pcm_played_bytes"]+state["playback_queued_bytes"]+state["playback_dropped_bytes"]
+            assert not any(isinstance(v,(bytes,bytearray)) for k,v in state.items() if k.startswith("pcm_") or k.startswith("playback_"))
+        finally:await voice.close();db.close()
+    asyncio.run(run())

@@ -169,4 +169,32 @@ final class IdentityRecoveryTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
         XCTAssertThrowsError(try NextIdentityRecovery.importFile(link))
     }
+    func testDamagedPendingRestoreCanBeCanceledWhileTheValidCurrentKeyRemainsAvailable() throws {
+        let root = try self.root(); try write(original, at: root)
+        try NextIdentityRecovery.stage(.init(replacement), support: root)
+        try mutatePending(root) { $0["privateKey"] = "corrupt" }
+        let snapshot = try NextIdentityRecovery.status(support: root)
+        XCTAssertEqual(snapshot.current?.bytes, original)
+        XCTAssertNil(snapshot.pending)
+        XCTAssertNotNil(snapshot.pendingError)
+        XCTAssertThrowsError(try NextIdentityRecovery.applyPending(support: root))
+        try NextIdentityRecovery.cancel(support: root)
+        XCTAssertNil(try NextIdentityRecovery.status(support: root).pendingError)
+        XCTAssertEqual(try Data(contentsOf: identity(root)), original)
+    }
+    func testDamagedPreviousKeyDoesNotHideTheCurrentKeyOrOtherValidBackups() throws {
+        let root = try self.root(); try write(original, at: root)
+        try NextIdentityRecovery.stage(.init(replacement), support: root)
+        try NextIdentityRecovery.applyPending(support: root)
+        let damaged = root.appendingPathComponent("identity-backups/" + String(repeating: "a", count: 32) + ".identity")
+        try Data("damaged backup".utf8).write(to: damaged)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: damaged.path)
+        let snapshot = try NextIdentityRecovery.status(support: root)
+        XCTAssertEqual(snapshot.current?.bytes, replacement)
+        XCTAssertEqual(snapshot.saved.map(\.bytes), [original])
+        XCTAssertNotNil(snapshot.savedError)
+        XCTAssertEqual(try Data(contentsOf: damaged), Data("damaged backup".utf8))
+        XCTAssertEqual(try Data(contentsOf: identity(root)), replacement)
+    }
+
 }

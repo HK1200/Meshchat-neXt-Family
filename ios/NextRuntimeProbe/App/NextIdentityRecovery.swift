@@ -42,6 +42,8 @@ enum NextIdentityRecovery {
         let current: Key?
         let pending: Key?
         let saved: [Key]
+        let pendingError: String?
+        let savedError: String?
     }
     static var identityDirectoryName: String {
         #if targetEnvironment(simulator)
@@ -69,19 +71,29 @@ enum NextIdentityRecovery {
         lock.lock(); defer { lock.unlock() }
         let root = try Directory(support)
         let current = try Self.current(root)
-        let pending = try Self.pending(root).map { try Key(Data(base64Encoded: $0.privateKey) ?? Data()) }
+        var pendingKey: Key? = nil
+        var pendingError: String? = nil
+        do { pendingKey = try Self.pending(root).map { try Key(Data(base64Encoded: $0.privateKey) ?? Data()) } }
+        catch { pendingError = "The pending restore is invalid. Cancel it or choose the identity file again." }
         var saved: [Key] = []
-        if let folder = try root.child("identity-backups", create: false) {
-            for name in try FileManager.default.contentsOfDirectory(atPath: folder.url.path).sorted() {
-                guard name.range(of: "^[a-f0-9]{32}\\.identity$", options: .regularExpression) != nil else { continue }
-                guard saved.count < 64, let bytes = try folder.read(name, maximum: 64) else { throw Failure.savedCopy }
-                let key = try Key(bytes)
-                guard name == key.hash + ".identity" else { throw Failure.savedCopy }
-                if key.hash != current?.hash { saved.append(key) }
+        var savedError: String? = nil
+        do {
+            if let folder = try root.child("identity-backups", create: false) {
+                for name in try FileManager.default.contentsOfDirectory(atPath: folder.url.path).sorted() {
+                    guard name.range(of: "^[a-f0-9]{32}\\.identity$", options: .regularExpression) != nil else { continue }
+                    do {
+                        guard saved.count < 64, let bytes = try folder.read(name, maximum: 64) else { throw Failure.savedCopy }
+                        let key = try Key(bytes)
+                        guard name == key.hash + ".identity" else { throw Failure.savedCopy }
+                        if key.hash != current?.hash { saved.append(key) }
+                    } catch { savedError = "Some previous identities could not be verified. Their files have been kept unchanged." }
+                }
             }
-        }
-        return Status(current: current, pending: pending, saved: saved)
+        } catch { savedError = "Previous identities could not be opened safely. Their files have been kept unchanged." }
+        return Status(current: current, pending: pendingKey, saved: saved,
+                      pendingError: pendingError, savedError: savedError)
     }
+
     /// Return false for the already-active identity, without requiring restart.
     @discardableResult static func stage(_ key: Key, support: URL) throws -> Bool {
         lock.lock(); defer { lock.unlock() }

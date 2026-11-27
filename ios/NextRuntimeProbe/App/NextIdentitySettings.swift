@@ -50,6 +50,9 @@ struct NextIdentitySettings: View {
                         Text("Restore ready: \(pending.messagingAddress)")
                             .accessibilityIdentifier("next-identity-pending-address")
                         Text("Close neXt from the app switcher, then open it again to use this identity. Locking the screen does not restart the app. Existing conversations stay on this device with their original identity.")
+                    }
+                    if let problem = status?.pendingError { Text(problem).foregroundStyle(.red) }
+                    if status?.pending != nil || status?.pendingError != nil {
                         Button("Cancel pending restore", role: .destructive) {
                             perform { try NextIdentityRecovery.cancel(support: NextIdentityRecovery.support()); notice = "Restore canceled." }
                         }.accessibilityIdentifier("next-identity-cancel")
@@ -69,6 +72,7 @@ struct NextIdentitySettings: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+                if let problem = status?.savedError { Section { Text(problem).foregroundStyle(.red) } }
                 if !notice.isEmpty { Section { Text(notice).accessibilityIdentifier("next-identity-notice") } }
                 if !error.isEmpty {
                     Section {
@@ -101,7 +105,7 @@ struct NextIdentitySettings: View {
                 document = nil
                 switch result {
                 case .success: notice = "Identity backup saved."; error = ""
-                case .failure(let problem): error = problem.localizedDescription
+                case .failure(let problem): report(problem)
                 }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
@@ -110,7 +114,7 @@ struct NextIdentitySettings: View {
                     let scoped = file.startAccessingSecurityScopedResource()
                     defer { if scoped { file.stopAccessingSecurityScopedResource() } }
                     perform { candidate = try NextIdentityRecovery.importFile(file); confirmRestore = true }
-                case .failure(let problem): error = problem.localizedDescription
+                case .failure(let problem): report(problem)
                 }
             }
             .alert("Restore this identity?", isPresented: $confirmRestore, presenting: candidate) { key in
@@ -126,6 +130,11 @@ struct NextIdentitySettings: View {
                 Text("Messaging address: \(key.messagingAddress)\n\nYour current identity is kept on this device before switching. Existing messages remain with their original identity. The change takes effect only after closing and reopening neXt.")
             }
         }
+    }
+    private func report(_ problem: Error) {
+        let value = problem as NSError
+        if value.domain == NSCocoaErrorDomain && value.code == NSUserCancelledError { return }
+        error = problem.localizedDescription
     }
     private func reload() {
         do { status = try NextIdentityRecovery.status(support: NextIdentityRecovery.support()); error = "" }
