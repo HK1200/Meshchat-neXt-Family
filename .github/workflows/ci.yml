@@ -60,6 +60,15 @@ jobs:
           python ios/NextRuntimeProbe/stage-backend.py \
             temp-tests/voice-source/backend.whl temp-tests/voice-source/staged ios --voice-only \
             --cbor-wheel temp-tests/voice-source/cbor2.whl
+      - name: Verify all native adapters against the released frontend
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --max-time 120 \
+            --max-filesize 67108864 \
+            https://github.com/HK1200/Meshchat-neXt/releases/download/v0.1.29/meshchatnext-frontend.zip \
+            --output temp-tests/voice-source/frontend.zip
+          NEXT_IOS_FRONTEND_ZIP="$PWD/temp-tests/voice-source/frontend.zip" \
+            python -m pytest -q tests/test_next_ios_released_frontend.py \
+            --basetemp=temp-tests/frontend-staging
       - name: Verify private Nomad pages, files, consent and saved archives
         run: |
           NEXT_TEST_BACKEND_SOURCE="$PWD/temp-tests/voice-source/staged" \

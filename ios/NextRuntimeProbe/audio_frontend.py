@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = "assets/MessagesPage-DvQn3PUC.js"
-SHA256 = "17f8533bea2b21ba366f9d1dfc4947516c29f85c478f1c0c00f5062957602c7e"
+CHUNK = "assets/MessagesPage-BFo8ckCp.js"
+SHA256 = "07a9b05b54d72b4a89da46c36cad1097045c38aa4992aa7099d398180868dc21"
 BEFORE = ',t=ao(t,2097152);const s=new Blob([t],{type:"audio/opus"})'
 AFTER = ';const __nextWav=t.length>=12&&t[0]===82&&t[1]===73&&t[2]===70&&t[3]===70&&t[8]===87&&t[9]===65&&t[10]===86&&t[11]===69;t=ao(t,__nextWav?8388652:2097152);const s=new Blob([t],{type:__nextWav?"audio/wav":"audio/ogg"})'
 

@@ -9,8 +9,8 @@ import re
 from pathlib import Path
 
 CHUNKS = {
-    "app-K9UTif_O.js": "34780fd3d054f4f9aeb5f052e546bc85433e286a4cfb5180adec413fb54a4e24",
-    "CallPage-DoYRNS-T.js": "e0046c9d45fb4118fa26c3de63f28748bfb264cdbed7447310bed30e108a2b2f",
+    "app-Crmw4wko.js": "0ea8c4d8076a2e88221fd034fdeddbf947c1f00e4a22e332147f0ff4809500fd",
+    "CallPage-CyF30Kcu.js": "e8b38e6f7a228b2b8f7c04c73304fd197fbfef664ab2726883c67bd91a0d5d76",
 }
 
 

@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
-CHUNK = 'assets/RNCPPage-CcD6vyMr.js'
-SHA256 = '50a3ad123117493e0b6dd90de7fe0d55313c407518f6b7760a45c79c2912c1c6'
+CHUNK = 'assets/RNCPPage-C6p3Cr8s.js'
+SHA256 = '18a776165900d1c41268743c692238be8a41e87103f78389bd8f8bddd1f8b66f'
 UPLOAD_BEFORE = 'async onWebSendFilePicked(e){const s=e.target.files?.[0];if(e.target.value="",!s||this.importInProgress||this.sendInProgress)return;if(!s.size||s.size>this.importLimit)return void(this.importError=this.$t("rncp.import_size_limit",{mib:Math.floor(this.importLimit/1048576)}));const t=new AbortController;this.importController=t,this.importInProgress=!0,this.importError=null;try{const e=new FormData;e.append("file",s);const i=await function(e,...s){return window.api.post(p("/rncp/upload"),e,...s)}(e,{signal:t.signal,timeout:0});if(this.importsDisposed)return;this.sendFilePath=i.data.file_path}catch(i){this.importsDisposed||t.signal.aborted||(this.importError=i.response?.data?.message||this.$t("rncp.import_failed"))}finally{this.importsDisposed||(this.importInProgress=!1,this.importController=null,await this.loadImportedFiles())}}'
 UPLOAD_AFTER = UPLOAD_BEFORE.replace('this.importController=t', 'this.sendFilePath="",this.importController=t')
 FILES_BEFORE = 'async openReceiveDirectory(){this.receiveDirectory||await this.syncListenerStatusFromServer(),this.receiveDirectory&&(await o.openDirectoryOrCopy(this.receiveDirectory,()=>a.success(this.$t("common.copied")))||t.alert(this.receiveDirectory))}'

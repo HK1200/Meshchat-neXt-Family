@@ -98,6 +98,21 @@ are separate gates. The installed iPad preview remains **450.1 / 0.1.28** until
 its own verified in-place upgrade. Neither Family install is targeted, and Apple
 enrollment stays on hold.
 
+### Frontend staging repair — November 27, 2026
+
+The first 0.1.29 native run stopped during frontend staging: its generated
+JavaScript filenames had changed, while the mobile adapters still named the
+0.1.28 chunks. The corrected adapters pin the actual 0.1.29 entrypoints and
+checksums. All existing transformation and call-ID guards are retained. The
+unchanged Micron renderer remains pinned to its original verified bytes.
+
+The complete eight-adapter chain now passes against the actual release ZIP,
+and all **40 focused frontend checks** pass, including the native location,
+call-context, audio, file-transfer and terminal protections. The new CI check
+uses that same release archive before Xcode qualification. The original failing
+run and logs are retained. Both complete simulator suites and the device and
+production archives still must pass before the separate iPad upgrade.
+
 ## Physical call qualification — November 26, 2026
 
 The separate neXt iPad preview **450.1** and OnePlus 9 neXt **0.1.28**

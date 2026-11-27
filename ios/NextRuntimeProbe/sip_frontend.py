@@ -8,8 +8,8 @@ from pathlib import Path
 import hashlib
 import re
 
-CHUNK = 'assets/shared-async-CAR6JQhg.js'
-SOURCE_SHA256 = '6cee507c1ab47e109395870e25ff6de9ab4b26ff3bdd10c8f68b4a9ac4b9647e'
+CHUNK = 'assets/shared-async-Clh94Po3.js'
+SOURCE_SHA256 = '7b53dd711ee225f9cde6962c4c8bae906e9694b26f4c012ca0ac2cb56660b3bf'
 # Whole source bytes are already covered by the pinned frontend ZIP checksum;
 # the small exact expressions additionally fail closed when that bundle changes.
 PLATFORM = re.compile(r'\["linux","windows","ios"\]\.includes\((?:ws|e)\.platform\)')
