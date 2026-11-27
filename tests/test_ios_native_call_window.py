@@ -1,6 +1,9 @@
 """Exercise the actual native-only wake gate, including parallel consumption."""
+import ctypes
 from pathlib import Path
 import subprocess
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,10 +76,34 @@ int main(void) {
     assert result.returncode == 0, result.stderr
 
 
-def test_clock_override_is_absent_from_production_object(tmp_path):
-    target = tmp_path / "window.o"
+def native_library(tmp_path, *, testing=False):
+    target = tmp_path / "window.so"
     source = ROOT / "ios/LiveRuntime/FamilyCallWakeGate.c"
-    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c", str(source), "-o", str(target)], check=True, capture_output=True, timeout=20)
-    symbols = subprocess.check_output(["nm", str(target)], text=True, timeout=10)
-    assert "family_call_wake_test_time" not in symbols
-    assert "family_call_wake_arm" in symbols
+    arguments = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC", "-pthread"]
+    if testing:
+        arguments.append("-DFAMILY_WAKE_TESTING=1")
+    subprocess.run(arguments + [str(source), "-o", str(target)], check=True, capture_output=True, timeout=20)
+    return ctypes.CDLL(str(target))
+
+
+def production_exports(library):
+    # Ask the native loader about the executable exports. The Ubuntu 26.04
+    # runner's nm repeatedly stalled on the tiny object, before any assertion.
+    assert not hasattr(library, "family_call_wake_test_time"), "Test clock exported by production library"
+    return library.family_call_wake_arm, library.family_call_wake_consume
+
+
+def test_clock_override_is_absent_from_running_production_library(tmp_path):
+    arm, consume = production_exports(native_library(tmp_path))
+    arm.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+    consume.argtypes = [ctypes.c_char_p]
+    arm.restype = consume.restype = ctypes.c_bool
+    voice = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    assert arm(b"0123456789abcdef0123456789abcdef", voice, 30)
+    assert consume(voice)
+    assert not consume(voice)
+
+
+def test_production_export_check_rejects_a_library_with_the_test_clock(tmp_path):
+    with pytest.raises(AssertionError, match="Test clock exported"):
+        production_exports(native_library(tmp_path, testing=True))
