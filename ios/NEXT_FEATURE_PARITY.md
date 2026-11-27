@@ -1,37 +1,55 @@
 # neXt iOS completion status
 
-neXt for iPhone and iPad is a development preview. Reticulum messaging works in
-the released neXt interface, including signed replies and attachments. Native
-SIP calling and optional mailbox receiving are integrated and under verification.
-Reticulum voice, offline maps, location and Relay Chat are integrated and
-undergoing native/device qualification. Remaining desktop services, suspended
-alerts and release verification still need work before a complete neXt release. Family has its own [parity audit](FEATURE-PARITY.md).
+neXt for iPhone and iPad remains a development preview. The latest separate
+physical iPad preview is **461.1 / 0.1.29**, source `e94cd5c`. Its same-key
+upgrade preserved all 820 current non-cache support files, thirteen messages,
+two contacts, identity and native preferences. Signed text, a 75,000-byte file
+and a synthetic photo passed in both directions, remained byte-exact after a
+full process restart, and were followed by a fresh signed exchange. The ordinary
+conversation and composer rendered normally afterward. Both Family installs
+and their settings remained unchanged.
 
-The latest separately installed iPad preview is **450.1**, source `56ae5ad`,
-pinned to public **0.1.28**. Its same-key upgrade preserved all 1,249 current
-non-cache support files, twelve messages, two contacts, identity and native
-preferences. Actual iPad signed text, a 75,000-byte file and a synthetic photo
-passed in both directions and survived a distinct process restart. Original
-conversations, contacts and TCP peers were restored afterward.
+On November 27, the actual iPad also passed signed text and an 8,192-byte file
+round trip separately through **RMAP 4343, WashMesh 7242 and Chicago 4242**.
+Recorded iPad routes matched each tested provider; the owned receiver used only
+that provider. All saved peer controls stayed enabled and unchanged. This is a
+bounded live delivery test, not a promise of continuing provider availability.
+RMAP 4242 was offline in the separate passive observation.
 
-The earlier build 389.1 also passed standard RNCP send, fetch and approved
-reverse reception with 2 MiB files and byte-identical downloads. Its private TCP
-test delivered every original identifier once across twelve connection outages.
-Those are historical checks; the current build has its own text/file/restart
-proof, not a repeated twelve-outage qualification.
+Private Reticulum calls connected in both directions between this iPad preview
+and neXt **0.1.29** on the OnePlus 9. All twelve low/ultra-low/medium quality
+transitions matched on both devices and retained frame flow; remote hangup
+worked. Playback drops during the first direction remain under investigation,
+so these counters do not qualify subjective audio quality. The follow-up steady
+call test could not start after the iPad disconnected. Temporary contacts,
+private peers and original quality preferences were restored.
 
-Original contacts and peers were restored. A screenshot confirmed the ordinary
-conversation, composer and compact native header rendered after all tests.
-Both Family apps retained byte-identical state, identity and native preferences.
-These are authenticated private LAN/API tests, not physical Wi-Fi switching,
-public-provider reliability, picker/share-sheet gestures or locked-screen proof.
-Fully suspended internet alerts, physical iPhone behavior and the remaining
-desktop services are still not qualified by these results.
+The source's preceding complete Xcode qualification passed both unsigned
+archives and **229 native plus 12 interface cases on each simulator**
+(`46045648499`, source `e94cd5c`). The host-only symbol-loader repair `de07245`
+then passed CI with **944 tests**, eight skips and three subtests; Security and
+Scorecard passed. Desktop/Android neXt **0.1.29** is published across supported
+platforms, and its Play closed test is available. Family **0.6.31** is also
+available to closed testers. Google still requires the remaining continuous
+testing period before either app can apply for production access.
 
-This checkpoint is dated November 23, 2026. “Integrated” means the code is wired
-into the app; physical verification is stated separately.
+A separate native **Identity backup** change is now under qualification. It
+exports Reticulum's standard private-key file and stages a confirmed restore
+for the next cold start. It preserves the previous key before replacement,
+keeps existing conversations with their original identity and permits returning
+to a previous saved key. No private key goes through the web interface or
+clipboard. Native malformed-file, interrupted-restore, data-preservation and UI
+checks must pass before installing this new feature. An identity file does not
+include messages, settings, SIP passwords or radio pairing; a complete portable
+settings/history backup remains separate work.
 
-## Current qualification — November 24, 2026
+Regular Family **47.6** and Family Mailbox Test **453.1** remain intact. Apple
+enrollment stays on hold. Real APNs and suspended SIP wake, a physical iPhone,
+remaining device/radio/picker tests, full recovery and unported desktop services
+still prevent calling the iOS port release-ready. Earlier checkpoints below are
+historical; implementation is distinct from physical-device qualification.
+
+## Historical qualification — November 24, 2026
 
 The desktop/Android release is now **0.1.28** across all supported platforms.
 Its full build, CI, security, Scorecard and complete mutation run passed. All
@@ -79,7 +97,7 @@ enrollment remains on hold. Real APNs delivery, suspended SIP wake, physical
 iPhone checks and the remaining real-device reliability matrix still prevent
 calling the iOS port release-ready.
 
-## neXt 0.1.29 integration under qualification
+## neXt 0.1.29 integration qualification
 
 The next native build pins the verified, published **0.1.29** frontend and Python
 wheel from release source `0f8265e`, including the negotiated call-quality status
@@ -94,9 +112,8 @@ imports with no descriptor growth across 300 tile reads, Relay Chat, silent
 signed telemetry and twelve settled audio-signal checks. A silence-only control
 was correctly rejected. These host tests do not qualify physical iOS gestures,
 suspended internet alerts or an iPhone. Xcode and both complete simulator suites
-are separate gates. The installed iPad preview remains **450.1 / 0.1.28** until
-its own verified in-place upgrade. Neither Family install is targeted, and Apple
-enrollment stays on hold.
+then passed, followed by the verified 461.1 in-place upgrade described above.
+Neither Family install was targeted, and Apple enrollment stays on hold.
 
 ### Frontend staging repair — November 27, 2026
 
@@ -111,7 +128,7 @@ and all **40 focused frontend checks** pass, including the native location,
 call-context, audio, file-transfer and terminal protections. The new CI check
 uses that same release archive before Xcode qualification. The original failing
 run and logs are retained. Both complete simulator suites and the device and
-production archives still must pass before the separate iPad upgrade.
+production archives subsequently passed before the separate iPad upgrade.
 
 ## Physical call qualification — November 26, 2026
 

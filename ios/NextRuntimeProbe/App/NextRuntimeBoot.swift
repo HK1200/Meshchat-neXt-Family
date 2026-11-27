@@ -18,6 +18,7 @@ private enum NextRuntimeBoot {
             for: .applicationSupportDirectory,
             in: .userDomainMask, appropriateFor: nil, create: true
         )
+        try NextIdentityRecovery.applyPending(support: directory)
         let ready = directory.appendingPathComponent("next-\(UUID().uuidString).url")
         let config = ready.deletingPathExtension().appendingPathExtension("json")
         let address = ready.deletingPathExtension().appendingPathExtension("address")

@@ -2,6 +2,29 @@ import XCTest
 import CoreImage
 
 final class ProbeUITests: XCTestCase {
+    func testIdentityBackupUsesTheRunningIdentityWithoutChangingIt() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let address = app.staticTexts["my-lxmf-address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 120), app.debugDescription)
+        let original = address.label
+        XCTAssertEqual(original.count, 32)
+        app.buttons["next-message-alerts"].tap()
+        let recovery = app.buttons["next-open-identity-backup"]
+        XCTAssertTrue(recovery.waitForExistence(timeout: 15), app.debugDescription)
+        recovery.tap()
+        let current = app.staticTexts["next-identity-current-address"]
+        XCTAssertTrue(current.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(current.label, original)
+        XCTAssertTrue(app.buttons["next-identity-export"].exists)
+        XCTAssertTrue(app.buttons["next-identity-import"].exists)
+        XCTAssertFalse(app.staticTexts["next-identity-pending-address"].exists)
+        XCTAssertFalse(app.staticTexts["next-identity-error"].exists)
+        app.navigationBars["Identity backup"].buttons["Done"].tap()
+        XCTAssertTrue(address.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertEqual(address.label, original)
+    }
+
     private struct EchoFixture: Decodable {
         let message: String
         let address: String

@@ -204,6 +204,7 @@ struct NextMessageAlertSettings: View {
     @State private var busy = false
     @State private var error = ""
     var onPermissionCheckup: (() -> Void)? = nil
+    var onIdentityBackup: (() -> Void)? = nil
 
     var body: some View {
         NavigationStack {
@@ -232,6 +233,9 @@ struct NextMessageAlertSettings: View {
                 }
                 if let onPermissionCheckup {
                     Section { Button("Permission checkup", action: onPermissionCheckup).accessibilityIdentifier("next-open-permission-checkup") }
+                }
+                if let onIdentityBackup {
+                    Section { Button("Identity backup", action: onIdentityBackup).accessibilityIdentifier("next-open-identity-backup") }
                 }
                 Section("When iOS pauses the app") {
                     Text("iOS may pause neXt after you switch apps or lock the screen. A connected Bluetooth radio can wake it when iOS permits. Internet-only alerts while fully suspended are not yet supported.")

@@ -29,7 +29,7 @@ private struct ProbeScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var appActive = true
     private enum Panel: String, Identifiable {
-        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location, callAlerts, recipientCallAlerts
+        case alerts, rnode, connections, myContact, permissions, sip, mailbox, reticulum, calling, location, callAlerts, recipientCallAlerts, identityBackup
         var id: String { rawValue }
     }
     @State private var panel: Panel?
@@ -124,6 +124,8 @@ private struct ProbeScreen: View {
     private var setupForm: some View {
         Form {
             Section("Get started") {
+                Button("Identity backup or restore") { panel = .identityBackup }
+                    .accessibilityIdentifier("next-setup-identity-backup")
                 Button("Review device permissions") { panel = .permissions }
                     .accessibilityIdentifier("next-setup-permission-checkup")
             }
@@ -228,6 +230,7 @@ private struct ProbeScreen: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                     Button("Review connection settings") { self.error = nil; starting = false }
+                    Button("Identity backup or restore") { panel = .identityBackup }
                 }
             } else if (simulator && !setupReviewFixture) || starting {
                 ProgressView("Starting neXt…")
@@ -305,7 +308,9 @@ private struct ProbeScreen: View {
                 NextMessageAlertSettings(alerts: alerts) {
                     guard let url else { throw URLError(.notConnectedToInternet) }
                     return try await Self.unreadMessages(at: url)
-                } onPermissionCheckup: { panel = .permissions }
+                } onPermissionCheckup: { panel = .permissions } onIdentityBackup: { panel = .identityBackup }
+            case .identityBackup:
+                NextIdentitySettings()
             case .permissions:
                 NextPermissionCheckup(alerts: alerts) {
                     guard let url else { return [] }

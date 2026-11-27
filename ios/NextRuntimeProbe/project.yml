@@ -104,6 +104,7 @@ targets:
       - path: App/NextCallWakeContext.swift
       - path: App/NextVoIPPushDevice.swift
       - path: App/NextCallWakeIdentity.swift
+      - path: App/NextIdentityRecovery.swift
       - path: App/NextCallWakeEnrollment.swift
       - path: App/NextCallWakeInstallation.swift
       - path: App/NextCallWakeRegistration.swift

@@ -32,6 +32,28 @@ Before updating, check the contact list, a recent conversation and **My contact
 QR**; check the same items afterward. The public Reticulum addresses should
 remain the same. Keep a private backup before a development upgrade.
 
+### neXt preview identity backup and restore
+
+The next development source adds **Identity backup** under the native bell
+screen, and **Identity backup or restore** on setup and startup recovery screens.
+This change is still awaiting native qualification and is not in installed
+preview 461.1.
+
+Choose **Save identity backup**, confirm that it is a private key and save the
+file through Files. Anyone with that file can use the Reticulum identity: keep
+it private rather than sharing it as a contact card. It uses the standard
+64-byte Reticulum identity format, compatible with desktop identity exports.
+A contact QR, public messaging address or database backup is not this key file.
+
+To restore, choose the identity file and check its messaging address before
+confirming **Restore after restart**. The running app keeps its current identity
+until you close it from the app switcher and open it again. neXt retains the
+previous key under **Previous identities on this device**, so you can return to
+its conversations. **Cancel pending restore** leaves the current identity active.
+Messages and settings remain associated with their original identity. This
+identity-only file does not contain message history, preferences, SIP passwords
+or radio pairing; it is not a complete app backup.
+
 ## First setup and approved contacts
 
 1. Create and confirm a guardian password. A fresh install has no preset password.
