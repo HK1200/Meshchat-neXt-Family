@@ -68,7 +68,8 @@ class UICaseRunnerTests(unittest.TestCase):
 
     def test_actual_ui_inventory_and_duplicate_source_rejection(self):
         names=m.case_names(HERE/'Tests/ProbeUITests.swift')
-        self.assertEqual(len(names),12)
+        self.assertEqual(len(names),13)
+        self.assertIn('testIdentityBackupUsesTheRunningIdentityWithoutChangingIt',names)
         self.assertIn('testConversationSendsAndReceivesSignedLXMF',names)
         with tempfile.TemporaryDirectory(dir=HERE) as d:
             source=Path(d)/'ProbeUITests.swift';source.write_text('func testA() {} func testA() {}')
