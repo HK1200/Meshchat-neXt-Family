@@ -195,7 +195,9 @@ private final class VoicePCMPump: @unchecked Sendable {
     private var tapDelivered = false
     private var pcmQueued = false
     private var timer: DispatchSourceTimer?
-    private var scheduled = 0
+    private var playbackClock = FamilyVoicePlaybackClock()
+    private var captureTicks = 0
+    private var completionRefills = 0
     private var exchanges = 0
     private var fullPlaybackSlots = 0
     private var consumedBuffers = 0
@@ -205,7 +207,8 @@ private final class VoicePCMPump: @unchecked Sendable {
 
     var playbackHealth: [String: Any] {
         lock.lock(); defer { lock.unlock() }
-        return ["exchange_calls": exchanges, "full_playback_slots": fullPlaybackSlots,
+        return ["exchange_calls": exchanges, "capture_ticks": captureTicks,
+                "completion_refills": completionRefills, "full_playback_slots": fullPlaybackSlots,
                 "consumed_buffers": consumedBuffers, "scheduled_buffers": queueDepthSnapshot,
                 "maximum_exchange_gap_ms": maximumExchangeGapMS]
     }
@@ -247,6 +250,7 @@ private final class VoicePCMPump: @unchecked Sendable {
     }
 
     func start() {
+        queue.sync { playbackClock.start() }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(20), leeway: .milliseconds(2))
         timer.setEventHandler { [weak self] in self?.exchange() }
@@ -257,10 +261,11 @@ private final class VoicePCMPump: @unchecked Sendable {
     func stop() {
         timer?.cancel()
         timer = nil
-        queue.sync {}
+        queue.sync { playbackClock.stop() }
     }
 
-    private func exchange() {
+    private func exchange(captureInput: Bool = true) {
+        guard playbackClock.running else { return }
         lock.lock()
         let now = DispatchTime.now().uptimeNanoseconds
         if let previousExchange, now >= previousExchange {
@@ -268,13 +273,16 @@ private final class VoicePCMPump: @unchecked Sendable {
         }
         previousExchange = now
         exchanges += 1
-        if scheduled >= 3 { fullPlaybackSlots += 1 }
-        queueDepthSnapshot = scheduled
-        let input = captured
-        captured = Data()
+        if captureInput { captureTicks += 1 } else { completionRefills += 1 }
+        if playbackClock.available == 0 { fullPlaybackSlots += 1 }
+        queueDepthSnapshot = playbackClock.scheduled
+        // Only the capture timer consumes microphone PCM. A hardware completion
+        // refills playback without stealing or duplicating the next capture tick.
+        let input = captureInput ? captured : Data()
+        if captureInput { captured = Data() }
         lock.unlock()
 
-        let availableFrames = max(0, 3 - scheduled)
+        let availableFrames = playbackClock.available
         var output = [UInt8](repeating: 0, count: Self.frameBytes * 3)
         let size = callID.withCString { id in
             input.withUnsafeBytes { pcm in
@@ -300,17 +308,18 @@ private final class VoicePCMPump: @unchecked Sendable {
                 let sample = UInt16(output[byte]) | UInt16(output[byte + 1]) << 8
                 channel[index] = Float(Int16(bitPattern: sample)) / 32768
             }
-            scheduled += 1
-            lock.lock(); queueDepthSnapshot = scheduled; lock.unlock()
+            guard let lease = playbackClock.schedule() else { return }
+            lock.lock(); queueDepthSnapshot = playbackClock.scheduled; lock.unlock()
             player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
                 self?.queue.async { [weak self] in
-                    if let self {
-                        self.scheduled -= 1
-                        self.lock.lock()
-                        self.consumedBuffers += 1
-                        self.queueDepthSnapshot = self.scheduled
-                        self.lock.unlock()
-                    }
+                    guard let self, self.playbackClock.consumed(lease) else { return }
+                    self.lock.lock()
+                    self.consumedBuffers += 1
+                    self.queueDepthSnapshot = self.playbackClock.scheduled
+                    self.lock.unlock()
+                    // Follow the audio hardware clock rather than waiting for the
+                    // next timer. Python work remains off the render callback.
+                    self.exchange(captureInput: false)
                 }
             }
         }

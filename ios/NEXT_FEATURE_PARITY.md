@@ -1,8 +1,8 @@
 # neXt iOS completion status
 
 neXt for iPhone and iPad remains a development preview. The latest separate
-physical iPad preview is **465.1 / 0.1.29**, source `79a5623`. Its same-key
-upgrade preserved all 2,912 current non-cache support files, thirteen messages,
+physical iPad preview is **466.1 / 0.1.29**, source `3325196`. Its same-key
+upgrade preserved all 3,304 current non-cache support files, thirteen messages,
 two contacts, identity and native preferences. Signed text, a 75,000-byte file
 and a synthetic photo passed in both directions, remained byte-exact after a
 full process restart, and were followed by a fresh signed exchange. The ordinary
@@ -16,32 +16,33 @@ that provider. All saved peer controls stayed enabled and unchanged. This is a
 bounded live delivery test, not a promise of continuing provider availability.
 RMAP 4242 was offline in the separate passive observation.
 
-Private Reticulum calls connected in both directions between iPad **465.1**
-and neXt **0.1.29** on the wireless OnePlus 9. The first bounded steady-call
-checks discarded no audio. A longer run then completed twelve matched
-low/ultra-low/medium transitions and remote hangup in both directions, but
-discarded **53,360 playback PCM bytes** during quality changes. Its native I/O
-interval stayed at 20 ms and its playback-full counter stayed zero. All temporary
-contacts, private connections and original call preferences were restored.
+Private Reticulum calls connected in both directions on **465.1** and
+**466.1**, with all twelve low/ultra-low/medium transitions and remote hangup.
+The 465.1 baseline discarded **53,360 playback PCM bytes** during quality
+changes. Bounded catch-up drains in 466.1 reduced that portion to **21,390
+bytes**, but its longer run also discarded **15,360 bytes** during steady
+playback and **5,650 bytes** after switching. It is not clean audio qualification.
+All temporary contacts, private connections and original call preferences were
+restored. Neither run records speech or establishes acoustic quality.
 
 An earlier **461.1** private-LAN run discarded 503,040 playback PCM bytes in
-thirty seconds. These observations leave audio quality unqualified. The next
-repair drains up to three available 20 ms native slots after a delayed timer,
-keeps microphone capture to one push and retains the existing 60 ms native
-playback limit. Eight regression cases fail before the change; actual Family
-and neXt C-boundary/lifecycle checks pass afterward. The complete local regression
-passed 967 tests and three subtests, with eight skips. Xcode and the physical-device comparison remain gates before calling the
-repair verified.
+thirty seconds. The development follow-up now refills free native playback
+slots when the audio player consumes a buffer, rather than waiting only for
+the next timer. The existing three-buffer, 60 ms native limit stays intact;
+only the timer consumes microphone PCM. Unique completion leases reject late
+and duplicate callbacks after stopping. Five new native clock cases await
+Xcode, and another physical comparison remains required.
 
-Current Xcode qualification passed both unsigned archives and **243 native
-plus 13 interface cases on each simulator** (`46085941421`, source `79a5623`).
-The documentation follow-up `b20660a` passed CI with **947 tests**, eight skips
-and three subtests; Security and Scorecard passed. Desktop/Android neXt
-**0.1.29** is published across supported platforms and available to Play closed
-testers. Family **0.6.31** is also available to closed testers. The required
-continuous testing period is still incomplete for production-access applications.
+Exact-source Xcode qualification for `3325196` passed both unsigned archives
+and **243 native plus 13 interface cases on each simulator** (`46107091889`).
+The complete pinned-dependency regression passed **967 tests**, eight skips
+and three subtests; CI, Security and Scorecard passed. The actual signed
+466.1 upgrade then passed file/photo/text delivery, full process restart and
+data preservation. Desktop/Android neXt **0.1.29** and Family **0.6.31** are
+available to Play closed testers. Production access still requires the remaining
+continuous test period.
 
-Native **Identity backup** is now in the qualified **465.1** preview. It exports
+Native **Identity backup** is present in the qualified **466.1** preview. It exports
 Reticulum's standard private-key file and stages a confirmed restore for the
 next cold start, preserving the preceding key. Fourteen native recovery cases
 and its confirmation/cancellation interface check passed on both simulators.
