@@ -98,13 +98,14 @@ final class FamilyLiveUITests: XCTestCase {
         guardian.tap()
         fill(app.secureTextFields["unlock-password"], password)
         app.buttons["Unlock"].tap()
-        let savePeer = app.buttons["Save peer"]
-        let enablePeer = app.buttons["peer-enabled"]
-        let peerForm = app.collectionViews.firstMatch
-        for _ in 0..<4 where !savePeer.isHittable {
-            peerForm.swipeUp()
-        }
-        XCTAssertTrue(savePeer.waitForExistence(timeout: 10))
+        // The home form remains behind the Guardian sheet. Address the
+        // visible settings form before scrolling; firstMatch can scroll home.
+        let peerForm = app.collectionViews["guardian-settings-form"]
+        XCTAssertTrue(peerForm.waitForExistence(timeout: 10), app.debugDescription)
+        let savePeer = peerForm.buttons["Save peer"]
+        let enablePeer = peerForm.buttons["peer-enabled"]
+        reveal(savePeer, in: peerForm)
+        XCTAssertTrue(savePeer.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(enablePeer.exists)
         if enablePeer.label == "Enable Reticulum TCP peer" { enablePeer.tap() }
         XCTAssertEqual(enablePeer.label, "Disable Reticulum TCP peer")
@@ -304,9 +305,16 @@ final class FamilyLiveUITests: XCTestCase {
             )
             XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 90))
             if localTest && journey == .messages {
-                XCTAssertTrue(app.staticTexts["Message notification delivered"].waitForExistence(timeout: 15))
-                XCTAssertTrue(app.staticTexts["Native inbox signal received"].waitForExistence(timeout: 15))
-                XCTAssertTrue(app.staticTexts["Reticulum TCP reconnected"].waitForExistence(timeout: 30))
+                // The Store capture exchange adds rows to this lazy Form.
+                // Require each actual diagnostic after bringing its row into
+                // view; an off-screen row is not an absent native callback.
+                for (label, timeout) in [("Message notification delivered", 15.0),
+                                         ("Native inbox signal received", 15.0),
+                                         ("Reticulum TCP reconnected", 30.0)] {
+                    let signal = app.staticTexts[label]
+                    reveal(signal, in: conversation)
+                    XCTAssertTrue(signal.waitForExistence(timeout: timeout), app.debugDescription)
+                }
                 let reconnectMessage = try XCTUnwrap(peer.reconnectMessage)
                 fill(app.textFields["message-draft"], reconnectMessage)
                 finishTyping("finish-message-entry", in: app)

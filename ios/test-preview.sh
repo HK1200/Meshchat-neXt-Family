@@ -74,6 +74,12 @@ fi
 if [[ "$store_capture" == 1 && -d "$result" ]]; then
     xcrun xcresulttool export attachments --path "$result" \
         --output-path "RuntimeBuild/store-screenshots/$device_family"
+elif [[ "$test_status" != 0 && -d "$result" ]]; then
+    # Only disposable hosted simulator profiles reach this script. Preserve
+    # recordings and snapshots in a portable format as well as the xcresult.
+    xcrun xcresulttool export attachments --path "$result" \
+        --output-path "${result%.xcresult}-failed-attachments" \
+        || echo "Synthetic activity export unavailable; the original test failure is retained"
 fi
 if [[ "$test_status" == 0 && "$scheme" == FamilyLive && "$store_capture" == 0 ]]; then
     python3 test-sip-registration.py "$destination" || test_status=$?

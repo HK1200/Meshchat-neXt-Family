@@ -2,9 +2,13 @@
 """Build the same pinned Baresip engine as Android for an Apple SDK slice."""
 import argparse
 import hashlib
+import http.client
 import os
 from pathlib import Path
 import subprocess
+import shutil
+import time
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent
@@ -17,6 +21,38 @@ SOURCES = {
 
 def run(*args):
     subprocess.run([str(value) for value in args], check=True)
+
+
+
+def ensure_source(archive, url, digest, *, opener=urllib.request.urlopen, pause=time.sleep):
+    """Retry transient transfer failures, accepting only the exact pinned source."""
+    def verify(path):
+        with path.open("rb") as stream:
+            actual = hashlib.file_digest(stream, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else hashlib.sha256(stream.read()).hexdigest()
+        if actual != digest:
+            raise ValueError("SIP source checksum mismatch for " + archive.name)
+
+    if archive.exists():
+        verify(archive)
+        return
+    temporary = archive.with_suffix(".part")
+    for attempt in range(3):
+        try:
+            with opener(url, timeout=180) as response, temporary.open("wb") as output:
+                shutil.copyfileobj(response, output)
+            verify(temporary)
+            temporary.replace(archive)
+            return
+        except urllib.error.HTTPError as error:
+            if error.code not in (408, 429, 500, 502, 503, 504) or attempt == 2:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead):
+            if attempt == 2:
+                raise
+        finally:
+            temporary.unlink(missing_ok=True)
+        print("Retrying interrupted SIP source download: " + archive.name, flush=True)
+        pause(2 ** attempt)
 
 
 def main():
@@ -32,14 +68,7 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     for name, (url, digest) in SOURCES.items():
         archive = work / (name + ".tar")
-        if not archive.exists():
-            temporary = archive.with_suffix(".part")
-            with urllib.request.urlopen(url, timeout=180) as response, temporary.open("wb") as output:
-                import shutil
-                shutil.copyfileobj(response, output)
-            temporary.replace(archive)
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
-            raise ValueError("SIP source checksum mismatch for " + name)
+        ensure_source(archive, url, digest)
         if not (work / name).exists():
             # Archives are accepted only after checking their pinned digest.
             run("tar", "-xf", archive, "-C", work)

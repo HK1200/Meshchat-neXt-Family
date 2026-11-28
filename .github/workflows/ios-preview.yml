@@ -181,6 +181,7 @@ jobs:
             ios/RuntimeBuild/results/peer-*.log
             ios/RuntimeBuild/results/*-summary.json
             ios/RuntimeBuild/results/*-tests.json
+            ios/RuntimeBuild/results/*-failed-attachments
           if-no-files-found: ignore
           retention-days: 7
 
