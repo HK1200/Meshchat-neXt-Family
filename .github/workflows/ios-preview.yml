@@ -24,6 +24,10 @@ on:
         description: Build the unsigned Meshchat neXt preview for a physical iPhone or iPad
         type: boolean
         default: false
+      next_inspection_device:
+        description: Build a development-only neXt preview with per-launch Web Inspector opt-in
+        type: boolean
+        default: false
       next_appstore_archive:
         description: Validate the unsigned neXt production archive without signing or uploading to Apple
         type: boolean
@@ -129,7 +133,7 @@ jobs:
           subprocess.run(["python3", "ios/test-sip-registration.py", max(candidates)[1]], check=True)
           PYTHON
   simulator:
-    if: ${{ !inputs.call_consent && !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device && !inputs.next_appstore_archive }}
+    if: ${{ !inputs.call_consent && !inputs.sip_signaling && !inputs.device_archive && !inputs.appstore_archive && !inputs.testflight && !inputs.store_screenshots && !inputs.next_runtime_probe && !inputs.next_unit_tests && !inputs.next_device && !inputs.next_inspection_device && !inputs.next_appstore_archive }}
     name: ${{ matrix.device }} ${{ matrix.suite }}
     # PushKit's iOS26.4 metadata callback requires the current SDK even though
     # runtime availability keeps the app compatible with iOS17 and later.
@@ -229,6 +233,26 @@ jobs:
           name: next-ios-unsigned
           path: ios/RuntimeBuild/neXt-iOS-unsigned.ipa
           if-no-files-found: error
+
+  next-inspection-device:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_inspection_device }}
+    runs-on: ${{ inputs.macos_runner || 'macos-26' }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build development-only neXt inspection IPA
+        run: bash ios/NextRuntimeProbe/test-simulators.sh ios inspection-device
+      - name: Keep development artifact separate from Release and App Store packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: next-ios-inspection-unsigned
+          path: ios/RuntimeBuild/neXt-iOS-inspection-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
 
   next-appstore-archive:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.next_appstore_archive }}

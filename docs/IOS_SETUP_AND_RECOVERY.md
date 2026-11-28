@@ -481,3 +481,17 @@ route stops future hints; removing the contact or changing its approved identity
 also removes its route. Adding the same person later requires a fresh route.
 Sender support does not need Apple enrollment on the calling device; the
 recipient still needs a compatible push-enabled app and provider.
+
+### Development interface verification
+
+The workflow's optional **next_inspection_device** input creates a separate
+unsigned Debug artifact named **next-ios-inspection-unsigned**. It is a testing
+package for the neXt preview, not an App Store archive. Normal device and App
+Store builds use Release and verify that the inspection argument is absent.
+
+Inspection stays off unless that development app is launched with
+`--inspect-web-interface` and the iPad owner enables Web Inspector under
+Safari's Advanced settings. Use only the paired test device and the neXt page.
+This does not authorize inspecting other apps, bypass the iPad passcode or
+provide control of native permission dialogs. Close inspection after testing
+and return to the verified Release preview. It does not require Apple enrollment.

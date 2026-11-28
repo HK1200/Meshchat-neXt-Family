@@ -3,7 +3,7 @@ set -euo pipefail
 
 family_ios="$(cd -- "${1:?Pass the Family checkout ios directory}" && pwd)"
 mode="${2:-simulators}"
-case "$mode" in simulators|device|appstore) ;; *) exit 2 ;; esac
+case "$mode" in simulators|device|inspection-device|appstore) ;; *) exit 2 ;; esac
 # macOS ships Bash 3.2: expanding an empty array under nounset fails.
 # Pass an explicit empty build setting for the normal personal-signing case.
 push_settings=("NEXT_APNS_ENVIRONMENT=")
@@ -121,7 +121,7 @@ cp -R "$family_ios/RuntimeBuild/staged/pycparser" staged/pycparser
 python3 "$probe/verify-runtime-imports.py" "$scratch/staged" "$probe" "$family_ios/../app/src/main/python"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-accounts.py"
 PYTHONPATH="$scratch/staged" python3 "$probe/test-sip-runtime.py"
-if [[ "$mode" == device || "$mode" == appstore ]]; then
+if [[ "$mode" == device || "$mode" == inspection-device || "$mode" == appstore ]]; then
     # The device project excludes the simulator test target and its echo fixture.
     awk '/^  NextRuntimeProbeUnitTests:/ {exit} {print}' project.yml > device.yml
     cat >> device.yml <<'YAML'
@@ -142,11 +142,21 @@ YAML
             "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
         app="$archive/Products/Applications/NextRuntimeProbe.app"
     else
+        # Inspection is a separate development artifact, off unless its per-launch
+        # argument and the device's own Web Inspector setting are both enabled.
+        configuration=Release
+        if [[ "$mode" == inspection-device ]]; then configuration=Debug; fi
         xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
-            -configuration Release -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
+            -configuration "$configuration" -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
-        app=DerivedData/Build/Products/Release-iphoneos/NextRuntimeProbe.app
+        app="DerivedData/Build/Products/$configuration-iphoneos/NextRuntimeProbe.app"
     fi
+    python3 - "$app/NextRuntimeProbe" "$mode" <<'PYTHON'
+from pathlib import Path
+import sys
+binary = Path(sys.argv[1]).read_bytes()
+assert (b"--inspect-web-interface" in binary) == (sys.argv[2] == "inspection-device"), "Web inspection must be confined to the separate development artifact"
+PYTHON
     lipo "$app/NextRuntimeProbe" -verify_arch arm64
     test -f "$app/Frameworks/Python.framework/Python"
     test -f "$app/staged/frontend/index.html"
@@ -182,6 +192,7 @@ PYTHON
     mkdir Payload
     ditto "$app" Payload/NextRuntimeProbe.app
     ipa="$family_ios/RuntimeBuild/neXt-iOS-unsigned.ipa"
+    if [[ "$mode" == inspection-device ]]; then ipa="$family_ios/RuntimeBuild/neXt-iOS-inspection-unsigned.ipa"; fi
     rm -f -- "$ipa"
     ditto -c -k --keepParent Payload "$ipa"
     unzip -tq "$ipa"

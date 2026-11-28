@@ -1,6 +1,29 @@
 # Family iOS / Android parity audit
 
-## Current qualification — November 24, 2026
+## Current qualification — November 28, 2026
+
+Source `3325196` passed all four Family simulator jobs in `46111176086`.
+Each live iPhone and iPad suite executed all **48 native cases and four UI
+journeys** exactly once, with no skipped or failed cases. Both sample preview
+checks passed separately. These checks include guardian setup, contact changes,
+private signed messaging, background notification handling, reconnect, call
+controls and offline-map controls on disposable profiles.
+
+Both current unsigned Family device and App Store archives are **466.1 / 0.6.31**
+(`46107091889`). All 23 packaged shared Python modules match the exact source;
+native framework signatures and resources were verified. The App Store edition
+continues to exclude rooms and Relay Chat, while GitHub builds retain them.
+The complete local pinned-dependency suite passed **967 tests and three subtests**,
+with eight skips; CI, Security and Scorecard passed.
+
+Regular Family **47.6** and separate Family Mailbox Test **453.1** have not been
+changed. The test app's cached free signing profile has expired, so a new
+physical Family install requires renewal before signing. This is separate from
+its successful simulator and unsigned-archive qualification. Real Apple push,
+suspended calls, the physical iPhone matrix and the remaining hardware checks
+remain unqualified. Apple enrollment stays on hold.
+
+## Historical qualification — November 24, 2026
 
 Regular Family **47.6** and its setup remain untouched. The separate Family
 Mailbox Test is now **453.1** (source `92b44df`), upgraded with its existing key
