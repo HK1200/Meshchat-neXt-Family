@@ -274,35 +274,43 @@ private final class VoicePCMPump: @unchecked Sendable {
         captured = Data()
         lock.unlock()
 
-        var output = [UInt8](repeating: 0, count: Self.frameBytes)
-        let canQueuePlayback = scheduled < 3
+        let availableFrames = max(0, 3 - scheduled)
+        var output = [UInt8](repeating: 0, count: Self.frameBytes * 3)
         let size = callID.withCString { id in
             input.withUnsafeBytes { pcm in
                 output.withUnsafeMutableBufferPointer { received in
                     family_runtime_voice_exchange(id, pcm.bindMemory(to: UInt8.self).baseAddress,
                                                   pcm.count, nativeProcessing, received.baseAddress,
-                                                  canQueuePlayback ? received.count : 0)
+                                                  availableFrames * Self.frameBytes)
                 }
             }
         }
-        guard size == Self.frameBytes,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(size / 2)),
-              let channel = buffer.floatChannelData?[0] else { return }
-        buffer.frameLength = AVAudioFrameCount(size / 2)
-        for index in 0..<(size / 2) {
-            let sample = UInt16(output[index * 2]) | UInt16(output[index * 2 + 1]) << 8
-            channel[index] = Float(Int16(bitPattern: sample)) / 32768
-        }
-        scheduled += 1
-        lock.lock(); queueDepthSnapshot = scheduled; lock.unlock()
-        player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
-            self?.queue.async { [weak self] in
-                if let self {
-                    self.scheduled -= 1
-                    self.lock.lock()
-                    self.consumedBuffers += 1
-                    self.queueDepthSnapshot = self.scheduled
-                    self.lock.unlock()
+        guard size > 0, size <= availableFrames * Self.frameBytes,
+              size % Self.frameBytes == 0 else { return }
+        // Fill unused playback slots in one exchange. One frame per timer can
+        // never recover the backlog left by a coalesced or delayed callback.
+        // The queue still holds at most three 20 ms buffers.
+        for offset in stride(from: 0, to: size, by: Self.frameBytes) {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format,
+                    frameCapacity: AVAudioFrameCount(Self.frameBytes / 2)),
+                  let channel = buffer.floatChannelData?[0] else { return }
+            buffer.frameLength = AVAudioFrameCount(Self.frameBytes / 2)
+            for index in 0..<(Self.frameBytes / 2) {
+                let byte = offset + index * 2
+                let sample = UInt16(output[byte]) | UInt16(output[byte + 1]) << 8
+                channel[index] = Float(Int16(bitPattern: sample)) / 32768
+            }
+            scheduled += 1
+            lock.lock(); queueDepthSnapshot = scheduled; lock.unlock()
+            player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
+                self?.queue.async { [weak self] in
+                    if let self {
+                        self.scheduled -= 1
+                        self.lock.lock()
+                        self.consumedBuffers += 1
+                        self.queueDepthSnapshot = self.scheduled
+                        self.lock.unlock()
+                    }
                 }
             }
         }

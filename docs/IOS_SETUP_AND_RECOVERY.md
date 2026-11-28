@@ -34,10 +34,11 @@ remain the same. Keep a private backup before a development upgrade.
 
 ### neXt preview identity backup and restore
 
-The next development source adds **Identity backup** under the native bell
+Development preview **465.1** includes **Identity backup** under the native bell
 screen, and **Identity backup or restore** on setup and startup recovery screens.
-This change is still awaiting native qualification and is not in installed
-preview 461.1.
+Its fourteen native recovery tests and the confirmation/cancellation interface
+check passed on both simulators. The actual iPad upgrade preserved its existing
+identity and history; a physical Files export/import check remains pending.
 
 Choose **Save identity backup**, confirm that it is a private key and save the
 file through Files. Anyone with that file can use the Reticulum identity: keep

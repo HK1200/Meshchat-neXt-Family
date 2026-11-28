@@ -56,7 +56,7 @@ cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" "$pro
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
-cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" App/
+cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" "$family_ios/LiveRuntime/FamilyVoicePlayback.h" App/
 cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyCallWake.swift" App/
 cp "$family_ios/FamilyLive/FamilyQRScanner.swift" App/

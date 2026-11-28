@@ -3,6 +3,7 @@
 #include <Python/Python.h>
 #include "ProbeRuntime.h"
 #include "ProbeSignals.h"
+#include "FamilyVoicePlayback.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,14 +148,8 @@ size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
                                             native_processing ? Py_True : Py_False, NULL) : NULL;
         Py_XDECREF(pushed); Py_XDECREF(pcm); PyErr_Clear();
     }
-    PyObject *received = identifier && capacity ? PyObject_CallOneArg(voice_pull, identifier) : NULL;
-    if (received && PyBytes_Check(received)) {
-        char *pcm; Py_ssize_t size;
-        if (!PyBytes_AsStringAndSize(received, &pcm, &size) && size >= 0 && (size_t)size <= capacity) {
-            memcpy(output, pcm, (size_t)size); count = (size_t)size;
-        }
-    }
-    Py_XDECREF(received); Py_XDECREF(identifier); PyErr_Clear();
+    count = family_voice_pull_frames(identifier, voice_pull, output, capacity);
+    Py_XDECREF(identifier); PyErr_Clear();
     PyGILState_Release(gil);
     return count;
 }

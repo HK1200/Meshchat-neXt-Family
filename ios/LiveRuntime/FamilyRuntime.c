@@ -12,6 +12,7 @@
 #endif
 
 #include "FamilyRuntime.h"
+#include "FamilyVoicePlayback.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -257,16 +258,7 @@ size_t family_runtime_voice_exchange(const char *call_id, const uint8_t *input,
         Py_XDECREF(bytes);
         PyErr_Clear();
     }
-    PyObject *received = id && capacity ? PyObject_CallOneArg(voice_pull, id) : NULL;
-    if (received && PyBytes_Check(received)) {
-        char *bytes;
-        Py_ssize_t size;
-        if (PyBytes_AsStringAndSize(received, &bytes, &size) == 0 && size >= 0 && (size_t)size <= capacity) {
-            memcpy(output, bytes, (size_t)size);
-            count = (size_t)size;
-        }
-    }
-    Py_XDECREF(received);
+    count = family_voice_pull_frames(id, voice_pull, output, capacity);
     Py_XDECREF(id);
     PyErr_Clear();
     PyGILState_Release(gil);

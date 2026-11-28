@@ -1,52 +1,53 @@
 # neXt iOS completion status
 
 neXt for iPhone and iPad remains a development preview. The latest separate
-physical iPad preview is **461.1 / 0.1.29**, source `e94cd5c`. Its same-key
-upgrade preserved all 820 current non-cache support files, thirteen messages,
+physical iPad preview is **465.1 / 0.1.29**, source `79a5623`. Its same-key
+upgrade preserved all 2,912 current non-cache support files, thirteen messages,
 two contacts, identity and native preferences. Signed text, a 75,000-byte file
 and a synthetic photo passed in both directions, remained byte-exact after a
 full process restart, and were followed by a fresh signed exchange. The ordinary
 conversation and composer rendered normally afterward. Both Family installs
 and their settings remained unchanged.
 
-On November 27, the actual iPad also passed signed text and an 8,192-byte file
+On November 27, the preceding **461.1** iPad preview passed signed text and an 8,192-byte file
 round trip separately through **RMAP 4343, WashMesh 7242 and Chicago 4242**.
 Recorded iPad routes matched each tested provider; the owned receiver used only
 that provider. All saved peer controls stayed enabled and unchanged. This is a
 bounded live delivery test, not a promise of continuing provider availability.
 RMAP 4242 was offline in the separate passive observation.
 
-Private Reticulum calls connected in both directions between this iPad preview
-and neXt **0.1.29** on the OnePlus 9. All twelve low/ultra-low/medium quality
-transitions matched on both devices and retained frame flow; remote hangup
-worked. Playback drops during the first direction remain under investigation,
-so these counters do not qualify subjective audio quality. A subsequent steady
-medium-quality call verified both routes through an owned private LAN transport
-and measured 503,040 discarded playback PCM bytes over thirty seconds. Public
-TCP-peer jitter therefore cannot explain the complete fault. The 9 then dropped
-off USB before the reverse call; its temporary contact, connection and original
-call preference were subsequently restored over verified wireless debugging.
-The iPad’s temporary settings were also restored. Native I/O and queue timing
-diagnostics are awaiting simulator qualification before the next device test.
+Private Reticulum calls connected in both directions between iPad **465.1**
+and neXt **0.1.29** on the wireless OnePlus 9. The first bounded steady-call
+checks discarded no audio. A longer run then completed twelve matched
+low/ultra-low/medium transitions and remote hangup in both directions, but
+discarded **53,360 playback PCM bytes** during quality changes. Its native I/O
+interval stayed at 20 ms and its playback-full counter stayed zero. All temporary
+contacts, private connections and original call preferences were restored.
 
-The source's preceding complete Xcode qualification passed both unsigned
-archives and **229 native plus 12 interface cases on each simulator**
-(`46045648499`, source `e94cd5c`). The host-only symbol-loader repair `de07245`
-then passed CI with **944 tests**, eight skips and three subtests; Security and
-Scorecard passed. Desktop/Android neXt **0.1.29** is published across supported
-platforms, and its Play closed test is available. Family **0.6.31** is also
-available to closed testers. Google still requires the remaining continuous
-testing period before either app can apply for production access.
+An earlier **461.1** private-LAN run discarded 503,040 playback PCM bytes in
+thirty seconds. These observations leave audio quality unqualified. The next
+repair drains up to three available 20 ms native slots after a delayed timer,
+keeps microphone capture to one push and retains the existing 60 ms native
+playback limit. Eight regression cases fail before the change; actual Family
+and neXt C-boundary/lifecycle checks pass afterward. Full regression, Xcode and
+physical-device comparison remain gates before calling the repair verified.
 
-A separate native **Identity backup** change is now under qualification. It
-exports Reticulum's standard private-key file and stages a confirmed restore
-for the next cold start. It preserves the previous key before replacement,
-keeps existing conversations with their original identity and permits returning
-to a previous saved key. No private key goes through the web interface or
-clipboard. Native malformed-file, interrupted-restore, data-preservation and UI
-checks must pass before installing this new feature. An identity file does not
-include messages, settings, SIP passwords or radio pairing; a complete portable
-settings/history backup remains separate work.
+Current Xcode qualification passed both unsigned archives and **243 native
+plus 13 interface cases on each simulator** (`46085941421`, source `79a5623`).
+The documentation follow-up `b20660a` passed CI with **947 tests**, eight skips
+and three subtests; Security and Scorecard passed. Desktop/Android neXt
+**0.1.29** is published across supported platforms and available to Play closed
+testers. Family **0.6.31** is also available to closed testers. The required
+continuous testing period is still incomplete for production-access applications.
+
+Native **Identity backup** is now in the qualified **465.1** preview. It exports
+Reticulum's standard private-key file and stages a confirmed restore for the
+next cold start, preserving the preceding key. Fourteen native recovery cases
+and its confirmation/cancellation interface check passed on both simulators.
+The actual iPad upgrade preserved the current key and conversations; a physical
+Files export/import check remains pending. The file contains no messages,
+settings, SIP passwords or radio pairing. Full portable settings/history
+backup remains separate work.
 
 Regular Family **47.6** and Family Mailbox Test **453.1** remain intact. Apple
 enrollment stays on hold. Real APNs and suspended SIP wake, a physical iPhone,
