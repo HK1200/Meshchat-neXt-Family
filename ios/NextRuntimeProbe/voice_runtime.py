@@ -615,6 +615,7 @@ class ReticulumVoice:
         return dict(**self.call_policy, speaker=capabilities.get("speaker"),
                     external_audio=capabilities.get("external_audio"), capture_status=capture_status,
                     microphone_permission=capabilities.get("microphone_permission"), platform="ios", enabled=self.config.telephone_enabled.get(), ready=phone is not None,
+                    audio_timing=capabilities.get("audio_timing") if isinstance(capabilities.get("audio_timing"), dict) else {},
                     calling_available=self.available, address=phone.destination.hash.hex() if phone and phone.destination else "",
                     active_call=active, call_status=active["status"] if active else 3, is_busy=call is not None or self.ending is not None,
                     initiation_status=self.engine.manager.initiation_status if self.engine else None,

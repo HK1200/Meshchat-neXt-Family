@@ -645,3 +645,24 @@ def test_drop_counter_includes_oversized_decoded_batches_without_retaining_them(
             assert not any(isinstance(v,(bytes,bytearray)) for k,v in state.items() if k.startswith("pcm_") or k.startswith("playback_"))
         finally:await voice.close();db.close()
     asyncio.run(run())
+
+
+def test_native_timing_snapshot_exposes_only_the_supplied_call_health_without_changing_audio():
+    async def run():
+        voice,native,db=fixture()
+        try:
+            await voice.configure(True)
+            identity,peer=connect(voice);await voice.dial(peer)
+            voice.transport_event(voice.engine,"established",identity)
+            counters={"io_buffer_seconds":.1,"preferred_io_buffer_seconds":.02,"sample_rate":48000,
+                      "playback":{"exchange_calls":50,"full_playback_slots":20,"consumed_buffers":30}}
+            original=voice.native
+            def health(request):
+                if request["op"]=="capabilities":return {"ok":True,"audio_timing":counters}
+                return original(request)
+            voice.native=health
+            state=voice.snapshot()
+            assert state["audio_timing"]==counters and not voice.engine.frames
+            assert voice.call.phase=="connected" and not voice.call.muted
+        finally:await voice.close();db.close()
+    asyncio.run(run())

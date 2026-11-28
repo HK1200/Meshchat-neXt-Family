@@ -73,6 +73,8 @@ final class FamilyVoiceAudio {
         pump?.captureStatus ?? "Starting microphone"
     }
 
+    var playbackHealth: [String: Any] { pump?.playbackHealth ?? [:] }
+
     func recoverStalledCapture() throws {
         guard let started = nativeCaptureStarted, let callID, let pump else { return }
         if pump.hasCapturedPCM {
@@ -194,6 +196,19 @@ private final class VoicePCMPump: @unchecked Sendable {
     private var pcmQueued = false
     private var timer: DispatchSourceTimer?
     private var scheduled = 0
+    private var exchanges = 0
+    private var fullPlaybackSlots = 0
+    private var consumedBuffers = 0
+    private var queueDepthSnapshot = 0
+    private var previousExchange: UInt64?
+    private var maximumExchangeGapMS = 0.0
+
+    var playbackHealth: [String: Any] {
+        lock.lock(); defer { lock.unlock() }
+        return ["exchange_calls": exchanges, "full_playback_slots": fullPlaybackSlots,
+                "consumed_buffers": consumedBuffers, "scheduled_buffers": queueDepthSnapshot,
+                "maximum_exchange_gap_ms": maximumExchangeGapMS]
+    }
 
     init(callID: String, player: AVAudioPlayerNode, format: AVAudioFormat, nativeProcessing: Bool) {
         self.callID = callID
@@ -247,6 +262,14 @@ private final class VoicePCMPump: @unchecked Sendable {
 
     private func exchange() {
         lock.lock()
+        let now = DispatchTime.now().uptimeNanoseconds
+        if let previousExchange, now >= previousExchange {
+            maximumExchangeGapMS = max(maximumExchangeGapMS, Double(now - previousExchange) / 1_000_000)
+        }
+        previousExchange = now
+        exchanges += 1
+        if scheduled >= 3 { fullPlaybackSlots += 1 }
+        queueDepthSnapshot = scheduled
         let input = captured
         captured = Data()
         lock.unlock()
@@ -271,9 +294,16 @@ private final class VoicePCMPump: @unchecked Sendable {
             channel[index] = Float(Int16(bitPattern: sample)) / 32768
         }
         scheduled += 1
+        lock.lock(); queueDepthSnapshot = scheduled; lock.unlock()
         player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
             self?.queue.async { [weak self] in
-                if let self { self.scheduled -= 1 }
+                if let self {
+                    self.scheduled -= 1
+                    self.lock.lock()
+                    self.consumedBuffers += 1
+                    self.queueDepthSnapshot = self.scheduled
+                    self.lock.unlock()
+                }
             }
         }
     }

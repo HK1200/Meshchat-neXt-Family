@@ -21,7 +21,15 @@ final class ProbeUITests: XCTestCase {
         app.buttons["next-identity-export"].tap()
         XCTAssertTrue(app.buttons["Save private identity file"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.staticTexts["Anyone with this file can use your Reticulum identity. Save it somewhere private; do not send it as a contact card."].exists)
-        app.buttons["Cancel"].firstMatch.tap()
+        let cancel = app.buttons["Cancel"].firstMatch
+        if cancel.exists {
+            cancel.tap()
+        } else {
+            // iPad confirmation popovers dismiss on an outside tap and omit
+            // the phone's Cancel row. Stay outside the centered native sheet.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
+        }
+        XCTAssertTrue(app.buttons["Save private identity file"].waitForNonExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(current.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(current.label, original)
         XCTAssertFalse(app.staticTexts["next-identity-pending-address"].exists)

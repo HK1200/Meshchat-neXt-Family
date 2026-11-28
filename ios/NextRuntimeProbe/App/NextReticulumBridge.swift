@@ -152,7 +152,12 @@ final class NextReticulumBridge {
         if operation == "capabilities" {
             return ["ok": true, "microphone_permission": AVAudioApplication.shared.recordPermission == .granted ? "granted" : "not_granted",
                     "capture_status": driver.audio.captureStatus, "system_call_error": calls.diagnostic,
-                    "speaker": driver.audio.usingBuiltInSpeaker, "external_audio": FamilyCallAudioSession.hasExternalOutput]
+                    "speaker": driver.audio.usingBuiltInSpeaker, "external_audio": FamilyCallAudioSession.hasExternalOutput,
+                    "audio_timing": ["io_buffer_seconds": AVAudioSession.sharedInstance().ioBufferDuration,
+                        "preferred_io_buffer_seconds": AVAudioSession.sharedInstance().preferredIOBufferDuration,
+                        "output_latency_seconds": AVAudioSession.sharedInstance().outputLatency,
+                        "sample_rate": AVAudioSession.sharedInstance().sampleRate,
+                        "playback": driver.audio.playbackHealth]]
         }
         if operation == "poll" {
             guard !calls.isClosed else { return ["ok": false] }
