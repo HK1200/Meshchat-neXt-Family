@@ -20,9 +20,14 @@ Private Reticulum calls connected in both directions between this iPad preview
 and neXt **0.1.29** on the OnePlus 9. All twelve low/ultra-low/medium quality
 transitions matched on both devices and retained frame flow; remote hangup
 worked. Playback drops during the first direction remain under investigation,
-so these counters do not qualify subjective audio quality. The follow-up steady
-call test could not start after the iPad disconnected. Temporary contacts,
-private peers and original quality preferences were restored.
+so these counters do not qualify subjective audio quality. A subsequent steady
+medium-quality call verified both routes through an owned private LAN transport
+and measured 503,040 discarded playback PCM bytes over thirty seconds. Public
+TCP-peer jitter therefore cannot explain the complete fault. The 9 then dropped
+off USB before the reverse call; its temporary contact, connection and original
+call preference were subsequently restored over verified wireless debugging.
+The iPad’s temporary settings were also restored. Native I/O and queue timing
+diagnostics are awaiting simulator qualification before the next device test.
 
 The source's preceding complete Xcode qualification passed both unsigned
 archives and **229 native plus 12 interface cases on each simulator**

@@ -50,9 +50,11 @@ confirming **Restore after restart**. The running app keeps its current identity
 until you close it from the app switcher and open it again. neXt retains the
 previous key under **Previous identities on this device**, so you can return to
 its conversations. **Cancel pending restore** leaves the current identity active.
-Messages and settings remain associated with their original identity. This
-identity-only file does not contain message history, preferences, SIP passwords
-or radio pairing; it is not a complete app backup.
+Reticulum conversations stay in their existing local database; restoring a key
+does not import another installation’s history. Connection, radio and map
+settings belong to this installation. This identity-only file does not contain
+message history, preferences, SIP passwords or radio pairing; it is not a
+complete app backup.
 
 ## First setup and approved contacts
 
