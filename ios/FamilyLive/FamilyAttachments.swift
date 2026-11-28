@@ -9,6 +9,7 @@ struct FamilyDraftAttachment: Identifiable {
     let name: String
     let data: Data
     let image: String?
+    var thumbnail: Data? = nil
 }
 
 struct FamilyAttachmentComposer: View {
@@ -16,13 +17,14 @@ struct FamilyAttachmentComposer: View {
     @State private var pickingFiles = false
     @State private var photos: [PhotosPickerItem] = []
     @State private var quality = "High"
-    @State private var preparing = false
+    @Binding var preparing: Bool
     @State private var error = ""
 
     var body: some View {
         Button("Attach files", systemImage: "paperclip") { pickingFiles = true }
             .disabled(preparing)
             .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.data], allowsMultipleSelection: true) { result in
+                preparing = true
                 Task { await addFiles(result) }
             }
         Picker("Photo quality", selection: $quality) {
@@ -36,11 +38,12 @@ struct FamilyAttachmentComposer: View {
             let selected = photos
             guard !selected.isEmpty else { return }
             photos = []
+            preparing = true
             Task { await addPhotos(selected, quality: quality) }
         }
         ForEach(attachments) { item in
             HStack {
-                if item.image != nil, let thumbnail = UIImage(data: item.data) {
+                if let data = item.thumbnail, let thumbnail = UIImage(data: data) {
                     Image(uiImage: thumbnail).resizable().scaledToFit().frame(width: 45, height: 45)
                 }
                 Text(item.name)
@@ -68,7 +71,7 @@ struct FamilyAttachmentComposer: View {
                     let metadata = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
                     guard metadata.isRegularFile == true, let size = metadata.fileSize,
                           (1...FamilyDraftAttachment.limit).contains(size) else { throw CocoaError(.fileReadTooLarge) }
-                    return FamilyDraftAttachment(name: url.lastPathComponent, data: try Data(contentsOf: url), image: nil)
+                    return FamilyDraftAttachment(name: url.lastPathComponent, data: try FamilyAttachmentInput.read(url), image: nil)
                 }.value
                 try append(attachment)
             }
@@ -89,25 +92,10 @@ struct FamilyAttachmentComposer: View {
                 }
                 let kind = photo.supportedContentTypes.first(where: { $0.conforms(to: .image) })?.preferredFilenameExtension ?? "jpg"
                 let sequence = attachments.count + 1
-                if quality == "Original" {
-                    try append(FamilyDraftAttachment(name: "Photo \(sequence).\(kind)", data: original, image: kind))
-                } else {
-                    guard let image = UIImage(data: original) else { throw CocoaError(.fileReadCorruptFile) }
-                    let preset: (CGFloat, CGFloat)
-                    switch quality {
-                    case "Low": preset = (320, 0.2)
-                    case "Medium": preset = (640, 0.6)
-                    default: preset = (1280, 0.75)
-                    }
-                    let scale = min(1, preset.0 / max(image.size.width, image.size.height))
-                    let size = CGSize(width: max(1, image.size.width * scale), height: max(1, image.size.height * scale))
-                    let format = UIGraphicsImageRendererFormat()
-                    format.scale = 1
-                    let resized = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: preset.1) { _ in
-                        image.draw(in: CGRect(origin: .zero, size: size))
-                    }
-                    try append(FamilyDraftAttachment(name: "Photo \(sequence).jpg", data: resized, image: "jpeg"))
-                }
+                let attachment = try await Task.detached(priority: .utility) {
+                    try FamilyAttachmentPhoto.prepare(original, kind: kind, quality: quality, sequence: sequence)
+                }.value
+                try append(attachment)
             }
         } catch {
             self.error = "Couldn’t prepare a photo. Try a lower quality or a different image."
@@ -145,12 +133,12 @@ struct FamilyReceivedAttachment: View {
                             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
                             let destination = folder.appendingPathComponent(item.name)
                             try FileManager.default.copyItem(at: source, to: destination)
-                            return destination
+                            let thumbnail = item.image != nil && item.size <= FamilyDraftAttachment.limit
+                                ? FamilyAttachmentPhoto.preview(at: destination) : nil
+                            return (destination, thumbnail)
                         }.value
-                        url = destination
-                        if item.image != nil, item.size <= FamilyDraftAttachment.limit {
-                            preview = UIImage(contentsOfFile: destination.path)
-                        }
+                        url = destination.0
+                        if let thumbnail = destination.1 { preview = UIImage(data: thumbnail) }
                     } catch { self.error = error.localizedDescription }
                 }
             }

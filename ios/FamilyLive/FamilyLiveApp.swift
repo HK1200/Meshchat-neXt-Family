@@ -1482,6 +1482,7 @@ struct FamilyChat: View {
     @State private var draft = ""
     @State private var submitting = false
     @State private var attachments: [FamilyDraftAttachment] = []
+    @State private var preparingAttachments = false
     @State private var confirmLargeSend = false
     @State private var method: FamilyMessageMethod = .automatic
     @FocusState private var editingMessage: Bool
@@ -1496,7 +1497,7 @@ struct FamilyChat: View {
                             text: draft, hasAttachments: !attachments.isEmpty)
     }
 
-    private var canSend: Bool { messagePolicy.issue(for: method) == nil }
+    private var canSend: Bool { !preparingAttachments && messagePolicy.issue(for: method) == nil }
 
     private func send() {
         guard canSend else { family.error = messagePolicy.issue(for: method) ?? "Messaging is unavailable."; return }
@@ -1569,7 +1570,7 @@ struct FamilyChat: View {
                     Text("\(draft.trimmingCharacters(in: .whitespacesAndNewlines).utf8.count) of 160 bytes")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                FamilyAttachmentComposer(attachments: $attachments)
+                FamilyAttachmentComposer(attachments: $attachments, preparing: $preparingAttachments)
                     .disabled(messagePolicy.approved.isEmpty || submitting)
                 Button("Send") {
                     if attachments.reduce(0, { $0 + $1.data.count }) > 900_000 { confirmLargeSend = true }

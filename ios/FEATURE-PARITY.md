@@ -12,6 +12,17 @@ screen-independent inbox wakes. Xcode and a real system-restoration test still
 need to pass; this does not establish delivery after a user force-quits the app.
 No permissions, radio settings or regular Family installation have changed.
 
+## Attachment preparation follow-up — native qualification pending
+
+Photo quality conversion and received-photo previews now use bounded ImageIO
+thumbnails off the UI thread. Original attachments retain their exact bytes;
+Low/Medium/High retain their 320/640/1280-pixel presets and existing service
+limits. Draft rows reuse small cached previews, and Send waits until attachment
+preparation finishes. File reads stop at the existing send limit even if a file
+grows after its metadata was checked. Twelve host attachment contract checks
+passed; eight new native boundary, orientation, metadata and background-thread
+checks still require Xcode. Physical Photos/Files picker checks remain pending.
+
 ## Current qualification — November 28, 2026
 
 Source `3325196` passed all four Family simulator jobs in `46111176086`.
