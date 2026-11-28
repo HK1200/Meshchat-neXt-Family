@@ -27,6 +27,20 @@ final class FamilyLiveUITests: XCTestCase {
     }
     #endif
 
+    private func enableMessageNotifications(in app: XCUIApplication) {
+        let enableNotifications = app.buttons["Enable message notifications"]
+        if enableNotifications.exists {
+            enableNotifications.tap()
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let allow = springboard.alerts.buttons["Allow"]
+            if allow.waitForExistence(timeout: 10) { allow.tap() }
+            let dismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: enableNotifications
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
+        }
+    }
+
     private func exerciseGuardianJourney(_ journey: Journey) throws {
         // Independent profiles keep every check without a ten-minute omnibus
         // case or relying on XCTest method order. Operation deadlines remain.
@@ -208,19 +222,9 @@ final class FamilyLiveUITests: XCTestCase {
         #else
         XCTAssertTrue(app.staticTexts["relay-chat-ready"].waitForExistence(timeout: 15))
         #endif
-        if localTest && journey == .messages {
-            let enableNotifications = app.buttons["Enable message notifications"]
-            if enableNotifications.exists {
-                enableNotifications.tap()
-                let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-                let allow = springboard.alerts.buttons["Allow"]
-                if allow.waitForExistence(timeout: 10) { allow.tap() }
-                let dismissed = XCTNSPredicateExpectation(
-                    predicate: NSPredicate(format: "exists == false"), object: enableNotifications
-                )
-                XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
-            }
-        }
+        #if !FAMILY_STORE_SCREENSHOTS
+        if localTest && journey == .messages { enableMessageNotifications(in: app) }
+        #endif
         let contact = app.buttons[contactName]
         XCTAssertTrue(contact.waitForExistence(timeout: 10))
         #if FAMILY_STORE_SCREENSHOTS
@@ -253,6 +257,10 @@ final class FamilyLiveUITests: XCTestCase {
             app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
             app.launch()
             XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
+            // Enabling now seeds the already-read capture exchange into the
+            // notification ledger. Only the fresh nonce challenge below can
+            // satisfy the original background notification assertion.
+            enableMessageNotifications(in: app)
             app.buttons[contactName].tap()
             #endif
             fill(app.textFields["message-draft"], peer.message)
