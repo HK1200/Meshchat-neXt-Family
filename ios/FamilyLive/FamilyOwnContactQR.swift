@@ -1,5 +1,3 @@
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct FamilyOwnContactQR: View {
@@ -44,19 +42,17 @@ struct FamilyOwnContactQR: View {
         .navigationTitle("My contact QR")
     }
 
-    private func loadCode() async {
-        error = nil
+    @MainActor private func loadCode() async {
+        error = nil; code = nil; payload = nil
         do {
             guard let text = try await family.ownContactCard() else { return }
-            let generator = CIFilter.qrCodeGenerator()
-            generator.message = Data(text.utf8)
-            generator.correctionLevel = "M"
-            guard let output = generator.outputImage,
-                  let bitmap = CIContext().createCGImage(output, from: output.extent) else {
+            let png = await FamilyContactQRRenderer.shared.image(for: text)
+            guard !Task.isCancelled, family.unlocked else { return }
+            guard let png, let image = UIImage(data: png) else {
                 error = "Could not generate the contact QR."
                 return
             }
-            code = UIImage(cgImage: bitmap)
+            code = image
             payload = text
         } catch {
             self.error = error.localizedDescription

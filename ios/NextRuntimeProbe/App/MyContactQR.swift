@@ -1,5 +1,3 @@
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct NextMyContactQR: View {
@@ -12,20 +10,16 @@ struct NextMyContactQR: View {
     @State private var loading = false
     @State private var error = ""
     @State private var importing = false
+    @State private var code: UIImage?
+    @State private var renderedPayload: String?
+    @State private var preparingImage = false
+    @State private var renderError = ""
 
     private var payload: String? {
         guard address.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil else { return nil }
         return format == .lxmf ? "lxmf://" + address.lowercased() : familyPayload
     }
-    private var image: UIImage? {
-        guard let payload else { return nil }
-        let generator = CIFilter.qrCodeGenerator()
-        generator.message = Data(payload.utf8)
-        generator.correctionLevel = "M"
-        guard let output = generator.outputImage,
-              let bitmap = CIContext().createCGImage(output, from: output.extent) else { return nil }
-        return UIImage(cgImage: bitmap)
-    }
+    private var image: UIImage? { renderedPayload == payload ? code : nil }
 
     var body: some View {
         NavigationStack {
@@ -57,11 +51,11 @@ struct NextMyContactQR: View {
                         ShareLink(item: payload) {
                             Label("Share contact code", systemImage: "square.and.arrow.up")
                         }
-                    } else if loading {
+                    } else if loading || preparingImage || (payload != nil && renderError.isEmpty) {
                         ProgressView("Preparing contact card…")
                     } else {
                         ContentUnavailableView("Contact code unavailable", systemImage: "qrcode",
-                            description: Text(error.isEmpty ? "Wait for your Reticulum identity, then try again." : error))
+                            description: Text(error.isEmpty ? (renderError.isEmpty ? "Wait for your Reticulum identity, then try again." : renderError) : error))
                         if format == .family {
                             Button("Try again") { Task { await loadFamilyCard() } }
                         }
@@ -84,7 +78,22 @@ struct NextMyContactQR: View {
             .task(id: format) {
                 if format == .family { await loadFamilyCard() }
             }
+            .task(id: payload) { await renderCode(payload) }
         }
+    }
+
+    @MainActor private func renderCode(_ selected: String?) async {
+        code = nil; renderedPayload = nil; renderError = ""
+        preparingImage = selected != nil
+        defer { if !Task.isCancelled { preparingImage = false } }
+        guard let selected else { return }
+        let png = await FamilyContactQRRenderer.shared.image(for: selected)
+        guard !Task.isCancelled, payload == selected else { return }
+        guard let png, let image = UIImage(data: png) else {
+            renderError = "Could not generate the contact QR. Close this page and try again."
+            return
+        }
+        renderedPayload = selected; code = image
     }
 
     @MainActor private func loadFamilyCard() async {

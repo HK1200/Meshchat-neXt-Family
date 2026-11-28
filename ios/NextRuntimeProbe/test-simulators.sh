@@ -60,6 +60,7 @@ cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" "$family_ios/FamilyLive/Famil
 cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyCallWake.swift" App/
 cp "$family_ios/FamilyLive/FamilyQRScanner.swift" App/
+cp "$family_ios/FamilyLive/FamilyContactQRRenderer.swift" App/
 cp "$family_ios/FamilyLive/FamilyNativeHTTPS.swift" App/
 cp "$family_ios/FamilyLive/FamilySystemCalls.swift" "$family_ios/FamilyLive/FamilyCallKitDriver.swift" "$family_ios/FamilyLive/FamilyCallAudioSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyBluetooth.swift" "$family_ios/FamilyLive/FamilyBluetoothRestoration.swift" "$family_ios/FamilyLive/FamilyBluetoothPicker.swift" "$family_ios/FamilyLive/FamilyRadioWake.swift" "$family_ios/FamilyLive/FamilyRadioInbox.swift" App/
@@ -215,6 +216,7 @@ sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadi
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilySystemCallTests.swift" > Tests/FamilySystemCallTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyVoicePlaybackClockTests.swift" > Tests/FamilyVoicePlaybackClockTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyVoicePCMExchangeTests.swift" > Tests/FamilyVoicePCMExchangeTests.swift
+sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyContactQRRendererTests.swift" > Tests/FamilyContactQRRendererTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyBluetoothRestorationTests.swift" > Tests/FamilyBluetoothRestorationTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioInboxTests.swift" > Tests/FamilyRadioInboxTests.swift
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo nomad-browser > "$scratch/echo.log" 2>&1 &
