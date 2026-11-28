@@ -5,7 +5,14 @@ import WebKit
 struct ProbeApp: App {
     @UIApplicationDelegateAdaptor(NextMessageAlerts.self) private var alerts
     init() {
-        if !NextNativeModelHost.active { alerts.callAlertsLaunch = { NextCallWakeOwner.shared.restore() } }
+        if !NextNativeModelHost.active {
+            alerts.callAlertsLaunch = { NextCallWakeOwner.shared.restore() }
+            let notifications = alerts
+            alerts.radioAlertsLaunch = { [weak notifications] identifiers in
+                guard let notifications else { return }
+                NextRadioInboxOwner.shared.install(alerts: notifications, restoring: identifiers)
+            }
+        }
     }
     var body: some Scene {
         WindowGroup {
@@ -34,7 +41,6 @@ private struct ProbeScreen: View {
     }
     @State private var panel: Panel?
     @State private var meshcoreReturnURL: URL?
-    @State private var radioWake: FamilyRadioWake?
     @AppStorage("tcpHost") private var host = "rmap.world"
     @AppStorage("tcpPort") private var port = "4343"
     @AppStorage("testAddress") private var contact = ""
@@ -260,9 +266,6 @@ private struct ProbeScreen: View {
         .onChange(of: alerts.requestedMeshCoreKey) { _, key in
             if key != nil { openRequestedConversation() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .familyRadioData).receive(on: DispatchQueue.main)) { _ in
-            radioWake?.received()
-        }
         .sheet(item: $panel) { selected in
             switch selected {
             case .calling:
@@ -449,19 +452,6 @@ private struct ProbeScreen: View {
             let result = try await NextRuntimeLauncher.shared.session(configuration: configuration)
             address = result.address
             url = result.url
-            radioWake = FamilyRadioWake(begin: { expiration in
-                let lease = UIApplication.shared.beginBackgroundTask(withName: "neXt radio inbox") {
-                    Task { @MainActor in expiration() }
-                }
-                return lease == .invalid ? nil : lease.rawValue
-            }, end: { UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: $0)) },
-                now: { ProcessInfo.processInfo.systemUptime },
-                active: { UIApplication.shared.applicationState == .active },
-                refresh: {
-                    if let notices = try? await Self.unreadMessages(at: result.url) {
-                        await alerts.publish(notices, appActive: UIApplication.shared.applicationState == .active)
-                    }
-                }, pause: { try await Task.sleep(for: .seconds(1)) })
             openRequestedConversation()
             if alerts.mailboxInboxRequested { openMailboxInbox() }
         } catch {
@@ -518,15 +508,7 @@ private struct ProbeScreen: View {
     }
 
     private static func unreadMessages(at base: URL) async throws -> [NextUnreadNotice] {
-        guard let endpoint = URL(string: "/api/v1/preview/unread-messages", relativeTo: base) else {
-            throw URLError(.badURL)
-        }
-        var request = URLRequest(url: endpoint)
-        request.timeoutInterval = 2
-        let (data, response) = try await NextHTTP.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        struct Batch: Decodable { let messages: [NextUnreadNotice] }
-        return try JSONDecoder().decode(Batch.self, from: data).messages
+        try await NextRadioInboxOwner.unreadMessages(at: base)
     }
 
 

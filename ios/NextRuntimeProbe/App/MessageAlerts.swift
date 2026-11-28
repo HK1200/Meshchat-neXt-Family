@@ -63,6 +63,7 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
     @Published private(set) var requestedMeshCoreKey: String?
     let push: NextPushRegistration
     var callAlertsLaunch: (@MainActor () -> Void)?
+    var radioAlertsLaunch: (@MainActor ([String]?) -> Void)?
     @Published private(set) var mailboxInboxRequested = false
     @Published private(set) var mailboxSyncGeneration = 0
     private var mailboxAcknowledgedGeneration = 0
@@ -90,6 +91,7 @@ final class NextMessageAlerts: NSObject, ObservableObject, UIApplicationDelegate
                      didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         callAlertsLaunch?()
+        radioAlertsLaunch?(options?[.bluetoothCentrals] as? [String])
         return true
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {

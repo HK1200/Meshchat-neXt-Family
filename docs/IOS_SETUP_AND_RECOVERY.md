@@ -495,3 +495,17 @@ Safari's Advanced settings. Use only the paired test device and the neXt page.
 This does not authorize inspecting other apps, bypass the iPad passcode or
 provide control of native permission dialogs. Close inspection after testing
 and return to the verified Release preview. It does not require Apple enrollment.
+
+### Recovering a selected Bluetooth radio after an iOS restart
+
+The restoration follow-up reloads the enabled saved radio profile before
+accepting a radio connection returned by iOS. It does not scan automatically or
+select a different nearby radio. Disabled or removed profiles cannot retain a
+connection through restoration. A failed or overflowing restored stream reports
+an error and reconnects through the ordinary saved-profile path.
+
+This path still needs native and physical qualification. iOS decides when to
+relaunch a terminated app, and force-quitting an app can prevent background
+reception until it is opened again. Bluetooth restoration does not make an
+ordinary internet TCP connection or SIP registration a permanent background
+service. See [Apple’s Bluetooth background guide](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/CoreBluetooth_concepts/CoreBluetoothBackgroundProcessingForIOSApps/PerformingTasksWhileYourAppIsInTheBackground.html).

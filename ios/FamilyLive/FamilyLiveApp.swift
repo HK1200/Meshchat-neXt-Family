@@ -180,6 +180,14 @@ final class FamilyModel: ObservableObject, FamilyCallWakeRuntime {
         radioWake.received()
     }
 
+    private var radioInbox: FamilyRadioInbox?
+
+    func installRadioInbox(notifications: FamilyNotifications) {
+        self.notifications = notifications
+        if radioInbox == nil { radioInbox = FamilyRadioInbox(wake: radioWake) }
+    }
+
+    func restoredRadioLaunch() { radioInbox?.restored() }
     func stopRadioWake() { radioWake.stop() }
 
     private let locationSampler = FamilyLocationSampler()

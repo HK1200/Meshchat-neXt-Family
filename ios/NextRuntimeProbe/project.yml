@@ -118,6 +118,8 @@ targets:
       - path: App/FamilySIPPolicy.swift
       - path: App/NextRNodeProfile.swift
       - path: App/FamilyRadioWake.swift
+      - path: App/FamilyRadioInbox.swift
+      - path: App/FamilyBluetoothRestoration.swift
     dependencies:
       - target: NextRuntimeProbe
     settings:

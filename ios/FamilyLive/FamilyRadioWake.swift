@@ -1,6 +1,7 @@
 import Foundation
 
 extension Notification.Name {
+    static let familyRadioRestored = Notification.Name("org.meshchat.family.radio-restored")
     static let familyRadioData = Notification.Name("org.meshchat.family.radio-data")
     static let familyInboxData = Notification.Name("org.meshchat.family.inbox-data")
 }

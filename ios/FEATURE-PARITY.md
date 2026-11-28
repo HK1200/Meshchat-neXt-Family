@@ -1,5 +1,17 @@
 # Family iOS / Android parity audit
 
+## Radio restoration follow-up — native qualification pending
+
+The current follow-up opts the selected-radio central into Core Bluetooth state
+restoration and handles a system Bluetooth relaunch without requiring an open
+screen. Restored peripherals are quarantined until the backend loads and opens
+a currently enabled saved profile. Unadopted radios are disconnected after a
+bounded interval; queued bytes are bounded and overflow fails the stream.
+Thirteen new native checks cover admission, expiry, stale callbacks, limits and
+screen-independent inbox wakes. Xcode and a real system-restoration test still
+need to pass; this does not establish delivery after a user force-quits the app.
+No permissions, radio settings or regular Family installation have changed.
+
 ## Current qualification — November 28, 2026
 
 Source `3325196` passed all four Family simulator jobs in `46111176086`.

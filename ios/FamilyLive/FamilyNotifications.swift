@@ -38,6 +38,11 @@ final class FamilyNotifications: NSObject, UIApplicationDelegate, UNUserNotifica
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         center.delegate = self
+        let model = FamilyModel.shared
+        model.installRadioInbox(notifications: self)
+        if FamilyBluetooth.restoreForSystemLaunch(launchOptions?[.bluetoothCentrals] as? [String]) {
+            model.restoredRadioLaunch()
+        }
         FamilyCallWakeOwner.shared.restore()
         return true
     }

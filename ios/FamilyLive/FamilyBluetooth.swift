@@ -4,6 +4,15 @@ import Foundation
 /// Owns each selected radio independently on a serial queue.
 final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     static let shared = FamilyBluetooth()
+    static let restorationIdentifier = FamilyBluetoothRestoration.identifier
+
+    /// Called only for a system Bluetooth relaunch; never scans or asks a fresh
+    /// install for permission. Each app has its own restoration namespace.
+    static func restoreForSystemLaunch(_ identifiers: [String]?) -> Bool {
+        guard FamilyBluetoothRestoration.shouldRestore(identifiers) else { return false }
+        _ = shared
+        return true
+    }
     private let queue = DispatchQueue(label: "org.meshchat.family.bluetooth")
     private var central: CBCentralManager!
     private let service = CBUUID(string: "6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -11,6 +20,7 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     private let transmit = CBUUID(string: "6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
     private var devices: [UUID: CBPeripheral] = [:]
     private var sessions: [UUID: Session] = [:]
+    private var restoration = FamilyBluetoothRestoration()
 
     private final class Session {
         let peripheral: CBPeripheral
@@ -20,6 +30,8 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         var chunks: [Data] = []
         var writing = false
         var ready = false
+        var pendingReceive: [Data] = []
+        var pendingReceiveBytes = 0
         init(_ peripheral: CBPeripheral, stream: Bool) {
             self.peripheral = peripheral
             self.stream = stream
@@ -28,7 +40,10 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
 
     override private init() {
         super.init()
-        central = CBCentralManager(delegate: self, queue: queue)
+        central = CBCentralManager(delegate: self, queue: queue, options: [
+            CBCentralManagerOptionRestoreIdentifierKey: Self.restorationIdentifier,
+            CBCentralManagerOptionShowPowerAlertKey: false
+        ])
     }
 
     // Python calls this off the Bluetooth queue with its interpreter lock released.
@@ -65,11 +80,23 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             guard let peripheral = devices[id] ?? central.retrievePeripherals(withIdentifiers: [id]).first else {
                 return ["error": "Radio was not found. Scan again nearby."]
             }
-            guard peripheral.state == .disconnected else { return ["error": "Radio is disconnecting. Try again shortly."] }
+            let restored = restoration.contains(id)
+            guard peripheral.state == .disconnected ||
+                    (restored && (peripheral.state == .connected || peripheral.state == .connecting)) else {
+                return ["error": "Radio is disconnecting. Try again shortly."]
+            }
+            let pending = restoration.admit(id)
+            if pending?.overflowed == true {
+                central.cancelPeripheralConnection(peripheral)
+                return ["error": "Restored radio receive queue overflowed. Reconnect the radio."]
+            }
             let session = Session(peripheral, stream: request["stream"] as? Bool ?? false)
+            session.pendingReceive = pending?.packets ?? []
+            session.pendingReceiveBytes = pending?.bytes ?? 0
             sessions[id] = session
             peripheral.delegate = self
-            central.connect(peripheral)
+            if peripheral.state == .connected { peripheral.discoverServices([service]) }
+            else if peripheral.state == .disconnected { central.connect(peripheral) }
             queue.asyncAfter(deadline: .now() + 180) {
                 if self.sessions[id] === session && !session.ready {
                     self.fail(session, "Bluetooth connection timed out")
@@ -78,6 +105,9 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             return ["ok": true]
         }
         if operation == "close" {
+            if restoration.remove(id), let peripheral = devices[id] {
+                central.cancelPeripheralConnection(peripheral)
+            }
             if let session = sessions.removeValue(forKey: id) {
                 central.cancelPeripheralConnection(session.peripheral)
             }
@@ -146,6 +176,38 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
         emit(session, ["type": "written"])
     }
 
+    func centralManager(_ central: CBCentralManager, willRestoreState state: [String: Any]) {
+        // Do not resume an old discovery scan: scanning remains a user action.
+        central.stopScan()
+        for peripheral in state[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? [] {
+            let id = peripheral.identifier
+            guard let generation = restoration.remember(id) else {
+                central.cancelPeripheralConnection(peripheral)
+                continue
+            }
+            devices[id] = peripheral
+            peripheral.delegate = self
+            queue.asyncAfter(deadline: .now() + 15) {
+                // No current saved profile adopted it. Disabled/removed radios
+                // must not keep a connection just because iOS restored one.
+                if self.restoration.expire(id, generation: generation) {
+                    self.central.cancelPeripheralConnection(peripheral)
+                }
+            }
+        }
+        NotificationCenter.default.post(name: .familyRadioRestored, object: nil)
+    }
+
+    private func ready(_ session: Session) {
+        guard !session.ready else { return }
+        session.ready = true
+        emit(session, ["type": "ready"])
+        let pending = session.pendingReceive
+        session.pendingReceive = []; session.pendingReceiveBytes = 0
+        for data in pending { emit(session, ["type": "data", "data": data.base64EncodedString()]) }
+        if !pending.isEmpty { NotificationCenter.default.post(name: .familyRadioData, object: nil) }
+    }
+
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if central.state != .poweredOn {
             for session in sessions.values { fail(session, "Bluetooth is unavailable") }
@@ -158,6 +220,7 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard sessions[peripheral.identifier] != nil else { return }
         peripheral.discoverServices([service])
     }
 
@@ -195,7 +258,8 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             return
         }
         session.writer = writer
-        peripheral.setNotifyValue(true, for: reader)
+        if reader.isNotifying { ready(session) }
+        else { peripheral.setNotifyValue(true, for: reader) }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
@@ -204,14 +268,28 @@ final class FamilyBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDel
             fail(session, error?.localizedDescription ?? "Radio notifications were refused")
             return
         }
-        session.ready = true
-        emit(session, ["type": "ready"])
+        ready(session)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard let session = sessions[peripheral.identifier] else { return }
+        guard characteristic.uuid == receive else { return }
+        guard let session = sessions[peripheral.identifier] else {
+            if error == nil, let data = characteristic.value {
+                restoration.receive(data, from: peripheral.identifier)
+            }
+            return
+        }
         if let error { fail(session, error.localizedDescription); return }
         if let data = characteristic.value, !data.isEmpty {
+            if !session.ready {
+                guard session.pendingReceive.count < FamilyBluetoothRestoration.maximumPackets,
+                      data.count <= FamilyBluetoothRestoration.maximumBytes - session.pendingReceiveBytes else {
+                    fail(session, "Bluetooth receive queue overflow before radio readiness")
+                    return
+                }
+                session.pendingReceive.append(data); session.pendingReceiveBytes += data.count
+                return
+            }
             emit(session, ["type": "data", "data": data.base64EncodedString()])
             NotificationCenter.default.post(name: .familyRadioData, object: nil)
         }
