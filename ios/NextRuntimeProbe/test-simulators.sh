@@ -144,11 +144,14 @@ YAML
     else
         # Inspection is a separate development artifact, off unless its per-launch
         # argument and the device's own Web Inspector setting are both enabled.
+        # Keep code in the actual executable so signing and byte-policy checks
+        # cover it directly instead of Xcode's optional preview debug dylib.
         configuration=Release
         if [[ "$mode" == inspection-device ]]; then configuration=Debug; fi
         xcodebuild build -project NextRuntimeProbe.xcodeproj -scheme NextRuntimeProbe \
             -configuration "$configuration" -destination 'generic/platform=iOS' -derivedDataPath DerivedData \
-            CODE_SIGNING_ALLOWED=NO "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
+            CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+            "CURRENT_PROJECT_VERSION=${GITHUB_RUN_NUMBER:-1}.${GITHUB_RUN_ATTEMPT:-1}" "${push_settings[@]}"
         app="DerivedData/Build/Products/$configuration-iphoneos/NextRuntimeProbe.app"
     fi
     python3 - "$app/NextRuntimeProbe" "$mode" <<'PYTHON'
