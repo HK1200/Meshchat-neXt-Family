@@ -204,13 +204,21 @@ private final class VoicePCMPump: @unchecked Sendable {
     private var queueDepthSnapshot = 0
     private var previousExchange: UInt64?
     private var maximumExchangeGapMS = 0.0
+    private var maximumCaptureExchangeMS = 0.0
+    private var maximumPlaybackExchangeMS = 0.0
+    private var nativeCaptureRequests = 0
+    private var nativePlaybackRequests = 0
 
     var playbackHealth: [String: Any] {
         lock.lock(); defer { lock.unlock() }
         return ["exchange_calls": exchanges, "capture_ticks": captureTicks,
                 "completion_refills": completionRefills, "full_playback_slots": fullPlaybackSlots,
                 "consumed_buffers": consumedBuffers, "scheduled_buffers": queueDepthSnapshot,
-                "maximum_exchange_gap_ms": maximumExchangeGapMS]
+                "maximum_exchange_gap_ms": maximumExchangeGapMS,
+                "maximum_capture_exchange_ms": maximumCaptureExchangeMS,
+                "maximum_playback_exchange_ms": maximumPlaybackExchangeMS,
+                "native_capture_requests": nativeCaptureRequests,
+                "native_playback_requests": nativePlaybackRequests]
     }
 
     init(callID: String, player: AVAudioPlayerNode, format: AVAudioFormat, nativeProcessing: Bool) {
@@ -282,46 +290,63 @@ private final class VoicePCMPump: @unchecked Sendable {
         if captureInput { captured = Data() }
         lock.unlock()
 
-        let availableFrames = playbackClock.available
-        var output = [UInt8](repeating: 0, count: Self.frameBytes * 3)
+        FamilyVoicePCMExchange.run(input: input, availableFrames: playbackClock.available,
+                                   exchange: nativeExchange, schedule: schedule)
+    }
+
+    private func nativeExchange(_ input: Data, capacity: Int) -> Data {
+        // Both C bridges require a non-null output pointer, including the
+        // capture-only request with zero output capacity.
+        var output = [UInt8](repeating: 0, count: max(1, capacity))
+        let started = DispatchTime.now().uptimeNanoseconds
         let size = callID.withCString { id in
             input.withUnsafeBytes { pcm in
                 output.withUnsafeMutableBufferPointer { received in
                     family_runtime_voice_exchange(id, pcm.bindMemory(to: UInt8.self).baseAddress,
-                                                  pcm.count, nativeProcessing, received.baseAddress,
-                                                  availableFrames * Self.frameBytes)
+                                                  pcm.count, nativeProcessing, received.baseAddress, capacity)
                 }
             }
         }
-        guard size > 0, size <= availableFrames * Self.frameBytes,
-              size % Self.frameBytes == 0 else { return }
-        // Fill unused playback slots in one exchange. One frame per timer can
-        // never recover the backlog left by a coalesced or delayed callback.
-        // The queue still holds at most three 20 ms buffers.
-        for offset in stride(from: 0, to: size, by: Self.frameBytes) {
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format,
-                    frameCapacity: AVAudioFrameCount(Self.frameBytes / 2)),
-                  let channel = buffer.floatChannelData?[0] else { return }
-            buffer.frameLength = AVAudioFrameCount(Self.frameBytes / 2)
-            for index in 0..<(Self.frameBytes / 2) {
-                let byte = offset + index * 2
-                let sample = UInt16(output[byte]) | UInt16(output[byte + 1]) << 8
-                channel[index] = Float(Int16(bitPattern: sample)) / 32768
-            }
-            guard let lease = playbackClock.schedule() else { return }
-            lock.lock(); queueDepthSnapshot = playbackClock.scheduled; lock.unlock()
-            player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
-                self?.queue.async { [weak self] in
-                    guard let self, self.playbackClock.consumed(lease) else { return }
-                    self.lock.lock()
-                    self.consumedBuffers += 1
-                    self.queueDepthSnapshot = self.playbackClock.scheduled
-                    self.lock.unlock()
-                    // Follow the audio hardware clock rather than waiting for the
-                    // next timer. Python work remains off the render callback.
-                    self.exchange(captureInput: false)
-                }
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+        lock.lock()
+        if input.isEmpty {
+            nativePlaybackRequests += 1
+            maximumPlaybackExchangeMS = max(maximumPlaybackExchangeMS, elapsed)
+        } else {
+            nativeCaptureRequests += 1
+            maximumCaptureExchangeMS = max(maximumCaptureExchangeMS, elapsed)
+        }
+        lock.unlock()
+        guard size > 0, size <= capacity else { return Data() }
+        return Data(output.prefix(size))
+    }
+
+    private func schedule(_ pcm: Data) -> Bool {
+        guard pcm.count == Self.frameBytes else { return false }
+        let output = [UInt8](pcm)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(Self.frameBytes / 2)),
+              let channel = buffer.floatChannelData?[0] else { return false }
+        buffer.frameLength = AVAudioFrameCount(Self.frameBytes / 2)
+        for index in 0..<(Self.frameBytes / 2) {
+            let byte = index * 2
+            let sample = UInt16(output[byte]) | UInt16(output[byte + 1]) << 8
+            channel[index] = Float(Int16(bitPattern: sample)) / 32768
+        }
+        guard let lease = playbackClock.schedule() else { return false }
+        lock.lock(); queueDepthSnapshot = playbackClock.scheduled; lock.unlock()
+        player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
+            self?.queue.async { [weak self] in
+                guard let self, self.playbackClock.consumed(lease) else { return }
+                self.lock.lock()
+                self.consumedBuffers += 1
+                self.queueDepthSnapshot = self.playbackClock.scheduled
+                self.lock.unlock()
+                // Follow the audio hardware clock rather than waiting for the
+                // next timer. Python work remains off the render callback.
+                self.exchange(captureInput: false)
             }
         }
+        return true
     }
 }

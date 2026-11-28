@@ -56,7 +56,7 @@ cp "$probe/AppSimulator.entitlements" "$probe/TestsSimulator.entitlements" "$pro
 ln -s "$family_ios/RuntimeBuild/sip" SIPBuild
 cp "$family_ios/LiveRuntime/FamilySIP.c" "$family_ios/LiveRuntime/FamilySIP.h" "$family_ios/LiveRuntime/FamilySIPIdentity.c" "$family_ios/LiveRuntime/mobile_sip_audio.h" App/
 cp "$family_ios/FamilyLive/FamilySIPPolicy.swift" "$family_ios/FamilyLive/FamilyKeyboard.swift" App/
-cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" "$family_ios/FamilyLive/FamilyVoicePlaybackClock.swift" "$family_ios/LiveRuntime/FamilyVoicePlayback.h" App/
+cp "$family_ios/FamilyLive/FamilyVoiceAudio.swift" "$family_ios/FamilyLive/FamilyVoicePlaybackClock.swift" "$family_ios/FamilyLive/FamilyVoicePCMExchange.swift" "$family_ios/LiveRuntime/FamilyVoicePlayback.h" App/
 cp "$family_ios/FamilyLive/FamilyLocationSession.swift" App/
 cp "$family_ios/FamilyLive/FamilyCallWake.swift" App/
 cp "$family_ios/FamilyLive/FamilyQRScanner.swift" App/
@@ -214,6 +214,7 @@ cp -R "$probe/Tests" .
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioWakeTests.swift" > Tests/FamilyRadioWakeTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilySystemCallTests.swift" > Tests/FamilySystemCallTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyVoicePlaybackClockTests.swift" > Tests/FamilyVoicePlaybackClockTests.swift
+sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyVoicePCMExchangeTests.swift" > Tests/FamilyVoicePCMExchangeTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyBluetoothRestorationTests.swift" > Tests/FamilyBluetoothRestorationTests.swift
 sed '/^@testable import FamilyLive$/d' "$family_ios/ContactPhotoTests/FamilyRadioInboxTests.swift" > Tests/FamilyRadioInboxTests.swift
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$scratch/staged" python3 "$family_ios/simulator-peer.py" "$scratch/echo" local-no-drop attachment-echo location-echo nomad-browser > "$scratch/echo.log" 2>&1 &

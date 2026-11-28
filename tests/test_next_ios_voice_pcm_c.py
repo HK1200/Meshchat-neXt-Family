@@ -198,3 +198,23 @@ def test_playback_batch_rejects_incomplete_or_invalid_pcm_frames(playback_pcm,da
     playback_pcm.bind(lambda *_:None,lambda identifier:pulled.append(identifier) or data)
     assert playback_pcm.exchange('a'*32,b'',5760)==b''
     assert len(pulled)==1
+
+
+@pytest.mark.parametrize("bridge", ["pcm", "family_pcm"])
+def test_ready_playback_can_be_scheduled_before_capture_encoding(request, bridge):
+    boundary = request.getfixturevalue(bridge)
+    frames = [bytes([value, 0]) * 960 for value in (1, 2, 3)]
+    received = list(frames)
+    scheduled = []
+    pushes = []
+    def encode(identifier, microphone, processed):
+        assert scheduled == frames, "Ready speaker audio must precede potentially slow encoding"
+        pushes.append((identifier, microphone, processed))
+    boundary.bind(encode, lambda identifier: received.pop(0) if received else b"")
+    if bridge == "pcm":
+        boundary.mute(False)
+    decoded = boundary.exchange("a" * 32, b"", 5760)
+    scheduled.extend(decoded[offset:offset + 1920] for offset in range(0, len(decoded), 1920))
+    assert boundary.exchange("a" * 32, b"\x07\x00" * 960, 0) == b""
+    assert pushes == [("a" * 32, b"\x07\x00" * 960, True)]
+    assert not received

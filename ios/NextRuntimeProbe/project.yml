@@ -75,6 +75,7 @@ targets:
       - path: App/NextLocationCommand.swift
       - path: App/FamilyLocationSession.swift
       - path: App/FamilyVoicePlaybackClock.swift
+      - path: App/FamilyVoicePCMExchange.swift
       - path: App/NextFamilyCard.swift
       - path: App/AttachmentExport.swift
       - path: App/MessageAlerts.swift
