@@ -7,6 +7,8 @@ final class FamilyLiveUITests: XCTestCase {
         let address: String
         let message: String
         let reconnectMessage: String?
+        let captureMessage: String?
+        let captureReply: String?
     }
 
     private enum Journey: Equatable { case messages, callRoute, voiceAndMaps }
@@ -39,8 +41,15 @@ final class FamilyLiveUITests: XCTestCase {
         app.launchEnvironment["FAMILY_TEST_PORT"] = String(peer.port)
         let localTest = peer.host == "127.0.0.1"
         if localTest && journey == .messages {
+            #if FAMILY_STORE_SCREENSHOTS
+            // Capture the ordinary foreground UI before enabling diagnostic
+            // labels. The complete background/reconnect proof still runs below.
+            app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "0"
+            app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "0"
+            #else
             app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1"
             app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
+            #endif
         }
         app.launch()
         defer { app.terminate() }
@@ -91,7 +100,11 @@ final class FamilyLiveUITests: XCTestCase {
             peerForm.swipeDown()
         }
         XCTAssertTrue(connected.waitForExistence(timeout: 25), app.debugDescription)
+        #if FAMILY_STORE_SCREENSHOTS
+        let deviceName = "Our Family"
+        #else
         let deviceName = "Family simulator device"
+        #endif
         let nameField = app.textFields["device-name"]
         // SwiftUI forms on smaller screens may not expose off-screen rows.
         for _ in 0..<4 where !nameField.isHittable {
@@ -114,7 +127,11 @@ final class FamilyLiveUITests: XCTestCase {
         if !addContact.isHittable { app.swipeDown() }
         XCTAssertTrue(addContact.waitForExistence(timeout: 10))
         addContact.tap()
+        #if FAMILY_STORE_SCREENSHOTS
+        let contactName = "Mom"
+        #else
         let contactName = localTest ? "Simulator echo peer" : "Echo peer"
+        #endif
         if localTest && journey == .messages {
             let discovery = app.buttons["Find messaging client"]
             XCTAssertTrue(discovery.waitForExistence(timeout: 10))
@@ -211,6 +228,33 @@ final class FamilyLiveUITests: XCTestCase {
         #endif
         if journey != .voiceAndMaps {
             contact.tap()
+            #if FAMILY_STORE_SCREENSHOTS
+            let captureMessage = try XCTUnwrap(peer.captureMessage)
+            let captureReply = try XCTUnwrap(peer.captureReply)
+            fill(app.textFields["message-draft"], captureMessage)
+            finishTyping("finish-message-entry", in: app)
+            let captureSend = app.buttons["Send"]
+            reveal(captureSend, in: app.collectionViews["private-conversation-form"])
+            XCTAssertTrue(captureSend.isEnabled)
+            captureSend.tap()
+            XCTAssertTrue(app.staticTexts[captureReply].waitForExistence(timeout: 90))
+            XCTAssertTrue(app.staticTexts["Delivered"].waitForExistence(timeout: 15))
+            XCTAssertFalse(app.keyboards.firstMatch.exists)
+            XCTAssertFalse(app.staticTexts["Message notification delivered"].exists)
+            XCTAssertFalse(app.staticTexts["Native inbox signal received"].exists)
+            let banner = XCUIApplication(bundleIdentifier: "com.apple.springboard").staticTexts["New Family message"]
+            XCTAssertFalse(banner.exists)
+            captureListingScreen(app, named: "02-approved-conversation")
+            // Reopen the same saved profile with diagnostics enabled. Every
+            // original signed-message, notification, reconnect and restart
+            // assertion runs after capture, unchanged.
+            app.terminate()
+            app.launchEnvironment["FAMILY_TEST_NOTIFICATIONS"] = "1"
+            app.launchEnvironment["FAMILY_TEST_RECONNECT"] = "1"
+            app.launch()
+            XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
+            app.buttons[contactName].tap()
+            #endif
             fill(app.textFields["message-draft"], peer.message)
             finishTyping("finish-message-entry", in: app)
             XCTAssertEqual(app.textFields["message-draft"].value as? String, peer.message)
@@ -290,19 +334,6 @@ final class FamilyLiveUITests: XCTestCase {
         XCTAssertTrue(app.buttons[contactName].waitForExistence(timeout: 30))
         XCTAssertTrue(app.navigationBars[deviceName].exists)
         XCTAssertTrue(app.buttons[changedAppearance].exists)
-        #if FAMILY_STORE_SCREENSHOTS
-        // Reopen the saved conversation after relaunch so the composer has no focus.
-        app.buttons[contactName].tap()
-        XCTAssertTrue(app.staticTexts["Echo: " + peer.message].waitForExistence(timeout: 15))
-        XCTAssertFalse(app.keyboards.firstMatch.exists)
-        let banner = XCUIApplication(bundleIdentifier: "com.apple.springboard").staticTexts["New Family message"]
-        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: banner)
-        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 15), .completed)
-        captureListingScreen(app, named: "02-approved-conversation")
-        let back = app.navigationBars[contactName].buttons.firstMatch
-        XCTAssertTrue(back.exists, app.debugDescription)
-        back.tap()
-        #endif
         XCTAssertTrue(guardian.waitForExistence(timeout: 10))
         if !guardian.isHittable { app.swipeUp() }
         guardian.tap()

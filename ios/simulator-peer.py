@@ -1,5 +1,6 @@
 """Disposable LXMF echo peer for local and public simulator smoke tests."""
 import json
+import os
 from pathlib import Path
 import secrets
 import socket
@@ -12,6 +13,11 @@ import RNS
 
 
 def main(folder, public, drop_test=False, attachment_echo=False, location_echo=False, nomad_browser=False):
+    store_capture = os.environ.get("FAMILY_STORE_SCREENSHOTS") == "1"
+    if store_capture and public:
+        raise ValueError("Store screenshot fixtures must stay on loopback")
+    capture_message = "Made it home safely." if store_capture else None
+    capture_reply = "Thanks! I will be there soon." if store_capture else None
     if public and nomad_browser:
         raise ValueError("Nomad browser fixtures must stay on loopback")
     if public and location_echo:
@@ -53,7 +59,7 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
             time.sleep(0.2)
     identity = RNS.Identity()
     router = LXMF.LXMRouter(identity=identity, storagepath=str(folder / "lxmf"), autopeer=False)
-    destination = router.register_delivery_identity(identity, display_name="Simulator echo peer", stamp_cost=0)
+    destination = router.register_delivery_identity(identity, display_name="Mom" if store_capture else "Simulator echo peer", stamp_cost=0)
 
     challenge = "Hello from simulator " + secrets.token_hex(4)
     reconnect_message = "Hello after reconnect " + secrets.token_hex(4) if drop_test else None
@@ -102,7 +108,7 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
                         fields = {LXMF.FIELD_FILE_ATTACHMENTS: [["next-test.txt", b"Private signed attachment test"]],
                                   LXMF.FIELD_IMAGE: ["png", base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=")]}
                     response = LXMF.LXMessage(
-                        reply_to, destination, location_receipt if location else "Echo: " + text, fields=fields, desired_method=LXMF.LXMessage.DIRECT
+                        reply_to, destination, location_receipt if location else capture_reply if store_capture and text == capture_message else "Echo: " + text, fields=fields, desired_method=LXMF.LXMessage.DIRECT
                     )
                     def delivered(_):
                         diagnostic("echo_delivered", message)
@@ -122,7 +128,7 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
     def echo(message):
         location = (location_echo and message.content_as_string() == "" and
                     isinstance(message.fields, dict) and LXMF.FIELD_TELEMETRY in message.fields)
-        if not location and message.content_as_string() not in (challenge, reconnect_message, delete_message, fresh_message):
+        if not location and message.content_as_string() not in (challenge, reconnect_message, delete_message, fresh_message, capture_message):
             return
         if message.signature_validated or message.unverified_reason == LXMF.LXMessage.SOURCE_UNKNOWN:
             diagnostic("message_received", message)
@@ -149,6 +155,8 @@ def main(folder, public, drop_test=False, attachment_echo=False, location_echo=F
         "message": challenge, "reconnectMessage": reconnect_message,
         "deleteMessage": delete_message, "freshMessage": fresh_message,
     }
+    if store_capture:
+        payload.update(captureMessage=capture_message, captureReply=capture_reply)
     if location_echo: payload["locationReceipt"] = location_receipt
     if nomad_browser:
         payload['nomadAddress'] = nomad.hash.hex()
