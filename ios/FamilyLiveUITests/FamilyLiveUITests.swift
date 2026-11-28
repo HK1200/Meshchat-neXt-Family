@@ -1,3 +1,4 @@
+import CoreImage
 import XCTest
 
 final class FamilyLiveUITests: XCTestCase {
@@ -138,6 +139,36 @@ final class FamilyLiveUITests: XCTestCase {
         app.buttons["Save device name"].tap()
         XCTAssertTrue(app.staticTexts["Device name saved"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
+        if localTest && journey == .messages {
+            // Exercise the displayed guardian card, rather than substituting
+            // an API response or a pre-rendered test image for the real QR.
+            let ownCard = peerForm.buttons["My contact QR"]
+            reveal(ownCard, in: peerForm, up: false)
+            ownCard.tap()
+            XCTAssertTrue(app.navigationBars["My contact QR"].waitForExistence(timeout: 15))
+            let image = app.images["family-own-contact-qr"]
+            XCTAssertTrue(image.waitForExistence(timeout: 30), app.debugDescription)
+            XCTAssertTrue(image.isHittable)
+            let address = app.staticTexts["family-own-lxmf-address"]
+            XCTAssertTrue(address.waitForExistence(timeout: 10))
+            XCTAssertEqual(address.label.count, 32)
+            let screenshot = try XCTUnwrap(CIImage(data: image.screenshot().pngRepresentation))
+            let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil,
+                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+            let decoded = detector.features(in: screenshot).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+            XCTAssertEqual(decoded.count, 1)
+            let text = try XCTUnwrap(decoded.first)
+            let card = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+            XCTAssertEqual(card["format"] as? String, "next-family-contact")
+            XCTAssertEqual(card["name"] as? String, deviceName)
+            XCTAssertEqual((card["addresses"] as? [String: String])?["lxmf"], address.label)
+            XCTAssertEqual((card["identityPublicKey"] as? String)?.count, 128)
+            XCTAssertNil(card["identityPrivateKey"])
+            XCTAssertNil(card["password"])
+            XCTAssertTrue(app.buttons["Share contact code"].exists)
+            app.navigationBars["My contact QR"].buttons.element(boundBy: 0).tap()
+            XCTAssertTrue(peerForm.waitForExistence(timeout: 10))
+        }
         let addContact = app.buttons["Add approved contact"]
         if !addContact.isHittable { app.swipeDown() }
         XCTAssertTrue(addContact.waitForExistence(timeout: 10))

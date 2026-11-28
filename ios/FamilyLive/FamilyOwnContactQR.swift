@@ -19,12 +19,14 @@ struct FamilyOwnContactQR: View {
                             .padding(20)
                             .background(.white)
                             .accessibilityLabel("My contact QR code")
+                            .accessibilityIdentifier("family-own-contact-qr")
                         Text("On the other device, open Guardian settings and scan this code to review the contact.")
                             .multilineTextAlignment(.center)
                         if let address = family.state?.address, !address.isEmpty {
                             Text(address)
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
+                                .accessibilityIdentifier("family-own-lxmf-address")
                         }
                         ShareLink(item: payload) { Label("Share contact code", systemImage: "square.and.arrow.up") }
                     } else if let error {
